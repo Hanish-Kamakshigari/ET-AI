@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_0668a250cc297b5229020c372e66e750 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+        <div style="position: fixed; bottom: 50px; left: 50px; width: 150px; height: 150px; 
+                    background-color: white; border: 2px solid grey; border-radius: 5px; 
+                    padding: 10px; z-index: 9999; font-family: Arial, sans-serif; font-size: 14px;">
+            <p style="margin: 0 0 5px 0; font-weight: bold;">Risk Legend</p>
+            <p style="margin: 2px 0; color: #00ff00;">Low</p>
+            <p style="margin: 2px 0; color: #ffff00;">Medium</p>
+            <p style="margin: 2px 0; color: #ff8c00;">High</p>
+            <p style="margin: 2px 0; color: #ff0000;">Critical</p>
+        </div>
+        
+    
+            <div class="folium-map" id="map_0668a250cc297b5229020c372e66e750" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_0668a250cc297b5229020c372e66e750 = L.map(
+                "map_0668a250cc297b5229020c372e66e750",
+                {
+                    center: [28.618, 77.238],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 16,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+            L.control.scale().addTo(map_0668a250cc297b5229020c372e66e750);
+
+            
+
+        
+    
+            var tile_layer_5f301e28697c9551cd8073f364bf6d09 = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_5f301e28697c9551cd8073f364bf6d09.addTo(map_0668a250cc297b5229020c372e66e750);
+        
+    
+            var rectangle_8fcc1240100de4b63faa82a4188a642d = L.rectangle(
+                [[28.605, 77.225], [28.63, 77.25]],
+                {"bubblingMouseEvents": true, "color": "#000000", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#000000", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 1.0, "smoothFactor": 1.0, "stroke": true, "weight": 2}
+            ).addTo(map_0668a250cc297b5229020c372e66e750);
+        
+    
+        var popup_112c11332695a44970151248a0592c91 = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_ce6ed95fb8360e796292f30f7aeded32 = $(`<div id="html_ce6ed95fb8360e796292f30f7aeded32" style="width: 100.0%; height: 100.0%;">Plant Boundary</div>`)[0];
+                popup_112c11332695a44970151248a0592c91.setContent(html_ce6ed95fb8360e796292f30f7aeded32);
+            
+        
+
+        rectangle_8fcc1240100de4b63faa82a4188a642d.bindPopup(popup_112c11332695a44970151248a0592c91)
+        ;
+
+        
+    
+    
+            rectangle_8fcc1240100de4b63faa82a4188a642d.bindTooltip(
+                `<div>
+                     Suraksha Plant
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_5435454563207dfb2b00d3ee6a6e01ba = L.circleMarker(
+                [28.61, 77.23],
+                {"bubblingMouseEvents": true, "color": "#00ff00", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#00ff00", "fillOpacity": 0.7, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 30, "stroke": true, "weight": 1}
+            ).addTo(map_0668a250cc297b5229020c372e66e750);
+        
+    
+        var popup_9f39e81a77fe12c31ede46c8f74f0e78 = L.popup({
+  "maxWidth": 300,
+});
+
+        
+            
+                var html_86a0ffddb61feb4e485946f1678abd4a = $(`<div id="html_86a0ffddb61feb4e485946f1678abd4a" style="width: 100.0%; height: 100.0%;">         <div style="font-family: Arial, sans-serif; min-width: 200px; padding: 10px;">             <h3 style="margin: 0 0 10px 0; color: #00ff00;">                  Zone_A             </h3>             <p><b>Risk Level:</b> <span style="color: #00ff00;">                 LOW</span></p>             <hr style="margin: 8px 0;">             <table style="width: 100%; font-size: 14px;">                          <tr>                     <td><b>Zone A Gas Ppm:</b></td>                     <td style="color: black">0.9</td>                 </tr>                                  <tr>                     <td><b>Zone A Temperature C:</b></td>                     <td style="color: black">44.7</td>                 </tr>                                  <tr>                     <td><b>Zone A Pressure Bar:</b></td>                     <td style="color: black">1.3</td>                 </tr>                                  <tr>                     <td><b>Zone A Worker Count:</b></td>                     <td style="color: black">5.7</td>                 </tr>                                  <tr>                     <td><b>Zone A Maintenance Active:</b></td>                     <td style="color: black">0</td>                 </tr>                                  <tr>                     <td><b>Zone A Permit Active:</b></td>                     <td style="color: black">0</td>                 </tr>                              </table>             <hr style="margin: 8px 0;">             <small style="color: #666;">Last updated: 17:31:17</small>         </div>         </div>`)[0];
+                popup_9f39e81a77fe12c31ede46c8f74f0e78.setContent(html_86a0ffddb61feb4e485946f1678abd4a);
+            
+        
+
+        circle_marker_5435454563207dfb2b00d3ee6a6e01ba.bindPopup(popup_9f39e81a77fe12c31ede46c8f74f0e78)
+        ;
+
+        
+    
+    
+            circle_marker_5435454563207dfb2b00d3ee6a6e01ba.bindTooltip(
+                `<div>
+                     Zone_A: LOW
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_cee2d0cb31caa7367df605b76f03e9e0 = L.circleMarker(
+                [28.62, 77.235],
+                {"bubblingMouseEvents": true, "color": "#00ff00", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#00ff00", "fillOpacity": 0.7, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 30, "stroke": true, "weight": 1}
+            ).addTo(map_0668a250cc297b5229020c372e66e750);
+        
+    
+        var popup_9e1fbc4b83dd708e80b8c3f8c7a8cf76 = L.popup({
+  "maxWidth": 300,
+});
+
+        
+            
+                var html_9b3399511f2088a967a499c339451645 = $(`<div id="html_9b3399511f2088a967a499c339451645" style="width: 100.0%; height: 100.0%;">         <div style="font-family: Arial, sans-serif; min-width: 200px; padding: 10px;">             <h3 style="margin: 0 0 10px 0; color: #00ff00;">                  Zone_B             </h3>             <p><b>Risk Level:</b> <span style="color: #00ff00;">                 LOW</span></p>             <hr style="margin: 8px 0;">             <table style="width: 100%; font-size: 14px;">                          <tr>                     <td><b>Zone B Gas Ppm:</b></td>                     <td style="color: black">3.6</td>                 </tr>                                  <tr>                     <td><b>Zone B Temperature C:</b></td>                     <td style="color: black">87.1</td>                 </tr>                                  <tr>                     <td><b>Zone B Pressure Bar:</b></td>                     <td style="color: black">6.6</td>                 </tr>                                  <tr>                     <td><b>Zone B Worker Count:</b></td>                     <td style="color: black">3.4</td>                 </tr>                                  <tr>                     <td><b>Zone B Maintenance Active:</b></td>                     <td style="color: black">0</td>                 </tr>                                  <tr>                     <td><b>Zone B Permit Active:</b></td>                     <td style="color: black">0</td>                 </tr>                              </table>             <hr style="margin: 8px 0;">             <small style="color: #666;">Last updated: 17:31:17</small>         </div>         </div>`)[0];
+                popup_9e1fbc4b83dd708e80b8c3f8c7a8cf76.setContent(html_9b3399511f2088a967a499c339451645);
+            
+        
+
+        circle_marker_cee2d0cb31caa7367df605b76f03e9e0.bindPopup(popup_9e1fbc4b83dd708e80b8c3f8c7a8cf76)
+        ;
+
+        
+    
+    
+            circle_marker_cee2d0cb31caa7367df605b76f03e9e0.bindTooltip(
+                `<div>
+                     Zone_B: LOW
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_ce5f88759034001742bc6221b347924f = L.circleMarker(
+                [28.615, 77.24],
+                {"bubblingMouseEvents": true, "color": "#00ff00", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#00ff00", "fillOpacity": 0.7, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 30, "stroke": true, "weight": 1}
+            ).addTo(map_0668a250cc297b5229020c372e66e750);
+        
+    
+        var popup_9004314784f20299e0923a06da51e1e4 = L.popup({
+  "maxWidth": 300,
+});
+
+        
+            
+                var html_81411acd4e7f60e433733246c147dce6 = $(`<div id="html_81411acd4e7f60e433733246c147dce6" style="width: 100.0%; height: 100.0%;">         <div style="font-family: Arial, sans-serif; min-width: 200px; padding: 10px;">             <h3 style="margin: 0 0 10px 0; color: #00ff00;">                  Zone_C             </h3>             <p><b>Risk Level:</b> <span style="color: #00ff00;">                 LOW</span></p>             <hr style="margin: 8px 0;">             <table style="width: 100%; font-size: 14px;">                          <tr>                     <td><b>Zone C Gas Ppm:</b></td>                     <td style="color: black">0.8</td>                 </tr>                                  <tr>                     <td><b>Zone C Temperature C:</b></td>                     <td style="color: black">85.1</td>                 </tr>                                  <tr>                     <td><b>Zone C Pressure Bar:</b></td>                     <td style="color: black">6.2</td>                 </tr>                                  <tr>                     <td><b>Zone C Worker Count:</b></td>                     <td style="color: black">4.2</td>                 </tr>                                  <tr>                     <td><b>Zone C Maintenance Active:</b></td>                     <td style="color: black">0</td>                 </tr>                                  <tr>                     <td><b>Zone C Permit Active:</b></td>                     <td style="color: black">1</td>                 </tr>                              </table>             <hr style="margin: 8px 0;">             <small style="color: #666;">Last updated: 17:31:17</small>         </div>         </div>`)[0];
+                popup_9004314784f20299e0923a06da51e1e4.setContent(html_81411acd4e7f60e433733246c147dce6);
+            
+        
+
+        circle_marker_ce5f88759034001742bc6221b347924f.bindPopup(popup_9004314784f20299e0923a06da51e1e4)
+        ;
+
+        
+    
+    
+            circle_marker_ce5f88759034001742bc6221b347924f.bindTooltip(
+                `<div>
+                     Zone_C: LOW
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_adbd74b7f30450ded59af064b44d8794 = L.circleMarker(
+                [28.625, 77.228],
+                {"bubblingMouseEvents": true, "color": "#00ff00", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#00ff00", "fillOpacity": 0.7, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 30, "stroke": true, "weight": 1}
+            ).addTo(map_0668a250cc297b5229020c372e66e750);
+        
+    
+        var popup_eed3ee754a583fad080dd18d127e3e57 = L.popup({
+  "maxWidth": 300,
+});
+
+        
+            
+                var html_7fcde6e04012d33b1d6f136feff785ff = $(`<div id="html_7fcde6e04012d33b1d6f136feff785ff" style="width: 100.0%; height: 100.0%;">         <div style="font-family: Arial, sans-serif; min-width: 200px; padding: 10px;">             <h3 style="margin: 0 0 10px 0; color: #00ff00;">                  Reactor_Area             </h3>             <p><b>Risk Level:</b> <span style="color: #00ff00;">                 LOW</span></p>             <hr style="margin: 8px 0;">             <table style="width: 100%; font-size: 14px;">                          <tr>                     <td><b>Reactor Area Gas Ppm:</b></td>                     <td style="color: black">2.5</td>                 </tr>                                  <tr>                     <td><b>Reactor Area Temperature C:</b></td>                     <td style="color: black">98.9</td>                 </tr>                                  <tr>                     <td><b>Reactor Area Pressure Bar:</b></td>                     <td style="color: black">4.9</td>                 </tr>                                  <tr>                     <td><b>Reactor Area Worker Count:</b></td>                     <td style="color: black">4.5</td>                 </tr>                                  <tr>                     <td><b>Reactor Area Maintenance Active:</b></td>                     <td style="color: black">0</td>                 </tr>                                  <tr>                     <td><b>Reactor Area Permit Active:</b></td>                     <td style="color: black">0</td>                 </tr>                              </table>             <hr style="margin: 8px 0;">             <small style="color: #666;">Last updated: 17:31:17</small>         </div>         </div>`)[0];
+                popup_eed3ee754a583fad080dd18d127e3e57.setContent(html_7fcde6e04012d33b1d6f136feff785ff);
+            
+        
+
+        circle_marker_adbd74b7f30450ded59af064b44d8794.bindPopup(popup_eed3ee754a583fad080dd18d127e3e57)
+        ;
+
+        
+    
+    
+            circle_marker_adbd74b7f30450ded59af064b44d8794.bindTooltip(
+                `<div>
+                     Reactor_Area: LOW
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_66c86f49c656d964d6c10f48be2b69b6 = L.circleMarker(
+                [28.618, 77.245],
+                {"bubblingMouseEvents": true, "color": "#00ff00", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#00ff00", "fillOpacity": 0.7, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 30, "stroke": true, "weight": 1}
+            ).addTo(map_0668a250cc297b5229020c372e66e750);
+        
+    
+        var popup_47ee59fdaa672274ba57b822d31bd9e6 = L.popup({
+  "maxWidth": 300,
+});
+
+        
+            
+                var html_27d48a990752a53f356d11e569e60f33 = $(`<div id="html_27d48a990752a53f356d11e569e60f33" style="width: 100.0%; height: 100.0%;">         <div style="font-family: Arial, sans-serif; min-width: 200px; padding: 10px;">             <h3 style="margin: 0 0 10px 0; color: #00ff00;">                  Storage_Area             </h3>             <p><b>Risk Level:</b> <span style="color: #00ff00;">                 LOW</span></p>             <hr style="margin: 8px 0;">             <table style="width: 100%; font-size: 14px;">                          <tr>                     <td><b>Storage Area Gas Ppm:</b></td>                     <td style="color: black">0.0</td>                 </tr>                                  <tr>                     <td><b>Storage Area Temperature C:</b></td>                     <td style="color: black">93.6</td>                 </tr>                                  <tr>                     <td><b>Storage Area Pressure Bar:</b></td>                     <td style="color: black">2.9</td>                 </tr>                                  <tr>                     <td><b>Storage Area Worker Count:</b></td>                     <td style="color: black">5.3</td>                 </tr>                                  <tr>                     <td><b>Storage Area Maintenance Active:</b></td>                     <td style="color: black">0</td>                 </tr>                                  <tr>                     <td><b>Storage Area Permit Active:</b></td>                     <td style="color: black">0</td>                 </tr>                              </table>             <hr style="margin: 8px 0;">             <small style="color: #666;">Last updated: 17:31:17</small>         </div>         </div>`)[0];
+                popup_47ee59fdaa672274ba57b822d31bd9e6.setContent(html_27d48a990752a53f356d11e569e60f33);
+            
+        
+
+        circle_marker_66c86f49c656d964d6c10f48be2b69b6.bindPopup(popup_47ee59fdaa672274ba57b822d31bd9e6)
+        ;
+
+        
+    
+    
+            circle_marker_66c86f49c656d964d6c10f48be2b69b6.bindTooltip(
+                `<div>
+                     Storage_Area: LOW
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+</script>
+</html>
