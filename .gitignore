@@ -1,0 +1,28 @@
+# Python Environments & Cache
+venv/
+.env
+.env.*
+*.env
+__pycache__/
+*.pyc
+
+# YOLO and Model Weights (Binary files)
+runs/
+models/
+*.pt
+
+# Datasets and Media Footage (Large files)
+data/battery5_ppe/
+Construction-Site-Safety-1/
+footage/
+
+# Temporary Local Outputs
+.vscode/settings.json
+outputs/heatmap_latest.html
+
+# Streamlit cache
+.streamlit/
+
+# OS junk
+.DS_Store
+Thumbs.db
