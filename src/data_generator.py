@@ -22,9 +22,9 @@ class IndustrialPlantSimulator:
         # Sensor configurations with realistic ranges
         self.sensors = {
             'gas_ppm': {'min': 0, 'max': 100, 'normal': (2, 8)},
-            'temperature_c': {'min': 10, 'max': 120, 'normal': (75, 95)},
-            'pressure_bar': {'min': 1, 'max': 8, 'normal': (4.5, 6.0)},
-            'worker_count': {'min': 0, 'max': 12, 'normal': (3, 6)}
+            'temperature_c': {'min': 10, 'max': 120, 'normal': (75, 9.5)},
+            'pressure_bar': {'min': 1, 'max': 8, 'normal': (4.5, 0.6)},
+            'worker_count': {'min': 0, 'max': 12, 'normal': (3, 1.5)}
         }
         
         # Binary variables with probabilities

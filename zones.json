@@ -13,16 +13,12 @@
   },
   "Zone_C": {
     "name": "Battery-6",
-    "restricted_polygons": [
-      [[100, 50], [450, 50], [450, 700], [100, 700]]
-    ],
+    "restricted_polygons": [],
     "color": [0, 212, 255]
   },
   "Reactor_Area": {
     "name": "Reactor Block",
-    "restricted_polygons": [
-      [[700, 100], [1100, 100], [1100, 720], [700, 720]]
-    ],
+    "restricted_polygons": [],
     "color": [245, 158, 11]
   },
   "Storage_Area": {

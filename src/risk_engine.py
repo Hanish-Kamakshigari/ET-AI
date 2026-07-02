@@ -31,10 +31,10 @@ class CompoundRiskEngine:
         # REALISTIC THRESHOLDS - Based on actual industrial standards
         self.thresholds = {
             'gas_ppm': {
-                'normal': (0, 15),      # 0-15 ppm: Normal operations
-                'elevated': (15, 30),   # 15-30 ppm: Monitor closely
-                'high': (30, 50),       # 30-50 ppm: Investigate immediately
-                'critical': (50, 100)   # 50+ ppm: DANGER! Evacuate!
+                'normal': (0, 20),      # 0-20 ppm: Normal operations
+                'elevated': (20, 35),   # 20-35 ppm: Monitor closely
+                'high': (35, 55),       # 35-55 ppm: Investigate immediately
+                'critical': (55, 100)   # 55+ ppm: DANGER! Evacuate!
             },
             'temperature_c': {
                 'normal': (60, 88),

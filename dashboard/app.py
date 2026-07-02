@@ -414,8 +414,9 @@ def draw_labeled_worker(draw, font, px1, py1, px2, py2, hx1, hy1, hx2, hy2, vx1,
 WORKER_KEYFRAMES = {
     'Reactor_Area': [
         {   # Worker 1 — Welder, crouching over pipe, left-centre
-            'has_helmet': False,
-            'helmet_label': '⚠ NO HARDHAT (Welding Shield)',
+            # Welding shield + leather coverall = full PPE compliance → green box
+            'has_helmet': True,
+            'helmet_label': 'Welding Shield ✓',
             'ppe': 'welding_shield+coverall+leather_gloves',
             'first_visible_frame': 0,
             'last_visible_frame': 239,
@@ -987,10 +988,12 @@ def draw_pil_overlays(frame_np, selected_zone: str, latest_telemetry: Dict, curr
     
     if detections is not None:
         # Pre-scan detections to find violations per tracking_id
+        # Reactor_Area: all workers are compliant (welding shield + coverall = full PPE)
         person_has_violations = {}
-        for d in detections:
-            if d.label in ['no_helmet', 'no_vest']:
-                person_has_violations[d.tracking_id] = True
+        if selected_zone != 'Reactor_Area':
+            for d in detections:
+                if d.label in ['no_helmet', 'no_vest']:
+                    person_has_violations[d.tracking_id] = True
         
         for d in detections:
             if d.label == 'person':
@@ -1119,7 +1122,15 @@ def draw_pil_overlays(frame_np, selected_zone: str, latest_telemetry: Dict, curr
                     visible_workers_count += 1
                     has_helmet = w_def.get('has_helmet', True)
                     ppe_violation = w_def.get('ppe_violation', False)
-                    if not has_helmet:
+                    # Reactor_Area per-worker PPE logic:
+                    # idx==0 = welder: welding mask (helmet✓) + leather coverall (no hi-vis vest)
+                    # idx==1 = supervisor: yellow hardhat + hi-vis vest = full PPE
+                    is_reactor_welder = (kf_key == 'Reactor_Area' and idx == 0)
+                    if kf_key == 'Reactor_Area':
+                        has_helmet = True
+                        ppe_violation = False
+                    # violations only for non-Reactor workers
+                    if not has_helmet and kf_key != 'Reactor_Area':
                         violations_count += 1
                     elif ppe_violation:
                         violations_count += 1
@@ -1135,32 +1146,33 @@ def draw_pil_overlays(frame_np, selected_zone: str, latest_telemetry: Dict, curr
                     vest_factor = 0.62 if (kf_key == 'Reactor_Area' and idx == 1) else 0.65
                     vx1, vy1, vx2, vy2 = px1 + pw * 0.15, py1 + ph * 0.18, px1 + pw * 0.85, py1 + ph * vest_factor
                     
-                    # Person box colour: orange for ppe_violation, green otherwise
+                    # Person box always green for Reactor_Area (both workers compliant)
                     person_outline = "#f97316" if ppe_violation else "#22c55e"
                     
-                    # Labels — use per-worker helmet_label if defined
-                    p_label = f"person {random.randint(89, 95)}%"
-                    if has_helmet:
-                        h_label = w_def.get('helmet_label', None)
-                        if h_label is None:
-                            h_label = f"helmet {random.randint(85, 91)}%"
+                    # Labels
+                    p_label = f"Worker-{idx+1} ({random.randint(78, 92)}%)"
+                    if is_reactor_welder:
+                        h_label = "Welding Mask"
+                        v_label = "Leather Coverall"
                     else:
-                        h_label = w_def.get('helmet_label', "⚠ NO HELMET")
-                    
-                    # For hi-vis vest violations: override vest label
-                    if ppe_violation and w_def.get('violation_type') == 'MISSING_HIVIZ_VEST':
-                        v_label = "⚠ NO HI-VIS VEST"
-                    else:
+                        h_label = w_def.get('helmet_label', f"helmet {random.randint(85, 91)}%") if has_helmet else w_def.get('helmet_label', "⚠ NO HELMET")
                         v_label = f"vest {random.randint(82, 88)}%"
                     
-                    # Draw person box (orange outline for ppe_violation, green otherwise)
+                    # Draw person box
                     draw.rectangle([px1, py1, px2, py2], outline=person_outline, width=3)
+                    
+                    # Helmet/mask box (always cyan for Reactor_Area)
                     if has_helmet:
                         draw.rectangle([hx1, hy1, hx2, hy2], outline="#00d4ff", width=2)
-                    draw.rectangle([vx1, vy1, vx2, vy2],
-                                   outline=("#f97316" if ppe_violation else "#00d4ff"), width=2)
                     
-                    # Measure and draw text labels
+                    # Vest box: cyan for supervisor, grey for welder (leather coverall)
+                    if is_reactor_welder:
+                        draw.rectangle([vx1, vy1, vx2, vy2], outline="#94a3b8", width=2)
+                    else:
+                        draw.rectangle([vx1, vy1, vx2, vy2],
+                                       outline=("#f97316" if ppe_violation else "#00d4ff"), width=2)
+                    
+                    # Text labels
                     p_tbox = draw.textbbox((0, 0), p_label, font=font)
                     p_w = p_tbox[2] - p_tbox[0]; p_h = p_tbox[3] - p_tbox[1]
                     h_tbox = draw.textbbox((0, 0), h_label, font=font)
@@ -1171,13 +1183,13 @@ def draw_pil_overlays(frame_np, selected_zone: str, latest_telemetry: Dict, curr
                     # Person label (above top-left)
                     draw.rectangle([px1-2, py1-max_h-6, px1+p_w+4, py1], fill="#0d1220")
                     draw.text((px1, py1-max_h-4), p_label, fill=person_outline, font=font)
-                    # Helmet label (right of person label)
+                    # Helmet/mask label
                     draw.rectangle([px1+p_w+10, py1-max_h-6, px1+p_w+10+h_w+6, py1], fill="#0d1220")
                     h_color = "#00d4ff" if has_helmet else "#ef4444"
                     draw.text((px1+p_w+12, py1-max_h-4), h_label, fill=h_color, font=font)
-                    # Vest label (below bottom-left)
+                    # Vest / coverall label (below bottom-left)
                     draw.rectangle([px1-2, py2+2, px1+v_w+4, py2+v_h+8], fill="#0d1220")
-                    v_color = "#f97316" if ppe_violation else "#00d4ff"
+                    v_color = "#94a3b8" if is_reactor_welder else ("#f97316" if ppe_violation else "#00d4ff")
                     draw.text((px1, py2+4), v_label, fill=v_color, font=font)
                     
                     # Save detection for summary grids
@@ -2537,12 +2549,15 @@ with tab_cctv:
             
             # Render status bar dynamically in sync with the video
             is_critical = (latest.get("max_risk_level") == "CRITICAL" or st.session_state.simulate_active)
+            overpressure_active = (selected_zone == 'Zone_C' and frame_idx >= 95)
             if selected_zone == 'Zone_C':
-                h_count = 1 if is_critical else 0
+                h_count = 1 if (is_critical or overpressure_active) else 0
+            elif selected_zone == 'Zone_A':
+                h_count = 1 if (frame_idx >= 40) else 0
             else:
-                h_count = 1 if (selected_zone in ['Zone_A', 'Reactor_Area']) or (selected_zone == 'Zone_B' and st.session_state.simulate_active) else 0
+                h_count = 1 if (selected_zone in ['Reactor_Area']) or (selected_zone == 'Zone_B' and st.session_state.simulate_active) else 0
                 
-            safe_zones = 4 if (h_count > 0 or viol_count > 0) else 5
+            safe_zones = 4 if (h_count > 0 or (viol_count > 0 and selected_zone not in ('Zone_A', 'Reactor_Area'))) else 5
             
             status_bar_placeholder.markdown(f"""
             <div style="display:flex; justify-content:space-between; align-items:center; 
@@ -2556,8 +2571,17 @@ with tab_cctv:
             """, unsafe_allow_html=True)
             
             # Render nominal / warning cards
-            if viol_count > 0:
-                alerts_html = f"""
+            alerts_list = []
+            
+            if viol_count > 0 and selected_zone not in ('Zone_A', 'Reactor_Area'):
+                if selected_zone == 'Zone_C':
+                    missing_vests = w_count - len([d for d in active_dets if d.label == 'vest'])
+                    msg = f"PPE violation: {missing_vests} worker missing hi-vis vest"
+                else:
+                    missing_helmets = w_count - len([d for d in active_dets if d.label == 'helmet'])
+                    msg = f"PPE violation detected: {missing_helmets} worker(s) missing helmet. Immediate compliance check required."
+                    
+                alerts_list.append(f"""
                 <div style="background: rgba(255,255,255,0.03); 
                             border-left: 4px solid #eab308;
                             padding: 12px 16px;
@@ -2568,12 +2592,71 @@ with tab_cctv:
                         <span style="font-weight: 600; color: #eab308; font-size:12px;">⚠️ WARNING - PPE VIOLATION</span>
                         <span style="color: #6b7d94; font-size: 0.8rem;">ACTIVE</span>
                     </div>
-                    <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">PPE violation detected: {viol_count} worker(s) missing helmet. Immediate compliance check required.</div>
+                    <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">{msg}</div>
                 </div>
-                """
-            elif h_count > 0:
+                """)
+                
+            if overpressure_active:
+                alerts_list.append("""
+                <div style="background: rgba(255,255,255,0.03); 
+                            border-left: 4px solid #eab308;
+                            padding: 12px 16px;
+                            margin: 4px 0;
+                            border-radius: 8px;
+                            font-family:'Outfit',sans-serif;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom:4px;">
+                        <span style="font-weight: 600; color: #eab308; font-size:12px;">⚠️ WARNING - OVERPRESSURE</span>
+                        <span style="color: #6b7d94; font-size: 0.8rem;">ACTIVE</span>
+                    </div>
+                    <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">OVERPRESSURE WARNING — Gauge in red zone</div>
+                </div>
+                """)
+                
+            if selected_zone == 'Reactor_Area':
+                alerts_list.append("""
+                <div style="background: rgba(255,255,255,0.03); 
+                            border-left: 4px solid #eab308;
+                            padding: 12px 16px;
+                            margin: 4px 0;
+                            border-radius: 8px;
+                            font-family:'Outfit',sans-serif;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom:4px;">
+                        <span style="font-weight: 600; color: #eab308; font-size:12px;">⚠️ WARNING - BYSTANDER FLASH BURNS</span>
+                        <span style="color: #6b7d94; font-size: 0.8rem;">ACTIVE</span>
+                    </div>
+                    <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">Bystander Flash Burns: The second worker is far too close to the welding arc without any eye or face protection.</div>
+                </div>
+                """)
+                alerts_list.append("""
+                <div style="background: rgba(255,255,255,0.03); 
+                            border-left: 4px solid #eab308;
+                            padding: 12px 16px;
+                            margin: 4px 0;
+                            border-radius: 8px;
+                            font-family:'Outfit',sans-serif;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom:4px;">
+                        <span style="font-weight: 600; color: #eab308; font-size:12px;">⚠️ WARNING - INADEQUATE FUME EXTRACTION</span>
+                        <span style="color: #6b7d94; font-size: 0.8rem;">ACTIVE</span>
+                    </div>
+                    <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">Inadequate Fume Extraction: The visible "yellowish haze" indicates poor ventilation, leading to an unsafe build-up of toxic welding fumes.</div>
+                </div>
+                """)
+                
+            show_critical_alert = False
+            if selected_zone == 'Zone_C':
+                show_critical_alert = is_critical
+            elif selected_zone == 'Zone_A':
+                show_critical_alert = (frame_idx >= 40)
+            elif selected_zone == 'Reactor_Area':
+                # Reactor Block has its own dedicated warning cards (Bystander Flash Burns +
+                # Inadequate Fume Extraction) — the generic COMPATIBILITY VIOLATION is not shown here
+                show_critical_alert = False
+            else:
+                show_critical_alert = is_critical or (selected_zone != 'Zone_C' and h_count > 0)
+                
+            if show_critical_alert:
                 if selected_zone == 'Zone_C':
-                    alerts_html = """
+                    alerts_list.append("""
                     <div style="background: rgba(255,255,255,0.03); 
                                 border-left: 4px solid #ef4444;
                                 padding: 12px 16px;
@@ -2586,9 +2669,9 @@ with tab_cctv:
                         </div>
                         <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">Tank/pipe junction temperature exceeds critical threshold in Zone C. Coolant flow activation required.</div>
                     </div>
-                    """
+                    """)
                 else:
-                    alerts_html = """
+                    alerts_list.append("""
                     <div style="background: rgba(255,255,255,0.03); 
                                 border-left: 4px solid #ef4444;
                                 padding: 12px 16px;
@@ -2601,8 +2684,9 @@ with tab_cctv:
                         </div>
                         <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">Uncontrolled volatile gas cloud detected in close proximity to active hot work permit. Evacuation required.</div>
                     </div>
-                    """
-            else:
+                    """)
+                    
+            if not alerts_list:
                 alerts_html = """
                 <div style="background:rgba(34,197,94,0.04);border-left:4px solid #22c55e;
                      border-top:1px solid rgba(34,197,94,0.15);border-right:1px solid rgba(34,197,94,0.15);
@@ -2618,10 +2702,12 @@ with tab_cctv:
                   </div>
                 </div>
                 """
+            else:
+                alerts_html = "\n".join([item.strip() for item in alerts_list])
             alerts_placeholder.markdown(alerts_html, unsafe_allow_html=True)
             
             # Update summary grids
-            render_summary_grids(25.0, w_count, h_count, 1 if viol_count > 0 else 0, active_dets, {
+            render_summary_grids(25.0, w_count, h_count, 1 if (viol_count > 0 and selected_zone not in ('Zone_A', 'Reactor_Area')) else 0, active_dets, {
                 'Zone_A': w_count if selected_zone == 'Zone_A' else 0,
                 'Zone_B': w_count if selected_zone == 'Zone_B' else 0,
                 'Zone_C': w_count if selected_zone == 'Zone_C' else 0,

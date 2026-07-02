@@ -26,3 +26,6 @@ outputs/heatmap_latest.html
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Dev/debug scratch scripts and test images
+scratch/

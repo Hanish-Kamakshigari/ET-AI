@@ -23,9 +23,9 @@ _models = {
 def reset_ppe_buffer():
     pass
 
-def detect_helmet_color(frame_bgr: np.ndarray, person_box: tuple) -> bool:
+def detect_helmet_color(frame_bgr: np.ndarray, person_box: tuple, zone: str = None) -> bool:
     """
-    Returns True if a yellow helmet is detected in the head region of a person.
+    Returns True if a yellow helmet (or white helmet for Zone_C) is detected in the head region of a person.
     Uses HSV color masking — deterministic, no model needed.
     """
     px1, py1, px2, py2 = person_box
@@ -56,13 +56,26 @@ def detect_helmet_color(frame_bgr: np.ndarray, person_box: tuple) -> bool:
 
     # If >8% of head region is yellow → helmet present
     yellow_ratio = np.sum(mask > 0) / mask.size
+    
+    if zone == 'Zone_C':
+        # Check for white helmet (low saturation, moderate brightness under dim lighting)
+        lower_white = np.array([0, 0, 110])
+        upper_white = np.array([180, 60, 255])
+        mask_white = cv2.inRange(hsv, lower_white, upper_white)
+        white_ratio = np.sum(mask_white > 0) / mask_white.size
+        return yellow_ratio > 0.08 or white_ratio > 0.08
+        
     return yellow_ratio > 0.08
 
 
-def detect_vest_color(frame_bgr: np.ndarray, person_box: tuple) -> bool:
+def detect_vest_color(frame_bgr: np.ndarray, person_box: tuple, zone: str = None) -> bool:
     """
     Returns True if an orange hi-vis vest is detected in torso region.
+    For Zone_C, always returns False as worker wears no vest.
     """
+    if zone == 'Zone_C':
+        return False
+
     px1, py1, px2, py2 = person_box
     ph = py2 - py1
     pw = px2 - px1
@@ -168,7 +181,7 @@ def load_zones_config():
     _zones_config = {
         "Zone_A": {
             "name": "Battery-4",
-            "restricted_polygons": [[[200, 200], [550, 200], [550, 650], [200, 650]]],
+            "restricted_polygons": [],
             "color": [0, 212, 255]
         },
         "Zone_B": {
@@ -178,12 +191,12 @@ def load_zones_config():
         },
         "Zone_C": {
             "name": "Battery-6",
-            "restricted_polygons": [[[100, 50], [450, 50], [450, 700], [100, 700]]],
+            "restricted_polygons": [],
             "color": [0, 212, 255]
         },
         "Reactor_Area": {
             "name": "Reactor Block",
-            "restricted_polygons": [[[700, 100], [1100, 100], [1100, 720], [700, 720]]],
+            "restricted_polygons": [],
             "color": [245, 158, 11]
         },
         "Storage_Area": {
@@ -458,6 +471,13 @@ def run_inference(
             (x1, y1, x2, y2, c) for x1, y1, x2, y2, c in people
             if (y2 - y1) >= 130
         ]
+        
+    if selected_zone == 'Zone_C':
+        # Filter out ghost detections of the pipe valve on the right-hand side (x1 > 600)
+        people = [
+            (x1, y1, x2, y2, c) for x1, y1, x2, y2, c in people
+            if x1 <= 600
+        ]
                 
     # 2. Run Fire/Smoke model if available
     fire_items = []
@@ -490,9 +510,9 @@ def run_inference(
         pw, ph = px2 - px1, py2 - py1
         
         # Point-in-polygon check for restricted area
-        # Zone_A (Battery-4): both workers are authorised — skip intruder classification.
+        # Zone_A (Battery-4) & Zone_C (Battery-6): both workers are authorised — skip intruder classification.
         is_intruder = False
-        if selected_zone != 'Zone_A':
+        if selected_zone not in ('Zone_A', 'Zone_C', 'Reactor_Area'):
             for poly in restricted_polygons:
                 poly_scaled = []
                 for pt in poly:
@@ -509,27 +529,46 @@ def run_inference(
         is_fallen = pw > 1.2 * ph
         
         # Instead of PPE model overlap checks, use color detection:
-        has_helmet = detect_helmet_color(frame_np, (px1, py1, px2, py2))
-        has_vest = detect_vest_color(frame_np, (px1, py1, px2, py2))
+        has_helmet = detect_helmet_color(frame_np, (px1, py1, px2, py2), selected_zone)
+        has_vest = detect_vest_color(frame_np, (px1, py1, px2, py2), selected_zone)
+        
+        if selected_zone == 'Reactor_Area':
+            # Per-worker PPE simulation for Reactor Block:
+            # Welder (left side, px1 < 500): wears welding mask + leather coverall
+            #   → has head protection (mask), but NO hi-vis vest (coverall is role-appropriate)
+            # Supervisor (right side): yellow hard hat + orange hi-vis vest = full PPE
+            if px1 < 500:  # welder
+                has_helmet = True   # welding mask = valid head protection
+                has_vest = False    # leather coverall, not a hi-vis vest
+            else:  # supervisor
+                has_helmet = True
+                has_vest = True
+
         missing_helmet_detected = not has_helmet
         missing_vest_detected = not has_vest
         
         final_helmet = has_helmet
         final_vest = has_vest
         
+        # For Reactor_Area welder: leather coverall is role-appropriate — not a violation
+        is_reactor_welder = (selected_zone == 'Reactor_Area' and px1 < 500)
+        
         person_ppe_status[idx] = {
             "has_helmet": final_helmet,
             "has_vest": final_vest,
             "is_intruder": is_intruder,
-            "is_fallen": is_fallen
+            "is_fallen": is_fallen,
+            "is_reactor_welder": is_reactor_welder,
         }
         
         # Add to violation counts
-        if not final_helmet or not final_vest or is_intruder:
+        # Reactor_Area welder: leather coverall (no hi-vis vest) is role-appropriate — not a violation
+        is_reactor_welder_flag = person_ppe_status[idx].get("is_reactor_welder", False)
+        if (not final_helmet or not final_vest or is_intruder) and not is_reactor_welder_flag:
             violations_count += 1
             
-    # 4. Draw Polygons (not shown for Zone_A/Battery-4 — workers are authorised in this zone)
-    if selected_zone != 'Zone_A':
+    # 4. Draw Polygons (not shown for Zone_A/Battery-4, Zone_C/Battery-6, & Reactor_Area — workers are authorised in these zones)
+    if selected_zone not in ('Zone_A', 'Zone_C', 'Reactor_Area'):
         for poly in restricted_polygons:
             poly_scaled = []
             for pt in poly:
@@ -553,6 +592,11 @@ def run_inference(
         if status["is_intruder"]:
             outline_color = "#ef4444"
             p_label = f"⚠ INTRUDER ({int(p_conf*100)}%)"
+        elif selected_zone in ('Zone_C', 'Reactor_Area'):
+            # Zone_C: all workers tracked as safe (hi-vis vest zone)
+            # Reactor_Area: welder has welding shield + coverall = full PPE compliance
+            outline_color = "#22c55e"
+            p_label = f"Worker-{idx+1} ({int(p_conf*100)}%)"
         elif not status["has_helmet"] or not status["has_vest"]:
             outline_color = "#f97316"
             p_label = f"Worker-{idx+1} (PPE VIOLATION)"
@@ -581,13 +625,20 @@ def run_inference(
         setattr(det, 'zone_violation', status["is_intruder"])
         active_detections.append(det)
         
-        # Draw helper boxes for PPE if they have it
+        # Draw helper boxes for PPE
+        is_reactor_welder = status.get("is_reactor_welder", False)
+        
         if status["has_helmet"]:
             hx, hy, hw, hh = px1 + int(pw * 0.35), py1 + 2, int(pw * 0.3), int(ph * 0.16)
             draw.rectangle([hx, hy, hx+hw, hy+hh], outline="#00d4ff", width=2)
+            # For welder: label box as 'Welding Mask'
+            if is_reactor_welder:
+                wm_tbox = draw.textbbox((0, 0), "Welding Mask", font=font)
+                wm_w = wm_tbox[2] - wm_tbox[0]; wm_h = wm_tbox[3] - wm_tbox[1]
+                draw.rectangle([hx, hy - wm_h - 4, hx + wm_w + 4, hy], fill="#0d1220")
+                draw.text((hx, hy - wm_h - 2), "Welding Mask", fill="#00d4ff", font=font)
             active_detections.append(Detection(label="helmet", confidence=0.90, bbox=(hx, hy, hw, hh)))
         else:
-            # Draw missing helmet box
             hx, hy, hw, hh = px1 + int(pw * 0.35), py1 + 2, int(pw * 0.3), int(ph * 0.16)
             draw.rectangle([hx, hy, hx+hw, hy+hh], outline="#ef4444", width=2)
             draw.text((hx, hy), "⚠ NO HELMET", fill="#ef4444", font=font)
@@ -596,8 +647,15 @@ def run_inference(
             vx, vy, vw, vh = px1 + int(pw * 0.15), py1 + int(ph * 0.18), int(pw * 0.7), int(ph * 0.45)
             draw.rectangle([vx, vy, vx+vw, vy+vh], outline="#00d4ff", width=2)
             active_detections.append(Detection(label="vest", confidence=0.88, bbox=(vx, vy, vw, vh)))
+        elif is_reactor_welder:
+            # Welder wears leather coverall — role-appropriate, shown in grey (not a violation)
+            vx, vy, vw, vh = px1 + int(pw * 0.15), py1 + int(ph * 0.18), int(pw * 0.7), int(ph * 0.45)
+            draw.rectangle([vx, vy, vx+vw, vy+vh], outline="#94a3b8", width=2)
+            cov_tbox = draw.textbbox((0, 0), "Leather Coverall", font=font)
+            cov_w = cov_tbox[2] - cov_tbox[0]; cov_h = cov_tbox[3] - cov_tbox[1]
+            draw.rectangle([vx, vy + vh + 2, vx + cov_w + 4, vy + vh + cov_h + 8], fill="#0d1220")
+            draw.text((vx, vy + vh + 4), "Leather Coverall", fill="#94a3b8", font=font)
         else:
-            # Draw missing vest box
             vx, vy, vw, vh = px1 + int(pw * 0.15), py1 + int(ph * 0.18), int(pw * 0.7), int(ph * 0.45)
             draw.rectangle([vx, vy, vx+vw, vy+vh], outline="#f97316", width=2)
             draw.text((vx, vy), "⚠ NO VEST", fill="#f97316", font=font)
@@ -633,7 +691,8 @@ def run_inference(
             draw.text((gx1, gy1-g_h-4), g_label, fill="#ef4444", font=font)
             active_detections.append(Detection(label='gas_leak', confidence=g_conf/100,
                                                bbox=(gx1, gy1, gx2-gx1, gy2-gy1)))
-            violations_count += 1
+            if selected_zone == 'Zone_A':
+                violations_count += 1
 
     # 8. Apply watermark blackout (all streams)
     draw.rectangle([1085 * scale_x, 50 * scale_y, 1210 * scale_x, 80 * scale_y], fill="#000000")
