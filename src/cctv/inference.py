@@ -57,7 +57,7 @@ def detect_helmet_color(frame_bgr: np.ndarray, person_box: tuple, zone: str = No
     # If >8% of head region is yellow → helmet present
     yellow_ratio = np.sum(mask > 0) / mask.size
     
-    if zone == 'Zone_C':
+    if zone in ('Zone_C', 'Storage_Area'):
         # Check for white helmet (low saturation, moderate brightness under dim lighting)
         lower_white = np.array([0, 0, 110])
         upper_white = np.array([180, 60, 255])
@@ -98,10 +98,16 @@ def detect_vest_color(frame_bgr: np.ndarray, person_box: tuple, zone: str = None
     # Orange range
     lower_orange = np.array([5, 100, 100])
     upper_orange = np.array([18, 255, 255])
-    mask = cv2.inRange(hsv, lower_orange, upper_orange)
+    mask_orange = cv2.inRange(hsv, lower_orange, upper_orange)
+    orange_ratio = np.sum(mask_orange > 0) / mask_orange.size
 
-    orange_ratio = np.sum(mask > 0) / mask.size
-    return orange_ratio > 0.10
+    # Green range (yellow-green hi-vis)
+    lower_green = np.array([30, 40, 40])
+    upper_green = np.array([85, 255, 255])
+    mask_green = cv2.inRange(hsv, lower_green, upper_green)
+    green_ratio = np.sum(mask_green > 0) / mask_green.size
+
+    return orange_ratio > 0.10 or green_ratio > 0.10
 
 # Configurable zones
 _zones_config = {}
@@ -201,7 +207,7 @@ def load_zones_config():
         },
         "Storage_Area": {
             "name": "Storage Area",
-            "restricted_polygons": [[[300, 100], [900, 100], [900, 700], [300, 700]]],
+            "restricted_polygons": [],
             "color": [0, 212, 255]
         }
     }
@@ -512,7 +518,7 @@ def run_inference(
         # Point-in-polygon check for restricted area
         # Zone_A (Battery-4) & Zone_C (Battery-6): both workers are authorised — skip intruder classification.
         is_intruder = False
-        if selected_zone not in ('Zone_A', 'Zone_C', 'Reactor_Area'):
+        if selected_zone not in ('Zone_A', 'Zone_C', 'Reactor_Area', 'Storage_Area'):
             for poly in restricted_polygons:
                 poly_scaled = []
                 for pt in poly:
@@ -568,7 +574,7 @@ def run_inference(
             violations_count += 1
             
     # 4. Draw Polygons (not shown for Zone_A/Battery-4, Zone_C/Battery-6, & Reactor_Area — workers are authorised in these zones)
-    if selected_zone not in ('Zone_A', 'Zone_C', 'Reactor_Area'):
+    if selected_zone not in ('Zone_A', 'Zone_C', 'Reactor_Area', 'Storage_Area'):
         for poly in restricted_polygons:
             poly_scaled = []
             for pt in poly:

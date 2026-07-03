@@ -23,9 +23,7 @@
   },
   "Storage_Area": {
     "name": "Storage Area",
-    "restricted_polygons": [
-      [[300, 100], [900, 100], [900, 700], [300, 700]]
-    ],
+    "restricted_polygons": [],
     "color": [0, 212, 255]
   }
 }

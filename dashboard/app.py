@@ -1156,7 +1156,10 @@ def draw_pil_overlays(frame_np, selected_zone: str, latest_telemetry: Dict, curr
                         v_label = "Leather Coverall"
                     else:
                         h_label = w_def.get('helmet_label', f"helmet {random.randint(85, 91)}%") if has_helmet else w_def.get('helmet_label', "⚠ NO HELMET")
-                        v_label = f"vest {random.randint(82, 88)}%"
+                        if ppe_violation and w_def.get('violation_type') == 'MISSING_HIVIZ_VEST':
+                            v_label = "⚠ NO HI-VIS VEST"
+                        else:
+                            v_label = f"vest {random.randint(82, 88)}%"
                     
                     # Draw person box
                     draw.rectangle([px1, py1, px2, py2], outline=person_outline, width=3)
@@ -2555,9 +2558,9 @@ with tab_cctv:
             elif selected_zone == 'Zone_A':
                 h_count = 1 if (frame_idx >= 40) else 0
             else:
-                h_count = 1 if (selected_zone in ['Reactor_Area']) or (selected_zone == 'Zone_B' and st.session_state.simulate_active) else 0
+                h_count = 1 if (selected_zone in ['Reactor_Area', 'Storage_Area']) or (selected_zone == 'Zone_B' and st.session_state.simulate_active) else 0
                 
-            safe_zones = 4 if (h_count > 0 or (viol_count > 0 and selected_zone not in ('Zone_A', 'Reactor_Area'))) else 5
+            safe_zones = 4 if (h_count > 0 or (viol_count > 0 and selected_zone not in ('Zone_A', 'Reactor_Area', 'Storage_Area'))) else 5
             
             status_bar_placeholder.markdown(f"""
             <div style="display:flex; justify-content:space-between; align-items:center; 
@@ -2642,14 +2645,57 @@ with tab_cctv:
                 </div>
                 """)
                 
+            if selected_zone == 'Storage_Area':
+                alerts_list.append("""
+                <div style="background: rgba(255,255,255,0.03); 
+                            border-left: 4px solid #eab308;
+                            padding: 12px 16px;
+                            margin: 4px 0;
+                            border-radius: 8px;
+                            font-family:'Outfit',sans-serif;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom:4px;">
+                        <span style="font-weight: 600; color: #eab308; font-size:12px;">⚠️ WARNING - TOXIC CHEMICAL HAZE</span>
+                        <span style="color: #6b7d94; font-size: 0.8rem;">ACTIVE</span>
+                    </div>
+                    <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">Visible chemical haze detected in the upper racks, indicating potential leakage of stored chemical drums.</div>
+                </div>
+                """)
+                alerts_list.append("""
+                <div style="background: rgba(255,255,255,0.03); 
+                            border-left: 4px solid #ef4444;
+                            padding: 12px 16px;
+                            margin: 4px 0;
+                            border-radius: 8px;
+                            font-family:'Outfit',sans-serif;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom:4px;">
+                        <span style="font-weight: 600; color: #ef4444; font-size:12px;">⚠️ CRITICAL - GAS DETECTOR ALARM</span>
+                        <span style="color: #6b7d94; font-size: 0.8rem;">ACTIVE</span>
+                    </div>
+                    <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">Stationary gas detector alarm unit has triggered. High VOC levels detected in the aisle. Evacuate if gas levels exceed 40 ppm.</div>
+                </div>
+                """)
+                alerts_list.append("""
+                <div style="background: rgba(255,255,255,0.03); 
+                            border-left: 4px solid #eab308;
+                            padding: 12px 16px;
+                            margin: 4px 0;
+                            border-radius: 8px;
+                            font-family:'Outfit',sans-serif;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom:4px;">
+                        <span style="font-weight: 600; color: #eab308; font-size:12px;">⚠️ WARNING - AREA OVERCROWDING</span>
+                        <span style="color: #6b7d94; font-size: 0.8rem;">ACTIVE</span>
+                    </div>
+                    <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">More than 9 workers detected in the warehouse aisle under hazardous gas telemetry. Immediate shift rotation or aisle clearance required.</div>
+                </div>
+                """)
+                
             show_critical_alert = False
             if selected_zone == 'Zone_C':
                 show_critical_alert = is_critical
             elif selected_zone == 'Zone_A':
                 show_critical_alert = (frame_idx >= 40)
-            elif selected_zone == 'Reactor_Area':
-                # Reactor Block has its own dedicated warning cards (Bystander Flash Burns +
-                # Inadequate Fume Extraction) — the generic COMPATIBILITY VIOLATION is not shown here
+            elif selected_zone in ('Reactor_Area', 'Storage_Area'):
+                # Reactor Block and Storage Area have their own dedicated warning/critical cards
                 show_critical_alert = False
             else:
                 show_critical_alert = is_critical or (selected_zone != 'Zone_C' and h_count > 0)
