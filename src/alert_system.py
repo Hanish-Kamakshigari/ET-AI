@@ -386,6 +386,8 @@ class AlertSystem:
 _alert_system_instance = None
 def get_alert_system():
     global _alert_system_instance
-    if _alert_system_instance is None:
-        _alert_system_instance = AlertSystem()
-    return _alert_system_instance
+    instance = _alert_system_instance
+    if instance is None:
+        instance = AlertSystem()
+        _alert_system_instance = instance
+    return instance
