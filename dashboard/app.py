@@ -1545,6 +1545,7 @@ if st.session_state.scenario_start_time is None:
 # URL-based acknowledgment
 if 'ack_alert' in st.query_params:
     aid = st.query_params['ack_alert']
+    alert_system.acknowledge_alert(aid)
     if aid == 'ALT-001':
         st.session_state.ack_critical = True
         st.session_state.sim_stage    = 'acknowledged'
@@ -1553,6 +1554,8 @@ if 'ack_alert' in st.query_params:
     elif aid == 'ALT-002':
         st.session_state.ack_medium = True
         st.toast('✔ ALT-002 Acknowledged.', icon='✔')
+    else:
+        st.toast(f'✔ Alert {aid} Acknowledged.', icon='✔')
     del st.query_params['ack_alert']
     st.rerun()
 

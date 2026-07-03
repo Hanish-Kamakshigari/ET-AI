@@ -140,12 +140,13 @@ def process_ingested_data(df: pd.DataFrame, plant_id: str):
                     'zone': row.get('zone', 'Unknown'),
                     'risk_level': row['max_risk_level'],
                     'risk_score': row['max_risk_score'],
-                    'factors': row.get('risk_factors', '').split(','),
-                    'compound_factors': row.get('compound_factors', '').split(',')
+                    'factors': row.get('risk_factors', '').split(',') if row.get('risk_factors') else [],
+                    'compound_factors': row.get('compound_factors', '').split(',') if row.get('compound_factors') else [],
+                    'message': f"Risk score is elevated in {row.get('zone', 'Unknown')} at {row['max_risk_score']:.1f}"
                 }
                 
-                # Store alert
-                alert_system.alerts.append(alert)
+                # Store alert via database trigger
+                alert_system.trigger_alert(row, alert)
                 
         print(f"✅ Processed {len(df)} records for plant {plant_id}")
     except Exception as e:
@@ -182,12 +183,9 @@ async def get_alerts(limit: int = 10, severity: Optional[str] = None):
 @app.post("/api/v1/alerts/{alert_id}/acknowledge")
 async def acknowledge_alert(alert_id: str):
     """Acknowledge an alert - integrates with EHS workflows"""
-    for alert in alert_system.alerts:
-        if f"ALT-{alert.get('timestamp', datetime.now()).strftime('%Y%m%d%H%M%S')}" == alert_id:
-            alert['acknowledged'] = True
-            alert['status'] = 'acknowledged'
-            return {"status": "acknowledged", "alert_id": alert_id}
-    
+    success = alert_system.acknowledge_alert(alert_id)
+    if success:
+        return {"status": "acknowledged", "alert_id": alert_id}
     raise HTTPException(status_code=404, detail="Alert not found")
 
 @app.get("/api/v1/actions/{alert_id}", response_model=ActionPlanResponse)
@@ -195,8 +193,8 @@ async def get_action_plan(alert_id: str):
     """Get action plan for an alert"""
     # Find alert
     alert = None
-    for a in alert_system.alerts:
-        if f"ALT-{a.get('timestamp', datetime.now()).strftime('%Y%m%d%H%M%S')}" == alert_id:
+    for a in alert_system.get_recent_alerts(100):
+        if a['alert_id'] == alert_id:
             alert = a
             break
     
