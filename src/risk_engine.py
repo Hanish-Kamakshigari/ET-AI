@@ -65,7 +65,7 @@ class CompoundRiskEngine:
                     row.get(f'{zone}_maintenance_active', 0) == 1 and
                     row.get(f'{zone}_gas_ppm', 0) > 35
                 ),
-                'message': 'CRITICAL: Maintenance in high gas area (>35ppm)! This caused the Visakhapatnam tragedy.',
+                'message': 'CRITICAL: Maintenance in high gas area (>35ppm)!',
                 'severity': 'CRITICAL'
             },
             {
@@ -217,7 +217,7 @@ class CompoundRiskEngine:
             for factor in compound_factors:
                 if factor == 'MAINTENANCE_GAS_LEAK':
                     msg += "   Maintenance in high gas area!\n"
-                    msg += "   Same pattern as Visakhapatnam incident\n"
+
                 elif factor == 'TRIPLE_THREAT':
                     msg += "   ALL risk factors present!\n"
                     msg += "   Immediate action required!\n"

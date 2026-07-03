@@ -29,3 +29,8 @@ Thumbs.db
 
 # Dev/debug scratch scripts and test images
 scratch/
+
+# Local databases & run data
+data/alerts.db
+data/actions.json
+

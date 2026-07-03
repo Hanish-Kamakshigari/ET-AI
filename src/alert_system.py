@@ -391,3 +391,180 @@ def get_alert_system():
         instance = AlertSystem()
         _alert_system_instance = instance
     return instance
+
+def evaluate_alert_conditions(
+    detections: list,
+    violations: int,
+    zone: str,
+    telemetry: dict
+) -> dict:
+    """
+    Evaluates all detection outputs and returns alert payload.
+    Works with the actual Detection dataclass from src/cctv/object_detector.py.
+    Detection.label can be: 'person', 'helmet', 'vest', 'fire', 'smoke',
+                             'gas_leak', 'no_helmet', 'no_vest'
+    Detection.zone_violation (bool) flags restricted-area intrusions.
+    Returns dict with: should_alert, severity, summary, messages, channels, zone, timestamp
+    """
+    alerts = []
+    severity = "LOW"
+
+    # 1. Fire / smoke detections -> CRITICAL
+    fire_dets = [d for d in detections
+                 if hasattr(d, 'label') and d.label in ('fire', 'smoke')]
+    if fire_dets:
+        alerts.append(f"🔴 FIRE/SMOKE DETECTED in {zone} — {len(fire_dets)} hazard(s)")
+        severity = "CRITICAL"
+
+    # 2. Gas leak overlay detection -> CRITICAL
+    gas_leak_dets = [d for d in detections
+                     if hasattr(d, 'label') and d.label == 'gas_leak']
+    if gas_leak_dets:
+        alerts.append(f"🔴 GAS LEAK DETECTED by sensor overlay in {zone}")
+        severity = "CRITICAL"
+
+    # 3. Zone intrusion (zone_violation flag set in inference.py) -> CRITICAL
+    intruders = [d for d in detections if getattr(d, 'zone_violation', False)]
+    if intruders:
+        alerts.append(f"🔴 INTRUDER in restricted area — {zone}")
+        severity = "CRITICAL"
+
+    # 4. Telemetry threshold checks
+    # telemetry is a pandas Series; .get(key, default) works correctly
+    gas_ppm = telemetry.get(f"{zone}_gas_ppm", telemetry.get("gas_ppm", 0))
+    temp    = telemetry.get(f"{zone}_temperature_c",
+                            telemetry.get(f"{zone}_temperature",
+                            telemetry.get("temperature", 0)))
+
+    if gas_ppm > 35:
+        alerts.append(f"🔴 GAS CRITICAL — {gas_ppm:.1f} ppm in {zone}")
+        severity = "CRITICAL"
+    elif gas_ppm > 20:
+        alerts.append(f"🟠 GAS ELEVATED — {gas_ppm:.1f} ppm in {zone}")
+        if severity not in ("CRITICAL",):
+            severity = "HIGH"
+
+    if temp > 95:
+        alerts.append(f"🔴 TEMPERATURE CRITICAL — {temp:.1f}°C in {zone}")
+        if severity not in ("CRITICAL",):
+            severity = "CRITICAL"
+
+    if zone == "Zone_C":
+        pressure = telemetry.get(f"{zone}_pressure_bar",
+                                 telemetry.get("pressure", 0))
+        if pressure > 80:
+            alerts.append(f"🔴 OVERPRESSURE — {pressure:.0f} bar in {zone}")
+            severity = "CRITICAL"
+
+    # 5. PPE violations:
+    # inference.py adds Detection(label="helmet") / Detection(label="vest") for compliant workers
+    # and Detection(label="no_helmet") / Detection(label="no_vest") labels are NOT generated;
+    # instead viol_count counts workers without helmet/vest.
+    # Use violations parameter directly (already computed by inference.py).
+    if violations > 0 and severity not in ("CRITICAL", "HIGH"):
+        alerts.append(f"🟠 PPE VIOLATION — {violations} worker(s) non-compliant in {zone}")
+        if severity not in ("CRITICAL", "HIGH"):
+            severity = "MEDIUM"
+
+    should_alert = len(alerts) > 0
+    channels: list = []
+    if severity == "CRITICAL":
+        channels = ["sms", "email", "siren"]
+    elif severity == "HIGH":
+        channels = ["sms", "email"]
+    elif severity == "MEDIUM":
+        channels = ["email"]
+
+    return {
+        "should_alert": should_alert,
+        "severity": severity,
+        "messages": alerts,
+        "summary": " | ".join(alerts),
+        "zone": zone,
+        "channels": channels,
+        "timestamp": datetime.now().strftime("%H:%M:%S")
+    }
+
+def dispatch_alerts(alert_payload: dict):
+    """
+    Dispatches alert to all required channels based on severity.
+    For hackathon: simulates SMS/Email, activates siren state in session.
+    Deduplicates by (zone, severity) within the same incident — will NOT
+    insert a duplicate if the most-recent log entry already matches.
+    Caps alert_log at 100 entries.
+    """
+    import streamlit as st
+    from datetime import datetime
+
+    severity  = alert_payload["severity"]
+    summary   = alert_payload["summary"]
+    zone      = alert_payload["zone"]
+    timestamp = alert_payload["timestamp"]
+    channels  = alert_payload["channels"]
+
+    # Log to persistent alert log in session state
+    if "alert_log" not in st.session_state:
+        st.session_state.alert_log = []
+
+    # Deduplicate: skip if the newest entry is from the same zone+severity
+    if not (st.session_state.alert_log
+            and st.session_state.alert_log[0].get("zone") == zone
+            and st.session_state.alert_log[0].get("severity") == severity):
+        alert_entry = {
+            "id":        f"ALT-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            "severity":  severity,
+            "zone":      zone,
+            "message":   summary,
+            "timestamp": timestamp,
+            "status":    "TRIGGERED",
+            "channels":  channels
+        }
+        st.session_state.alert_log.insert(0, alert_entry)  # newest first
+        # Cap at 100 entries
+        if len(st.session_state.alert_log) > 100:
+            st.session_state.alert_log = st.session_state.alert_log[:100]
+
+    # Simulate SMS dispatch
+    if "sms" in channels:
+        st.session_state.sms_status = {
+            "status": "DELIVERED ✓",
+            "color": "#22c55e",
+            "detail": f"Sent to: +123****890 at {timestamp}"
+        }
+
+    # Simulate Email dispatch
+    if "email" in channels:
+        st.session_state.email_status = {
+            "status": "SENT ✓",
+            "color": "#22c55e",
+            "detail": f"Sent to: safety@***.com at {timestamp}"
+        }
+
+    # Activate siren
+    if "siren" in channels:
+        st.session_state.siren_status = {
+            "status": "ACTIVE 🔊",
+            "color": "#ef4444",
+            "detail": f"Zone: {zone} — SOUNDING",
+            "active": True
+        }
+
+    # Set global banner state
+    st.session_state.active_alert   = alert_payload
+    st.session_state.banner_visible = True
+
+def clear_alert_if_safe(zone: str):
+    """Call this when violations_count == 0 and no fire/intruder detected."""
+    import streamlit as st
+    
+    st.session_state[f"alert_active_{zone}"] = False
+    st.session_state.siren_status = {
+        "status": "STANDBY",
+        "color": "#6b7280", 
+        "detail": "All clear",
+        "active": False
+    }
+    st.session_state.sms_status = {"status": "STANDBY", "color": "#6b7280", "detail": "Sent to: N/A"}
+    st.session_state.email_status = {"status": "STANDBY", "color": "#6b7280", "detail": "Sent to: N/A"}
+    st.session_state.banner_visible = False
+    st.session_state.active_alert = None

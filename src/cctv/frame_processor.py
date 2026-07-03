@@ -178,7 +178,7 @@ class FrameProcessor:
                 'type': 'COMPOUND_RISK',
                 'zone': selected_zone,
                 'severity': 'CRITICAL',
-                'message': f'Overcrowding ({count} workers) + Gas leak detected. ⚠️ Same pattern as Visakhapatnam tragedy!',
+                'message': f'Overcrowding ({count} workers) + Gas leak detected.',
                 'timestamp': current_time,
                 'compound_factors': ['OVER_CROWDING', 'HAZARD']
             })
@@ -223,6 +223,31 @@ class FrameProcessor:
             # Keep history limited
             if len(self.alert_history) > self.alert_history_max:
                 self.alert_history = self.alert_history[-self.alert_history_max:]
+            
+            # Bridge: CCTV to DB
+            try:
+                import pandas as pd
+                severity = alert.get('severity', 'LOW')
+                severity_scores = {
+                    'CRITICAL': 15.0,
+                    'HIGH': 10.0,
+                    'MEDIUM': 6.0,
+                    'LOW': 2.0
+                }
+                score = severity_scores.get(severity, 5.0)
+                row_data = pd.Series({'timestamp': alert['timestamp']})
+                risk_result = {
+                    'risk_level': severity,
+                    'risk_score': score,
+                    'zone': alert.get('zone', 'Unknown'),
+                    'factors': [alert.get('type', 'CCTV_ALERT')],
+                    'compound_factors': alert.get('compound_factors', []),
+                    'message': alert.get('message', '')
+                }
+                self.alert_system.trigger_alert(row_data, risk_result)
+            except Exception as ex:
+                import logging
+                logging.getLogger(__name__).error(f"Error bridging CCTV alert to persistent DB: {ex}")
             
             # Call callback if registered
             if self.alert_callback:

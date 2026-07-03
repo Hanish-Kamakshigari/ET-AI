@@ -181,9 +181,12 @@ class CompoundRiskEngine:
 
 
 # ─── ALERT SYSTEM ─────────────────────────────────────────────────────────────
+from src.alert_system import AlertSystem as PersistentAlertSystem, evaluate_alert_conditions, dispatch_alerts, clear_alert_if_safe
+
 class AlertSystem:
     def __init__(self):
-        self.alerts = []
+        self.persistent_system = PersistentAlertSystem()
+        self.mock_alerts = []
         self.esc = {
             'CRITICAL': {'channels':['SMS','PHONE','SIREN','EMAIL'],'required_ack':True},
             'HIGH':     {'channels':['SMS','EMAIL'],               'required_ack':True},
@@ -199,25 +202,54 @@ class AlertSystem:
     def trigger_alert(self, row, result):
         if result['risk_score'] < 5:
             return None
-        alert = {
-            'alert_id': f"ALT-{datetime.now().strftime('%H%M%S')}",
-            'timestamp': str(row['timestamp']),
-            'zone': result['zone'],
-            'risk_level': result['risk_level'],
-            'risk_score': result['risk_score'],
-            'factors': result['factors'],
-            'compound_factors': result['compound_factors'],
-            'teams_notified': self.teams.get(result['zone'], 'Emergency Team'),
-            'channels': self.esc[result['risk_level']]['channels'],
-            'requires_ack': self.esc[result['risk_level']]['required_ack'],
-            'acknowledged': False,
-            'resolved': False,
+        
+        # Ensure row is a pd.Series
+        if not isinstance(row, pd.Series):
+            row_series = pd.Series(row)
+        else:
+            row_series = row
+            
+        risk_result = {
+            'risk_level': result.get('risk_level', 'LOW'),
+            'risk_score': result.get('risk_score', 0),
+            'zone': result.get('zone', 'Unknown'),
+            'factors': result.get('factors', []),
+            'compound_factors': result.get('compound_factors', []),
+            'message': result.get('message', '')
         }
-        self.alerts.append(alert)
-        return alert
+        
+        # Write to persistent database
+        db_alert = self.persistent_system.trigger_alert(row_series, risk_result)
+        return db_alert
+
+    @property
+    def alerts(self):
+        # Merge persistent DB alerts and any custom mock alerts assigned to self.alerts
+        db_alerts = self.persistent_system.get_recent_alerts(100)
+        return self.mock_alerts + db_alerts
+
+    @alerts.setter
+    def alerts(self, value):
+        self.mock_alerts = value
 
     def get_active_alerts(self):
-        return [a for a in self.alerts if not a['resolved']]
+        db_active = self.persistent_system.get_active_alerts()
+        mock_active = [a for a in self.mock_alerts if not a.get('resolved')]
+        return mock_active + db_active
+
+    def acknowledge_alert(self, alert_id: str) -> bool:
+        for a in self.mock_alerts:
+            if a.get('alert_id') == alert_id:
+                a['acknowledged'] = True
+                return True
+        return self.persistent_system.acknowledge_alert(alert_id)
+
+    def resolve_alert(self, alert_id: str) -> bool:
+        for a in self.mock_alerts:
+            if a.get('alert_id') == alert_id:
+                a['resolved'] = True
+                return True
+        return self.persistent_system.resolve_alert(alert_id)
 
 
 # ─── STATUS FUNCTION ──────────────────────────────────────────────────────────
@@ -234,6 +266,17 @@ def get_system_status(risk_score: float) -> Dict:
     else:
         return {'text':'🟢 ALL SYSTEMS NOMINAL - PLANT OPERATING SAFELY', 'level':'LOW',     'color':'#22c55e',
                 'bg':'rgba(34,197,94,0.08)', 'border':'#22c55e','cls':'risk-safe',   'dot':'dot-safe'}
+
+
+def get_zone_color(status: str) -> str:
+    return {
+        "CRITICAL": "#ef4444",
+        "HIGH":     "#f97316", 
+        "MEDIUM":   "#f59e0b",
+        "LOW":      "#22c55e",
+        "CLEAR":    "#22c55e"
+    }.get(status.upper(), "#6b7280")
+
 
 
 # ─── RENDER ALERT CARD ────────────────────────────────────────────────────────
@@ -284,7 +327,7 @@ def render_alert_card(alert, sim_start_time=None):
 
     # Message for the alert
     if alert.risk_level == 'CRITICAL':
-        msg = 'Maintenance + Gas leak detected. Same as Visakhapatnam pattern.'
+        msg = 'Maintenance + Gas leak detected. Same as triple-threat pattern.'
     elif alert.risk_level == 'HIGH':
         msg = 'Multiple risk factors active. Investigation required immediately.'
     elif alert.risk_level == 'MEDIUM':
@@ -1339,14 +1382,6 @@ def draw_pil_overlays(frame_np, selected_zone: str, latest_telemetry: Dict, curr
 
 # ─── SVG HEATMAP ─────────────────────────────────────────────────────────────
 def build_heatmap_html(zone_risks: Dict, simulate_active: bool) -> str:
-    COLORS = {
-        'CRITICAL':{'fill':'#ef4444','stroke':'#dc2626','text':'#ffffff','glow':'rgba(239,68,68,0.7)'},
-        'HIGH':    {'fill':'#f59e0b','stroke':'#d97706','text':'#ffffff','glow':'rgba(245,158,11,0.6)'},
-        'MEDIUM':  {'fill':'#eab308','stroke':'#ca8a04','text':'#1a1100','glow':'rgba(234,179,8,0.5)'},
-        'LOW':     {'fill':'#166534','stroke':'#22c55e','text':'#ffffff','glow':'rgba(34,197,94,0.4)'},
-        'NOMINAL': {'fill':'#1e293b','stroke':'#334155','text':'#94a3b8','glow':'none'},
-    }
-
     def sensor_val(zone_id, key):
         sd = zone_risks.get(zone_id, {}).get('sensor_data', {})
         for k, v in sd.items():
@@ -1357,83 +1392,115 @@ def build_heatmap_html(zone_risks: Dict, simulate_active: bool) -> str:
     def make_zone(zone_id, label, x, y, w, h):
         z   = zone_risks.get(zone_id, {})
         lvl = z.get('risk_level', 'LOW')
-        if lvl not in COLORS: lvl = 'NOMINAL'
         score = z.get('risk_score', 0)
         gas   = sensor_val(zone_id, 'gas_ppm')
         temp  = sensor_val(zone_id, 'temperature_c')
         crew  = int(sensor_val(zone_id, 'worker_count'))
-        c   = COLORS[lvl]
-        cx  = x + w / 2
-        cy  = y + h / 2
-
+        
+        base_color = get_zone_color(lvl)
+        if lvl.upper() not in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "CLEAR"]:
+            fill = '#1e293b'
+            stroke = '#334155'
+            text_color = '#94a3b8'
+            glow = 'none'
+            icon_char = '🛡️'
+        else:
+            stroke = base_color
+            r_val = int(base_color[1:3], 16)
+            g_val = int(base_color[3:5], 16)
+            b_val = int(base_color[5:7], 16)
+            fill = f"rgba({r_val}, {g_val}, {b_val}, 0.15)"
+            glow = f"rgba({r_val}, {g_val}, {b_val}, 0.6)"
+            text_color = '#ffffff'
+            if lvl.upper() in ['CRITICAL', 'HIGH', 'MEDIUM']:
+                icon_char = '⚠️'
+            else:
+                icon_char = '✓'
+            
         pulse = ''
         if lvl == 'CRITICAL': pulse = 'animation:critPulse 1.5s ease-in-out infinite;'
         elif lvl == 'HIGH':   pulse = 'animation:highPulse 2s ease-in-out infinite;'
 
-        parts = label.split(' ', 1)
-        if len(parts) == 1:
-            label_svg = f'<text x="{cx:.1f}" y="{cy-16:.1f}" text-anchor="middle" fill="{c["text"]}" font-family="Outfit,sans-serif" font-size="14" font-weight="800">{label}</text>'
+        # Clean card layout matching reference image
+        # Draw a small icon indicator circle on the left, and text on the right
+        # For Battery (w=135):
+        if w < 180:
+            cx_icon = x + 24
+            cy_icon = y + h / 2
+            x_text = x + 44
+            font_sz_lbl = 11
+            font_sz_val = 9
+            y_lbl = y + 36
+            y_val = y + 54
         else:
-            label_svg  = f'<text x="{cx:.1f}" y="{cy-24:.1f}" text-anchor="middle" fill="{c["text"]}" font-family="Outfit,sans-serif" font-size="12" font-weight="800">{parts[0]}</text>'
-            label_svg += f'<text x="{cx:.1f}" y="{cy-11:.1f}"  text-anchor="middle" fill="{c["text"]}" font-family="Outfit,sans-serif" font-size="12" font-weight="800">{parts[1]}</text>'
+            # For Reactor/Storage (w=210):
+            cx_icon = x + 30
+            cy_icon = y + h / 2
+            x_text = x + 56
+            font_sz_lbl = 11.5
+            font_sz_val = 9.5
+            y_lbl = y + 36
+            y_val = y + 54
+
+        icon_svg = f"""
+        <circle cx="{cx_icon:.1f}" cy="{cy_icon:.1f}" r="11" fill="{stroke}15" stroke="{stroke}" stroke-width="1"/>
+        <text x="{cx_icon:.1f}" y="{cy_icon+3.5:.1f}" text-anchor="middle" fill="{stroke}" font-family="Outfit,sans-serif" font-size="10" font-weight="900">{icon_char}</text>
+        """
+
+        label_svg = f'<text x="{x_text:.1f}" y="{y_lbl:.1f}" fill="{text_color}" font-family="Outfit,sans-serif" font-size="{font_sz_lbl}" font-weight="800">{label}</text>'
+        val_svg = f'<text x="{x_text:.1f}" y="{y_val:.1f}" fill="#a0b4c8" opacity="0.8" font-family="Outfit,sans-serif" font-size="{font_sz_val}">{gas:.1f} ppm</text>'
 
         tooltip = f"{label} | {lvl} | Score {score:.0f}/20 | Gas {gas:.1f}ppm | Temp {temp:.1f}°C | Crew {crew}"
         return f"""<g class="zone" id="z-{zone_id}">
   <title>{tooltip}</title>
-  <rect x="{x}" y="{y}" width="{w}" height="{h}" rx="12" ry="12"
-        fill="{c['fill']}" stroke="{c['stroke']}" stroke-width="2"
-        style="{pulse}filter:drop-shadow(0 0 8px {c['glow']});"/>
+  <rect x="{x}" y="{y}" width="{w}" height="{h}" rx="10" ry="10"
+        fill="{fill}" stroke="{stroke}" stroke-width="1.8"
+        style="{pulse}filter:drop-shadow(0 0 6px {glow});"/>
+  {icon_svg}
   {label_svg}
-  <text x="{cx:.1f}" y="{cy+6:.1f}"  text-anchor="middle" fill="{c['text']}" opacity="0.75" font-family="Outfit,sans-serif" font-size="10" font-weight="600" letter-spacing="0.5">{lvl}</text>
-  <text x="{cx:.1f}" y="{cy+21:.1f}" text-anchor="middle" fill="{c['text']}" opacity="0.5" font-family="Outfit,sans-serif" font-size="8.5">{score:.0f}/20 · {gas:.0f}ppm</text>
+  {val_svg}
 </g>"""
 
-    CW, CH = 880, 380
-    PAD = 18
-    BW, BH, BGAP = 200, 140, 28
-    BAT_Y = 16
-    # Only real zones — no fake Battery-1/2/3
-    bat_zones = [
-        ('Zone_A', 'Battery-4'),
-        ('Zone_B', 'Battery-5'),
-        ('Zone_C', 'Battery-6'),
+    CW, CH = 540, 220
+    PAD = 15
+    BW, BH = 135, 80
+    BGAP_X = 15
+    BGAP_Y = 15
+
+    zones_layout = [
+        ('Zone_A',       'Battery-4',     15,  15,  135, 80),
+        ('Zone_B',       'Battery-5',     165, 15,  135, 80),
+        ('Zone_C',       'Battery-6',     315, 15,  135, 80),
+        ('Reactor_Area', 'Reactor Block',  15,  115, 210, 80),
+        ('Storage_Area', 'Storage Area',   240, 115, 210, 80)
     ]
-    bat_svg = "\n".join(
-        make_zone(zid, lbl, PAD + i*(BW+BGAP), BAT_Y, BW, BH)
-        for i, (zid, lbl) in enumerate(bat_zones)
+
+    zones_svg = "\n".join(
+        make_zone(zid, lbl, x, y, w, h)
+        for zid, lbl, x, y, w, h in zones_layout
     )
 
-    BOT_Y = BAT_Y + BH + 50
-    BOT_H = 140
-    # Bottom row: Reactor Block | Control Room | Storage Area
-    BOT_W1, BOT_W2, BOT_W3 = 242, 196, 242
-    bot_zones = [
-        ('Reactor_Area', 'Reactor Block', PAD,                       BOT_W1, BOT_H),
-        ('Control_Room', 'Control Room',  PAD + BOT_W1 + 22,         BOT_W2, BOT_H),
-        ('Storage_Area', 'Storage Area',  PAD + BOT_W1 + 22 + BOT_W2 + 22, BOT_W3, BOT_H),
-    ]
-    bot_svg = "\n".join(make_zone(*args[:2], args[2], BOT_Y, args[3], args[4]) for args in bot_zones)
+    # Vertical legend color bar matching reference image
+    legend_gradient = """
+    <linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ef4444"/>
+      <stop offset="50%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#22c55e"/>
+    </linearGradient>
+    """
+    legend  = f'<rect x="475" y="15" width="12" height="180" fill="url(#lg)" rx="4"/>'
+    legend += f'<text x="495" y="27" fill="#ef4444" font-family="Outfit,sans-serif" font-size="8" font-weight="900">HIGH</text>'
+    legend += f'<text x="495" y="191" fill="#22c55e" font-family="Outfit,sans-serif" font-size="8" font-weight="900">LOW</text>'
 
-    LX, LY = CW - 118, 14
-    legend  = f'<rect x="{LX-6}" y="{LY-6}" width="116" height="96" rx="8" fill="rgba(10,14,23,0.88)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>'
-    legend += f'<text x="{LX+52}" y="{LY+9}" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="8" font-weight="700" letter-spacing="1.5">RISK LEVEL</text>'
-    for i, (nm, col) in enumerate([('CRITICAL','#ef4444'),('HIGH','#f59e0b'),('MEDIUM','#eab308'),('LOW','#166534')]):
-        ry = LY + 18 + i*18
-        legend += f'<rect x="{LX}" y="{ry}" width="11" height="11" rx="2" fill="{col}"/>'
-        legend += f'<text x="{LX+16}" y="{ry+9}" fill="#e2e8f0" font-family="Outfit,sans-serif" font-size="10" font-weight="500">{nm}</text>'
+    # Room wall schematic grid lines inside the blueprint background
+    row_labels = """
+    <rect x="5" y="5" width="460" height="210" fill="none" stroke="rgba(0,212,255,0.08)" stroke-width="1.5" rx="8"/>
+    <line x1="158" y1="5" x2="158" y2="215" stroke="rgba(0,212,255,0.08)" stroke-width="1" stroke-dasharray="3,3"/>
+    <line x1="308" y1="5" x2="308" y2="215" stroke="rgba(0,212,255,0.08)" stroke-width="1" stroke-dasharray="3,3"/>
+    <line x1="5" y1="108" x2="465" y2="108" stroke="rgba(0,212,255,0.08)" stroke-width="1" stroke-dasharray="3,3"/>
+    """
 
-    row_labels = f"""
-<text x="7" y="{BAT_Y+BH//2}" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="8" font-weight="700"
-  transform="rotate(-90 7 {BAT_Y+BH//2})">BATTERY BANKS</text>
-<text x="7" y="{BOT_Y+BOT_H//2}" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="8" font-weight="700"
-  transform="rotate(-90 7 {BOT_Y+BOT_H//2})">PROCESS AREAS</text>
-<line x1="{PAD}" y1="{BAT_Y+BH+22}" x2="{CW-PAD}" y2="{BAT_Y+BH+22}"
-  stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="4,4"/>"""
-
-    sim_badge = (
-        f'<rect x="4" y="4" width="165" height="18" rx="4" fill="#ef4444" opacity="0.9"/>'
-        f'<text x="86" y="16" text-anchor="middle" fill="#fff" font-family="Outfit,sans-serif" font-size="9" font-weight="700">🚨 SIMULATION ACTIVE</text>'
-    ) if simulate_active else ''
+    sim_badge = ""
 
     return f"""<!DOCTYPE html><html>
 <head><meta charset="utf-8">
@@ -1442,7 +1509,7 @@ def build_heatmap_html(zone_risks: Dict, simulate_active: bool) -> str:
 *{{box-sizing:border-box;margin:0;padding:0;}}
 body{{background:transparent;font-family:'Outfit',sans-serif;overflow:hidden;}}
 .wrap{{background:rgba(10,14,23,0.55);border:1px solid rgba(255,255,255,0.07);
-  border-radius:14px;padding:12px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);}}
+  border-radius:14px;padding:8px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);}}
 svg{{width:100%;display:block;}}
 .zone{{cursor:pointer;}}
 .zone rect{{transition:filter .25s,opacity .2s;}}
@@ -1453,14 +1520,14 @@ svg{{width:100%;display:block;}}
 <div class="wrap">
 <svg viewBox="0 0 {CW} {CH}" xmlns="http://www.w3.org/2000/svg">
   <defs>
+    {legend_gradient}
     <pattern id="g" width="28" height="28" patternUnits="userSpaceOnUse">
       <path d="M28 0L0 0 0 28" fill="none" stroke="rgba(255,255,255,0.022)" stroke-width="1"/>
     </pattern>
   </defs>
-  <rect width="{CW}" height="{CH}" fill="url(#g)"/>
+  <rect width="{CW}" height="{CH}" fill="url(#g)" rx="10"/>
   {row_labels}
-  {bat_svg}
-  {bot_svg}
+  {zones_svg}
   {legend}
   {sim_badge}
 </svg>
@@ -1521,6 +1588,7 @@ _defaults = {
     'simulate_active':False,'sim_stage':'normal',
     'alert_acknowledged':False,'ack_critical':False,'ack_medium':False,
     'prev_simulate_active':False,'sim_start_time':None,
+    'dev_mode': False,
     # Realistic scenario tracking
     'scenario_start_time': None,      # real wall-clock when session began
     'scenario_offset_min': 20,        # offset so CRITICAL fires within ~5 real min
@@ -1579,7 +1647,7 @@ if st.session_state.sim_stage == 'injecting':
         <div>[WARN]  Gas levels rising: 4.5 ppm → 55.4 ppm… DETECTED</div>
         <div>[WARN]  Active HOT WORK permit during volatile state… FLAGGED</div>
         <div style="color:#ef4444;font-weight:bold;margin-top:8px;">
-          [CRITICAL] TRIPLE-THREAT MATCH — Visakhapatnam Disaster Signature!</div>
+          [CRITICAL] TRIPLE-THREAT MATCH — Disaster Signature!</div>
         <div style="color:#ef4444;">[ALERT]   SMS + SIREN escalation protocols activated… LIVE</div>
       </div>
     </div>
@@ -1690,7 +1758,7 @@ if _auto_compound and not st.session_state.compound_risk_active:
     st.session_state.alert_log.insert(0, {
         'id':'ALT-AUTO-001', 'time': _now.strftime('%H:%M:%S'),
         'zone':'Battery-4', 'level':'CRITICAL',
-        'msg': f'AI AUTO-DETECTED: Gas {_za_gas}ppm + {_za_workers} workers + HOT WORK PERMIT. Visakhapatnam pattern.',
+        'msg': f'AI AUTO-DETECTED: Gas {_za_gas}ppm + {_za_workers} workers + HOT WORK PERMIT.',
     })
 
 # Keep simulate_active in sync with compound_risk_active
@@ -1707,7 +1775,7 @@ if st.session_state.compound_risk_active:
             'zone':'Zone_A','zone_label':'Battery-4','risk_level':'CRITICAL','risk_score':15,
             'factors':['GAS_CRITICAL','MAINTENANCE_ACTIVE','TRIPLE_THREAT'],
             'compound_factors':['TRIPLE_THREAT'],
-            'message':f'Maintenance crew ({_za_workers} workers) active during {_za_gas} ppm gas leak. Visakhapatnam triple-threat pattern auto-detected.',
+            'message':f'Maintenance crew ({_za_workers} workers) active during {_za_gas} ppm gas leak. Triple-threat pattern auto-detected.',
             'teams_notified':'Alpha & Beta Teams','channels':['SMS','PHONE','SIREN','EMAIL'],
             'requires_ack':True,'acknowledged':st.session_state.ack_critical,'resolved':False,
         },
@@ -1751,6 +1819,42 @@ for z, g in STATIC_GAS.items():
 max_score = max(z['risk_score'] for z in zone_risks.values())
 STATUS    = get_system_status(max_score)
 
+# Single source of truth for risk state
+compound_rules_eval = []
+for rule in engine.compound_rules:
+    rid = rule.get('id', '')
+    condition_fn = rule.get('condition')
+    matched = any(condition_fn(latest, z) for z in SENSOR_ZONES)
+    compound_rules_eval.append({'id': rid, 'matched': matched})
+
+compound_risk_score = sum(1 for rule in compound_rules_eval if rule["matched"])
+total_rules = len(compound_rules_eval)
+
+if compound_risk_score == 0:
+    risk_state = "CLEAR"
+    risk_color = "#22c55e"
+    banner_level = None  # No banner shown
+    banner_color = "#1f2937"
+    banner_border = "#374151"
+elif compound_risk_score <= 2:
+    risk_state = "ELEVATED"
+    risk_color = "#f59e0b"
+    banner_level = "ELEVATED RISK — SYSTEM MONITORING SENSORS"
+    banner_color = "#92400e"
+    banner_border = "#f59e0b"
+elif compound_risk_score <= 4:
+    risk_state = "HIGH"
+    risk_color = "#ef4444"
+    banner_level = "HIGH RISK — IMMEDIATE ATTENTION REQUIRED"
+    banner_color = "#7f1d1d"
+    banner_border = "#ef4444"
+else:
+    risk_state = "CRITICAL"
+    risk_color = "#ef4444"
+    banner_level = "CRITICAL ALERT — EVACUATE ZONE IMMEDIATELY"
+    banner_color = "#450a0a"
+    banner_border = "#ef4444"
+
 total_workers = sum(int(latest.get(f'{z}_worker_count', 0)) for z in SENSOR_ZONES)
 permit_zones  = [ZONE_LABELS.get(z,z) for z in SENSOR_ZONES if latest.get(f'{z}_permit_active',0)==1]
 permit_count  = len(permit_zones)
@@ -1764,183 +1868,443 @@ compound_detected = bool(active_compounds)
 # ════════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
 
+/* ═══════════════════════════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════════════════════════ */
 :root {
-  --bg:     #0a0e17;
-  --bg2:    #131b2b;
-  --glass:  rgba(255,255,255,0.035);
-  --border: rgba(255,255,255,0.07);
-  --shadow: rgba(0,0,0,0.45);
-  --text:   #ffffff;
-  --muted:  #a0b4c8;
-  --faint:  #6b7d94;
-  --cyan:   #00d4ff;
+  --bg:          #050B16;
+  --bg2:         #0B1526;
+  --bg3:         #111827;
+  --bg4:         #1a2740;
+  --glass:       rgba(17, 24, 39, 0.8);
+  --border:      #1e2d45;
+  --border2:     #243447;
+  --border3:     rgba(59, 130, 246, 0.2);
+  --shadow-sm:   0 2px 8px rgba(0,0,0,0.4);
+  --shadow-md:   0 4px 20px rgba(0,0,0,0.55);
+  --shadow-lg:   0 8px 40px rgba(0,0,0,0.7);
+  --text:        #F8FAFC;
+  --text2:       #CBD5E1;
+  --muted:       #94A3B8;
+  --faint:       #64748B;
+  --cyan:        #00D4FF;
+  --blue:        #3B82F6;
+  --green:       #22C55E;
+  --amber:       #F59E0B;
+  --red:         #EF4444;
+  --orange:      #F97316;
+  --radius-sm:   8px;
+  --radius:      12px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   BASE
+═══════════════════════════════════════════════════════════ */
 html, body, [class*="css"], .stApp {
-  font-family: 'Outfit', sans-serif !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
   color: var(--text) !important;
-  background: #0a0e17 !important;
+  background: var(--bg) !important;
+  -webkit-font-smoothing: antialiased;
 }
-.stApp { background: linear-gradient(135deg, #0a0e17, #131b2b) !important; }
+.stApp { background: var(--bg) !important; }
 #MainMenu, footer { visibility: hidden; }
-
-/* Hide Streamlit's default header */
 header[data-testid="stHeader"] { display: none !important; }
-
 .block-container { padding: 0 !important; max-width: 100% !important; }
+.stMarkdown { margin: 0 !important; }
+section[data-testid="stSidebar"] > div { padding-top: 0 !important; }
 
-/* ── Top navbar ── */
+/* ═══════════════════════════════════════════════════════════
+   SCROLLBAR
+═══════════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--blue); }
+
+/* ═══════════════════════════════════════════════════════════
+   TOP NAVBAR
+═══════════════════════════════════════════════════════════ */
 .top-navbar {
-  background: #0d1220;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  background: linear-gradient(90deg, var(--bg2) 0%, #0D1A2E 100%);
+  border-bottom: 1px solid var(--border2);
   padding: 0 24px;
-  height: 52px;
+  height: 58px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   position: sticky;
   top: 0;
   z-index: 999;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.6);
 }
 
-/* ── Content padding ── */
-.main-content { padding: 16px 20px 24px 20px; }
+/* ═══════════════════════════════════════════════════════════
+   MAIN CONTENT
+═══════════════════════════════════════════════════════════ */
+.main-content { padding: 14px 18px 90px 18px; }
 
-/* ── Status banner ── */
-.status-banner {
-  border-radius: 10px; padding: 13px 24px; text-align: center;
-  font-size: 15px; font-weight: 700; letter-spacing: 0.5px;
-  text-transform: uppercase; margin: 0 0 14px 0;
-  border: 1px solid;
+/* ═══════════════════════════════════════════════════════════
+   SIDEBAR
+═══════════════════════════════════════════════════════════ */
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, var(--bg2) 0%, #0A1220 100%) !important;
+  border-right: 1px solid var(--border2) !important;
 }
+[data-testid="stSidebar"] .block-container { padding: 12px !important; }
 
-/* ── Emergency banner ── */
-.emergency-banner {
-  background: linear-gradient(135deg,#7f1d1d,#ef4444);
-  border: 2px solid #ef4444; border-radius: 14px; padding: 20px;
-  margin: 6px 0 16px 0; animation: emergPulse 2s infinite;
-}
-@keyframes emergPulse {
-  0%,100% { box-shadow: 0 0 15px rgba(239,68,68,0.35); }
-  50%     { box-shadow: 0 0 40px rgba(239,68,68,0.75); }
-}
-
-/* ── Metric cards ── */
+/* ═══════════════════════════════════════════════════════════
+   CARDS — Glass morphism panels
+═══════════════════════════════════════════════════════════ */
 .metric-card {
-  background: rgba(255,255,255,0.035);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-top: 1px solid rgba(255,255,255,0.1);
-  border-radius: 14px; padding: 18px 20px;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.45);
-  transition: all 0.3s ease;
+  background: linear-gradient(145deg, rgba(17,24,39,0.95) 0%, rgba(11,21,38,0.9) 100%);
+  border: 1px solid var(--border2);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.05);
+  transition: all 0.25s ease;
   height: 162px;
-  position: relative; overflow: hidden;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
-.metric-card:hover { transform: translateY(-2px); }
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(59,130,246,0.3), transparent);
+}
+.metric-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,0.07);
+  border-color: var(--border3);
+}
 .metric-card-critical {
-  border-color: rgba(239,68,68,0.5) !important;
-  animation: critBorder 1.5s infinite;
+  border-color: rgba(239,68,68,0.4) !important;
+  animation: critBorder 1.8s ease-in-out infinite;
 }
 @keyframes critBorder {
-  0%,100% { box-shadow: 0 0 10px rgba(239,68,68,0.15); }
-  50%     { box-shadow: 0 0 28px rgba(239,68,68,0.55); }
+  0%,100% { box-shadow: 0 0 8px rgba(239,68,68,0.2), var(--shadow-md); }
+  50%     { box-shadow: 0 0 24px rgba(239,68,68,0.5), var(--shadow-md); }
 }
-.metric-label { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px; }
-.metric-value { font-size: 32px; font-weight: 800; letter-spacing: -1px; margin: 4px 0 2px 0; line-height: 1; }
-.metric-sub   { color: var(--muted); font-size: 11px; font-weight: 500; }
+.metric-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.metric-value {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  margin: 2px 0;
+  line-height: 1;
+}
+.metric-sub {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  margin-top: 4px;
+}
 
-/* ── Risk text ── */
-.risk-critical { color: #ef4444 !important; font-weight: 800; animation: critText 1.5s infinite alternate; }
-.risk-high     { color: #f59e0b !important; font-weight: 700; }
-.risk-medium   { color: #eab308 !important; font-weight: 700; }
-.risk-safe, .risk-low { color: #22c55e !important; font-weight: 700; }
-@keyframes critText { 0%{text-shadow:0 0 8px rgba(239,68,68,0.4);} 100%{text-shadow:0 0 20px rgba(239,68,68,0.9);} }
+/* ═══════════════════════════════════════════════════════════
+   RISK LEVELS
+═══════════════════════════════════════════════════════════ */
+.risk-critical { color: #EF4444 !important; font-weight: 800; animation: critText 1.5s ease-in-out infinite alternate; }
+.risk-high     { color: #F59E0B !important; font-weight: 700; }
+.risk-medium   { color: #EAB308 !important; font-weight: 700; }
+.risk-safe, .risk-low { color: #22C55E !important; font-weight: 700; }
+@keyframes critText {
+  0%   { text-shadow: 0 0 8px rgba(239,68,68,0.3); }
+  100% { text-shadow: 0 0 22px rgba(239,68,68,0.8); }
+}
 
-/* ── Status dots ── */
+/* ═══════════════════════════════════════════════════════════
+   STATUS DOTS
+═══════════════════════════════════════════════════════════ */
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.dot-critical { background:#ef4444; box-shadow:0 0 8px #ef4444; animation:dotPulse 1.2s infinite alternate; }
-.dot-high     { background:#f59e0b; box-shadow:0 0 6px #f59e0b; animation:dotPulse 1.8s infinite alternate; }
-.dot-medium   { background:#eab308; box-shadow:0 0 5px #eab308; }
-.dot-safe, .dot-low { background:#22c55e; box-shadow:0 0 5px #22c55e; }
-@keyframes dotPulse { 0% { transform:scale(0.8); } 100% { transform:scale(1.35); } }
+.dot-critical { background: #EF4444; box-shadow: 0 0 8px #EF4444; animation: dotPulse 1.2s ease infinite alternate; }
+.dot-high     { background: #F59E0B; box-shadow: 0 0 6px #F59E0B; animation: dotPulse 1.8s ease infinite alternate; }
+.dot-medium   { background: #EAB308; box-shadow: 0 0 5px #EAB308; }
+.dot-safe, .dot-low { background: #22C55E; box-shadow: 0 0 5px #22C55E; }
+@keyframes dotPulse { 0% { transform: scale(0.8); opacity: 0.7; } 100% { transform: scale(1.4); opacity: 1; } }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width:6px; height:6px; }
-::-webkit-scrollbar-track { background:var(--bg); }
-::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:3px; }
-
-/* ── Disable video controls and clicks ── */
-video::-webkit-media-controls {
-  display: none !important;
+/* ═══════════════════════════════════════════════════════════
+   SECTION HEADERS
+═══════════════════════════════════════════════════════════ */
+.section-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
 }
-video {
-  pointer-events: none !important;
+
+/* ═══════════════════════════════════════════════════════════
+   STATUS BANNER (non-critical)
+═══════════════════════════════════════════════════════════ */
+.status-banner {
+  border-radius: var(--radius);
+  padding: 12px 20px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin: 0 0 12px 0;
+  border: 1px solid;
+  backdrop-filter: blur(8px);
 }
 
-/* ── Sidebar ── */
-[data-testid="stSidebar"] {
-  background: #0d1220 !important;
-  border-right: 1px solid rgba(255,255,255,0.06) !important;
+/* ═══════════════════════════════════════════════════════════
+   EMERGENCY BANNER
+═══════════════════════════════════════════════════════════ */
+.emergency-banner {
+  background: linear-gradient(135deg, #2D0A0A 0%, #4A0E0E 50%, #2D0A0A 100%);
+  border: 1.5px solid rgba(239,68,68,0.6);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin: 4px 0 14px 0;
+  animation: emergPulse 2.5s ease-in-out infinite;
+  backdrop-filter: blur(12px);
 }
-[data-testid="stSidebar"] .block-container { padding: 16px !important; }
+@keyframes emergPulse {
+  0%,100% { box-shadow: 0 0 15px rgba(239,68,68,0.3), inset 0 0 30px rgba(239,68,68,0.03); }
+  50%     { box-shadow: 0 0 40px rgba(239,68,68,0.6), inset 0 0 50px rgba(239,68,68,0.07); }
+}
 
-/* ── Simulate button ── */
+/* ═══════════════════════════════════════════════════════════
+   ANIMATIONS
+═══════════════════════════════════════════════════════════ */
+@keyframes pulse-red   { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+@keyframes pulse-green { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
+@keyframes pulse-blue  { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+@keyframes fadeIn      { from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:translateY(0);} }
+.pulse-red   { animation: pulse-red 1.2s ease infinite; }
+.pulse-green { animation: pulse-green 2s ease infinite; }
+.pulse-blue  { animation: pulse-blue 2s ease infinite; }
+.fade-in     { animation: fadeIn 0.4s ease both; }
+.stApp       { animation: fadeIn 0.4s ease; }
+
+/* ═══════════════════════════════════════════════════════════
+   ALERT TABLE ROWS
+═══════════════════════════════════════════════════════════ */
+.alert-row-crit { border-left: 3px solid #EF4444; background: rgba(239,68,68,0.06); border-radius: 0 8px 8px 0; }
+.alert-row-high { border-left: 3px solid #F97316; background: rgba(249,115,22,0.06); border-radius: 0 8px 8px 0; }
+.alert-row-med  { border-left: 3px solid #F59E0B; background: rgba(245,158,11,0.06); border-radius: 0 8px 8px 0; }
+.alert-row-low  { border-left: 3px solid #22C55E; background: rgba(34,197,94,0.06);  border-radius: 0 8px 8px 0; }
+
+/* ═══════════════════════════════════════════════════════════
+   NOTIFICATION CHANNEL CARDS
+═══════════════════════════════════════════════════════════ */
+.channel-card-active { background: rgba(20,83,45,0.4) !important; border-color: #22C55E !important; }
+.channel-card-alert  { background: rgba(69,10,10,0.5) !important; border-color: #EF4444 !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   SIM CONTROLS BAR
+═══════════════════════════════════════════════════════════ */
+.sim-bar {
+  background: linear-gradient(90deg, var(--bg2) 0%, #0A1626 100%);
+  border-top: 1px solid var(--border2);
+  padding: 7px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════════════════════════ */
 div.stButton > button[kind="primary"] {
-  background: linear-gradient(135deg,#dc2626,#ef4444) !important;
-  color: #fff !important; font-weight: 800 !important; font-size: 12px !important;
-  border: none !important; border-radius: 8px !important;
+  background: linear-gradient(135deg, #B91C1C 0%, #DC2626 100%) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+  border: none !important;
+  border-radius: var(--radius-sm) !important;
   padding: 8px 16px !important;
-  text-transform: uppercase !important; letter-spacing: 0.5px !important;
-  animation: btnGlow 2s ease-in-out infinite;
-  transition: all 0.25s ease !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  animation: btnGlow 2.5s ease-in-out infinite;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 4px 14px rgba(220,38,38,0.4) !important;
 }
 div.stButton > button[kind="primary"]:hover {
-  background: linear-gradient(135deg,#b91c1c,#dc2626) !important;
-  box-shadow: 0 6px 30px rgba(239,68,68,0.7) !important;
   transform: translateY(-1px) !important;
+  box-shadow: 0 6px 24px rgba(239,68,68,0.65) !important;
 }
 @keyframes btnGlow {
-  0%,100% { box-shadow: 0 4px 16px rgba(239,68,68,0.45); }
-  50%     { box-shadow: 0 4px 28px rgba(239,68,68,0.85); }
+  0%,100% { box-shadow: 0 4px 14px rgba(220,38,38,0.4); }
+  50%     { box-shadow: 0 4px 24px rgba(239,68,68,0.75); }
 }
 div.stButton > button[kind="secondary"] {
-  border-radius: 8px !important; font-weight: 600 !important;
-  background: rgba(255,255,255,0.06) !important; color: #fff !important;
-  border: 1px solid rgba(255,255,255,0.1) !important;
+  border-radius: var(--radius-sm) !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  background: rgba(255,255,255,0.05) !important;
+  color: var(--text2) !important;
+  border: 1px solid var(--border2) !important;
+  transition: all 0.2s ease !important;
+}
+div.stButton > button[kind="secondary"]:hover {
+  background: rgba(59,130,246,0.1) !important;
+  border-color: rgba(59,130,246,0.4) !important;
+  color: #fff !important;
+  transform: translateY(-1px) !important;
 }
 
-/* ── Filter radio (pill style) ── */
+/* ═══════════════════════════════════════════════════════════
+   EXPORT / DOWNLOAD BUTTON
+═══════════════════════════════════════════════════════════ */
+[data-testid="stDownloadButton"] > button {
+  background: linear-gradient(135deg, rgba(30,42,65,0.9), rgba(20,30,50,0.9)) !important;
+  border: 1px solid var(--border2) !important;
+  color: var(--text) !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  width: 100% !important;
+  transition: all 0.2s ease !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+[data-testid="stDownloadButton"] > button:hover {
+  border-color: var(--blue) !important;
+  background: rgba(59,130,246,0.1) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INPUTS / SELECTS
+═══════════════════════════════════════════════════════════ */
+div[data-testid="stSelectbox"] > div > div {
+  background: var(--bg3) !important;
+  border: 1px solid var(--border2) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text) !important;
+  font-size: 12px !important;
+}
+div[data-testid="stSelectbox"] svg { color: var(--muted) !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   TOGGLE
+═══════════════════════════════════════════════════════════ */
+div[data-testid="stToggle"] > label { font-size: 12px !important; color: var(--text2) !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   FILTER PILLS
+═══════════════════════════════════════════════════════════ */
 div[data-testid="stRadio"] > div {
-  display: flex; flex-direction: row; gap: 6px; flex-wrap: nowrap;
+  display: flex; flex-direction: row; gap: 5px; flex-wrap: nowrap;
 }
 div[data-testid="stRadio"] label {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 20px; padding: 3px 14px;
-  font-size: 12px; font-weight: 600; cursor: pointer;
-  transition: all 0.2s;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border2);
+  border-radius: 20px; padding: 3px 12px;
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--muted);
 }
 div[data-testid="stRadio"] label:has(input:checked) {
-  background: #00d4ff22; border-color: #00d4ff; color: #00d4ff;
+  background: rgba(59,130,246,0.12);
+  border-color: var(--blue);
+  color: #60A5FA;
 }
 
-/* ── Section headers ── */
-.section-header {
-  font-size: 13px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 1px; color: #a0b4c8; margin-bottom: 14px;
-  display: flex; align-items: center; gap: 8px;
+/* ═══════════════════════════════════════════════════════════
+   EXPANDER
+═══════════════════════════════════════════════════════════ */
+div[data-testid="stExpander"] {
+  border: 1px solid var(--border2) !important;
+  border-radius: var(--radius) !important;
+  background: var(--bg3) !important;
+}
+div[data-testid="stExpander"] summary {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--text2) !important;
 }
 
-/* ── Slide-up animation ── */
-@keyframes slideUp { from{opacity:0;transform:translateY(8px);} to{opacity:1;transform:translateY(0);} }
-.stApp { animation: slideUp 0.35s ease; }
+/* ═══════════════════════════════════════════════════════════
+   CHECKBOXES
+═══════════════════════════════════════════════════════════ */
+div[data-testid="stCheckbox"] label {
+  font-size: 12px !important;
+  color: var(--text2) !important;
+}
 
-/* ── Remove streamlit padding ── */
-.stMarkdown { margin: 0 !important; }
+/* ═══════════════════════════════════════════════════════════
+   TABS
+═══════════════════════════════════════════════════════════ */
+div[data-testid="stTabs"] button[role="tab"] {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--muted) !important;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important;
+}
+div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+  color: var(--blue) !important;
+  border-bottom-color: var(--blue) !important;
+}
 
-section[data-testid="stSidebar"] > div { padding-top: 0 !important; }
+/* ═══════════════════════════════════════════════════════════
+   IFRAME (Heatmap)
+═══════════════════════════════════════════════════════════ */
+iframe {
+  border-radius: var(--radius) !important;
+  border: 1px solid var(--border2) !important;
+  background: var(--bg3) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   IMAGE (CCTV)
+═══════════════════════════════════════════════════════════ */
+div[data-testid="stImage"] img {
+  border-radius: var(--radius) !important;
+  border: 1px solid var(--border2) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VIDEO (disabled controls)
+═══════════════════════════════════════════════════════════ */
+video::-webkit-media-controls { display: none !important; }
+video { pointer-events: none !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   PLOTLY CHART
+═══════════════════════════════════════════════════════════ */
+div[data-testid="stPlotlyChart"] {
+  border-radius: var(--radius) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════════════════ */
+div[data-testid="stToast"] {
+  background: var(--bg3) !important;
+  border: 1px solid var(--border2) !important;
+  border-radius: var(--radius) !important;
+  color: var(--text) !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -1958,22 +2322,47 @@ live_dot     = '#ef4444' if sim_on else '#00d4ff'
 
 st.markdown(f"""
 <div class="top-navbar">
-  <div style="display:flex;align-items:center;gap:14px;">
-    <span style="font-size:22px;">🛡️</span>
-    <span style="font-size:20px;font-weight:800;background:linear-gradient(90deg,#00d4ff,#7c3aed);
-      -webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-0.5px;">
-      SURAKSHAAI</span>
-    <span style="color:rgba(255,255,255,0.15);font-size:18px;">|</span>
-    <span style="color:#6b7d94;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;">
-      INDUSTRIAL SAFETY INTELLIGENCE</span>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div style="width:34px;height:34px;background:linear-gradient(135deg,#1d4ed8,#3b82f6);
+                border-radius:8px;display:flex;align-items:center;justify-content:center;
+                font-size:18px;box-shadow:0 0 14px rgba(59,130,246,0.4);">
+      🛡️
+    </div>
+    <div>
+      <div style="font-size:15px;font-weight:800;color:#F8FAFC;letter-spacing:-0.3px;line-height:1.1;">SurakshaAI</div>
+      <div style="font-size:9.5px;color:#64748B;letter-spacing:0.6px;font-weight:500;">AI-Powered Industrial Safety System</div>
+    </div>
   </div>
-  <div style="display:flex;align-items:center;gap:18px;">
-    <span style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#00d4ff;">
-      <span style="width:8px;height:8px;border-radius:50%;background:{live_dot};
-        box-shadow:0 0 6px {live_dot};display:inline-block;"></span>LIVE</span>
-    <span style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:{secure_color};">
-      <span style="font-size:14px;">🛡️</span>{secure_label}</span>
-    <span style="color:#6b7d94;font-size:12px;">🕐 {now_str}</span>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div style="display:flex;align-items:center;gap:5px;background:rgba(34,197,94,0.1);
+                border:1px solid rgba(34,197,94,0.35);border-radius:20px;padding:5px 13px;">
+      <span style="width:6px;height:6px;background:#22C55E;border-radius:50%;
+                   box-shadow:0 0 6px #22C55E;animation:pulse-green 2s infinite;display:inline-block;"></span>
+      <span style="color:#22C55E;font-size:11px;font-weight:700;letter-spacing:0.5px;">LIVE</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;
+                background:{('rgba(239,68,68,0.1)' if sim_on else 'rgba(59,130,246,0.1)')};
+                border:1px solid {('rgba(239,68,68,0.4)' if sim_on else 'rgba(59,130,246,0.35)')};
+                border-radius:20px;padding:5px 13px;">
+      <span style="font-size:10px;">🔒</span>
+      <span style="color:{('#EF4444' if sim_on else '#60A5FA')};font-size:11px;font-weight:700;letter-spacing:0.5px;">{secure_label}</span>
+    </div>
+  </div>
+  <div style="text-align:center;">
+    <div style="font-size:20px;font-weight:700;color:#F8FAFC;letter-spacing:0.5px;font-family:'JetBrains Mono',monospace;">{now_str}</div>
+    <div style="font-size:10px;color:#64748B;margin-top:1px;font-weight:500;">{datetime.now().strftime("%d %B %Y  |  %A")}</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div style="text-align:right;">
+      <div style="font-size:12px;color:#F8FAFC;font-weight:600;">Safety Officer</div>
+      <div style="font-size:10px;color:#64748B;font-weight:400;">Administrator</div>
+    </div>
+    <div style="width:34px;height:34px;
+                background:linear-gradient(135deg,#1e3a5f,#2d5a8e);
+                border-radius:50%;border:1.5px solid rgba(59,130,246,0.4);
+                display:flex;align-items:center;justify-content:center;font-size:16px;
+                box-shadow:0 0 10px rgba(59,130,246,0.2);"></div
+    >👤</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -1988,20 +2377,33 @@ with st.sidebar:
       <div style="font-size:14px;font-weight:800;color:#fff;margin-bottom:2px;">🛡️ SurakshaAI Console</div>
     </div>""", unsafe_allow_html=True)
 
-    # Uptime card
+    # Uptime card — premium glassmorphism panel
     st.markdown(f"""
-    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);
-    border-radius:10px;padding:16px;text-align:center;margin-bottom:14px;">
-      <div style="font-size:10px;color:#6b7d94;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:4px;">
-        SYSTEM UPTIME</div>
-      <div style="font-size:36px;font-weight:800;color:#22c55e;line-height:1;">100%</div>
-      <div style="font-size:11px;color:#22c55e;opacity:0.8;margin-top:2px;">Last 24 Hours</div>
+    <div style="background:linear-gradient(145deg,rgba(17,24,39,0.95),rgba(11,21,38,0.9));
+         border:1px solid #243447;border-top:1px solid rgba(34,197,94,0.2);
+         border-radius:14px;padding:16px 14px;text-align:center;margin-bottom:12px;
+         box-shadow:0 4px 20px rgba(0,0,0,0.5),inset 0 1px 0 rgba(34,197,94,0.08);">
+      <div style="font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:1.5px;
+                  font-weight:700;margin-bottom:6px;">SYSTEM UPTIME</div>
+      <div style="font-size:38px;font-weight:800;color:#22C55E;line-height:1;
+                  text-shadow:0 0 20px rgba(34,197,94,0.4);">100%</div>
+      <div style="font-size:10px;color:rgba(34,197,94,0.7);margin-top:4px;font-weight:500;">
+        Last 24 Hours</div>
+      <div style="width:100%;height:3px;background:rgba(255,255,255,0.05);border-radius:2px;
+                  margin-top:10px;overflow:hidden;">
+        <div style="width:100%;height:100%;background:linear-gradient(90deg,#16a34a,#22C55E);
+                    border-radius:2px;"></div>
+      </div>
     </div>""", unsafe_allow_html=True)
 
     # Compliance report
     report = f"# SURAKSHAAI SAFETY COMPLIANCE REPORT\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nSystem State: {STATUS['level']} (Max Score: {max_score:.0f}/20)\n\n## Zone Health Audit\n"
     for zone, z in zone_risks.items():
         report += f"\n### {z['label']}\n- Level: {z['risk_level']}\n- Score: {z['risk_score']:.0f}/20\n"
+    
+    if st.session_state.get('compound_risk_active', False) or st.session_state.get('sim_stage') == 'active':
+        report += "\n## Compound Patterns Detected\n- ⚠️ Visakhapatnam triple-threat disaster pattern detected in Battery-4 (Zone A)!\n"
+
     report += "\n## Active Incidents\n"
     for a in alert_system.get_active_alerts():
         report += f"\n### {a['alert_id']}\n- Zone: {a.get('zone_label',a['zone'])}\n- Level: {a['risk_level']}\n- Ack'd: {a['acknowledged']}\n"
@@ -2104,11 +2506,50 @@ with st.sidebar:
             st.session_state.sim_play_active = False
             st.rerun()
 
+    st.markdown("""<div style="height:1px;background:rgba(255,255,255,0.06);margin:12px 0;"></div>""", unsafe_allow_html=True)
+    with st.expander("🛠️ Advanced Settings"):
+        dev_mode = st.checkbox("Enable Developer Mode", value=st.session_state.get('dev_mode', False))
+        if dev_mode != st.session_state.get('dev_mode', False):
+            st.session_state.dev_mode = dev_mode
+            st.rerun()
+
 
 # ════════════════════════════════════════════════════════════════════════════════
 # MAIN CONTENT — wrapped in a padded div
 # ════════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="main-content">', unsafe_allow_html=True)
+
+# CCTV auto-detect alert banner — use st.empty() so it updates in-place without flicker
+_auto_banner_placeholder = st.empty()
+
+def _render_auto_banner(placeholder):
+    """Render or clear the auto-detect banner based on session state. No-ops if unchanged."""
+    if st.session_state.get("banner_visible") and st.session_state.get("active_alert"):
+        alert = st.session_state.active_alert
+        severity_colors = {
+            "CRITICAL": "#450a0a",
+            "HIGH":     "#7f1d1d",
+            "MEDIUM":   "#92400e"
+        }
+        bg = severity_colors.get(alert["severity"], "#1f2937")
+        placeholder.markdown(f"""
+        <div style='background:{bg}; border:2px solid #ef4444; border-radius:8px;
+                    padding:14px 18px; margin-bottom:14px;'>
+            <b style='color:#ef4444; font-size:14px;'>
+                🚨 {alert["severity"]} ALERT — {ZONE_LABELS.get(alert["zone"], alert["zone"])}
+            </b>
+            <p style='color:#fca5a5; margin:4px 0; font-size:12px;'>{alert["summary"]}</p>
+            <small style='color:#9ca3af;'>
+                Triggered: {alert["timestamp"]} &nbsp;|
+                Channels: {", ".join(alert["channels"]).upper()}
+            </small>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        placeholder.empty()
+
+_render_auto_banner(_auto_banner_placeholder)
+
 
 # Scenario controls in top-right
 top_col1, top_col2, top_col3 = st.columns([5.5, 1.2, 1.2])
@@ -2136,72 +2577,94 @@ with top_col3:
         st.rerun()
 
 # ─── STATUS BANNER ────────────────────────────────────────────────────────────
-st.markdown(f"""
-<div class="status-banner"
-     style="background:{STATUS['bg']};border-color:{STATUS['border']}55;color:{STATUS['color']};">
-  {STATUS['text']}
-</div>""", unsafe_allow_html=True)
+if banner_level is not None:
+    st.markdown(f"""
+    <div class="status-banner"
+         style="background:{banner_color};border-color:{banner_border}55;color:#fff;">
+      {banner_level}
+    </div>""", unsafe_allow_html=True)
 
 # ─── EMERGENCY PANEL ──────────────────────────────────────────────────────────
 if st.session_state.sim_stage == 'active':
-    st.markdown("""
+    # Rich target-style critical alert banner
+    st.markdown(f"""
     <div class="emergency-banner">
-      <div style="display:flex;align-items:flex-start;gap:16px;">
-        <span style="font-size:32px;">🚨</span>
-        <div>
-          <h3 style="color:#fff;margin:0 0 8px 0;font-size:16px;font-weight:800;letter-spacing:0.5px;">
-            TRIPLE-THREAT COMPOUND RISK — VISAKHAPATNAM PATTERN DETECTED
-          </h3>
-          <p style="color:#fecaca;font-size:13px;margin:0 0 12px 0;line-height:1.6;">
-            <b>Battery-4 (Zone A):</b> Gas leak 55.4 ppm + 8 crew + active hot-work maintenance permit.
-            This exact combination triggered the <b>2020 Visakhapatnam LG Polymers disaster</b>.
-            Immediate evacuation required.
-          </p>
-          <a href="https://en.wikipedia.org/wiki/Visakhapatnam_gas_leak" target="_blank"
-             style="background:rgba(255,255,255,0.15);color:#fff;padding:5px 12px;border-radius:6px;
-             text-decoration:none;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,0.25);">
-            📖 Case Study
-          </a>
+      <div style="display:flex;align-items:stretch;gap:16px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:flex-start;gap:14px;flex:2.5;min-width:260px;">
+          <span style="font-size:36px;margin-top:2px;">⚠️</span>
+          <div>
+            <div style="color:#ef4444;font-size:15px;font-weight:900;letter-spacing:0.3px;">
+              🚨 CRITICAL ALERT — Visakhapatnam Pattern Detected
+            </div>
+            <div style="color:#fca5a5;font-size:11px;margin-top:5px;line-height:1.8;">
+              Zone: <b>Battery-4</b> &nbsp;|&nbsp; Gas: <b>{_za_gas} ppm</b> &nbsp;|&nbsp;
+              Workers: <b>{_za_workers}</b> &nbsp;|&nbsp; Maintenance: <b>Active</b>
+            </div>
+            <div style="color:#ef4444;font-size:13px;font-weight:900;margin-top:6px;letter-spacing:0.3px;">
+              ACTION: EVACUATE BATTERY-4 IMMEDIATELY
+            </div>
+            <div style="color:#9ca3af;font-size:10px;margin-top:5px;">
+              Triggered at: {now_str} &nbsp;|&nbsp;
+              Alert ID: ALT-{datetime.now().strftime("%Y%m%d%H%M")}-001 &nbsp;|&nbsp;
+              Severity: <span style="color:#ef4444;font-weight:700;">CRITICAL</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex:2;flex-wrap:wrap;">
+          <div style="background:#14532d;border:1px solid #22c55e;border-radius:8px;padding:8px 12px;text-align:center;min-width:88px;">
+            <div style="color:#22c55e;font-weight:700;font-size:12px;">📱 SMS</div>
+            <div style="color:#86efac;font-size:10px;font-weight:600;">✓ DELIVERED</div>
+            <div style="color:#86efac;font-size:10px;">SMS sent to +123****890</div>
+          </div>
+          <div style="background:#14532d;border:1px solid #22c55e;border-radius:8px;padding:8px 12px;text-align:center;min-width:88px;">
+            <div style="color:#22c55e;font-weight:700;font-size:12px;">✉️ Email</div>
+            <div style="color:#86efac;font-size:10px;font-weight:600;">✓ SENT</div>
+            <div style="color:#86efac;font-size:10px;">Email sent to safety@***.com</div>
+          </div>
+          <div style="background:#450a0a;border:1px solid #ef4444;border-radius:8px;padding:8px 12px;text-align:center;min-width:88px;">
+            <div style="color:#ef4444;font-weight:700;font-size:12px;">🔊 SIREN</div>
+            <div style="color:#fca5a5;font-size:10px;font-weight:600;" class="pulse-red">● ACTIVE (PULSING)</div>
+            <div style="color:#fca5a5;font-size:10px;">Zone: Battery-4</div>
+            <div style="color:#fca5a5;font-size:10px;">Status: SOUNDING</div>
+          </div>
         </div>
       </div>
-    </div>""", unsafe_allow_html=True)
-    # Acknowledge checklist expander
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Action buttons row beneath banner
     checklist_keys = ['chk_evacuate', 'chk_isolate', 'chk_notify']
     for ck in checklist_keys:
         if ck not in st.session_state:
             st.session_state[ck] = False
 
-    with st.expander("🚨 ACKNOWLEDGE INCIDENT & TRIGGER EMERGENCY EVACUATION", expanded=True):
-        st.markdown(
-            '<div style="color:#fecaca;font-size:12px;font-weight:600;margin-bottom:8px;">'
-            'Complete all steps before confirming:</div>',
-            unsafe_allow_html=True
-        )
-        st.session_state.chk_evacuate = st.checkbox(
-            "✅ Initiate crew evacuation from Battery-4",
-            value=st.session_state.chk_evacuate, key="cb_evacuate"
-        )
-        st.session_state.chk_isolate = st.checkbox(
-            "✅ Isolate gas supply valve for Zone A",
-            value=st.session_state.chk_isolate, key="cb_isolate"
-        )
-        st.session_state.chk_notify = st.checkbox(
-            "✅ Notify emergency response team (Alpha & Beta)",
-            value=st.session_state.chk_notify, key="cb_notify"
-        )
-        all_checked = all(st.session_state[k] for k in checklist_keys)
-        if st.button(
-            "🔴 CONFIRM EMERGENCY EVACUATION" if all_checked else "Complete checklist above to confirm",
-            type="primary" if all_checked else "secondary",
-            width="stretch",
-            key="ack_btn",
-            disabled=not all_checked,
-        ):
+    ab1, ab2, ab3, _spacer = st.columns([1.2, 1.2, 1.2, 6.4])
+    with ab1:
+        if st.button("✓ Acknowledge", key="ack_btn", type="primary",
+                     use_container_width=True, disabled=st.session_state.ack_critical):
             st.session_state.ack_critical       = True
             st.session_state.sim_stage          = 'acknowledged'
             st.session_state.alert_acknowledged = True
             st.toast("✔ ALT-001 Acknowledged. Emergency sirens activated.", icon="📣")
             st.rerun()
+    with ab2:
+        if st.button("📋 View Details", key="view_details_btn", use_container_width=True):
+            st.session_state['show_checklist'] = not st.session_state.get('show_checklist', False)
+    with ab3:
+        if st.button("🚨 Escalate", key="escalate_btn", use_container_width=True):
+            st.toast("🚨 Alert escalated to Level 2 — Plant Director notified!", icon="🚨")
+
+    if st.session_state.get('show_checklist', False):
+        with st.expander("📋 Incident Checklist", expanded=True):
+            st.session_state.chk_evacuate = st.checkbox(
+                "✅ Initiate crew evacuation from Battery-4",
+                value=st.session_state.chk_evacuate, key="cb_evacuate")
+            st.session_state.chk_isolate = st.checkbox(
+                "✅ Isolate gas supply valve for Zone A",
+                value=st.session_state.chk_isolate, key="cb_isolate")
+            st.session_state.chk_notify = st.checkbox(
+                "✅ Notify emergency response team (Alpha & Beta)",
+                value=st.session_state.chk_notify, key="cb_notify")
 
 elif st.session_state.sim_stage == 'acknowledged':
     st.markdown("""
@@ -2233,78 +2696,91 @@ with m1:
         sparkline_path = "M0,20 L10,5 L20,22 L30,5 L40,22 L50,5 L60,25"
     elif STATUS['level'] == 'HIGH':
         sparkline_path = "M0,18 L10,10 L20,15 L30,8 L40,12 L50,5 L60,18"
+    _m1_border = f"border-top:2px solid {STATUS['color']};" if STATUS['level'] != 'SAFE' else ''
     st.markdown(f"""
-    <div class="{crit_cls}">
+    <div class="{crit_cls}" style="{_m1_border}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div class="metric-label">🌡️ CURRENT RISK</div>
-        <svg width="60" height="25" style="margin-top:-2px;opacity:0.7;">
-          <path d="{sparkline_path}" fill="none" stroke="{STATUS['color']}" stroke-width="2"/>
+        <div class="metric-label" style="color:#94A3B8;">&#x1F321;&#xFE0F; CURRENT RISK</div>
+        <svg width="60" height="26" style="opacity:0.8;">
+          <path d="{sparkline_path}" fill="none" stroke="{STATUS['color']}" stroke-width="2" stroke-linecap="round"/>
         </svg>
       </div>
-      <div class="metric-value {STATUS['cls']}">{STATUS['level']}</div>
-      <div style="font-size:12px;color:#fff;font-weight:600;margin-bottom:4px;">Score: {max_score:.0f}/20</div>
-      <div class="metric-sub">Overall plant safety state</div>
+      <div class="metric-value {STATUS['cls']}" style="font-size:30px;">{STATUS['level']}</div>
+      <div style="font-size:11px;color:#F8FAFC;font-weight:600;margin-top:2px;">Score: {max_score:.0f}/20</div>
+      <div class="metric-sub" style="margin-top:4px;">Overall plant safety state</div>
     </div>""", unsafe_allow_html=True)
 
 with m2:
-    figures = "".join("👤" for _ in range(min(total_workers, 15)))
+    figures = "".join("&#x1F464;" for _ in range(min(total_workers, 12)))
+    _worker_bar = min(100, int(total_workers / 30 * 100))
     st.markdown(f"""
-    <div class="metric-card">
-      <div class="metric-label">👥 CREW COUNT</div>
-      <div class="metric-value" style="color:#4a8cf7;">{total_workers}</div>
-      <div class="metric-sub" style="margin-bottom:8px;">Active on Floor</div>
-      <div style="font-size:16px;color:#4a8cf7;letter-spacing:3px;line-height:1.5;">{figures}</div>
+    <div class="metric-card" style="border-top:2px solid #3B82F6;">
+      <div class="metric-label">&#x1F465; CREW COUNT</div>
+      <div class="metric-value" style="color:#60A5FA;">{total_workers}</div>
+      <div class="metric-sub" style="margin-bottom:6px;">Active on Floor</div>
+      <div style="width:100%;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:6px;">
+        <div style="width:{_worker_bar}%;height:100%;background:linear-gradient(90deg,#1d4ed8,#3B82F6);border-radius:2px;"></div>
+      </div>
+      <div style="font-size:13px;color:#3B82F6;letter-spacing:2px;line-height:1.4;">{figures}</div>
     </div>""", unsafe_allow_html=True)
 
 with m3:
-    pc = '#f59e0b' if permit_count > 0 else '#22c55e'
+    pc = '#F59E0B' if permit_count > 0 else '#22C55E'
+    permit_bar = min(100, permit_count * 25)
     st.markdown(f"""
-    <div class="metric-card">
-      <div class="metric-label">📋 WORK PERMITS</div>
+    <div class="metric-card" style="border-top:2px solid {pc};">
+      <div class="metric-label">&#x1F4CB; WORK PERMITS</div>
       <div class="metric-value" style="color:{pc};">{permit_count}</div>
-      <div class="metric-sub">Active</div>
-      <div style="position:absolute;right:14px;bottom:10px;font-size:42px;opacity:0.05;">📋</div>
+      <div class="metric-sub" style="margin-bottom:6px;">Active</div>
+      <div style="width:100%;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;">
+        <div style="width:{permit_bar}%;height:100%;background:{pc};border-radius:2px;"></div>
+      </div>
+      <div style="position:absolute;right:14px;bottom:12px;font-size:38px;opacity:0.06;">&#x1F4CB;</div>
     </div>""", unsafe_allow_html=True)
 
 with m4:
-    cc = '#ef4444' if compound_detected else '#22c55e'
-    cv = "DETECTED" if compound_detected else "CLEAR"
-    cds = f"{len(active_compounds)}/6 rules matched" if active_compounds else "0/6 rules matched"
+    cc = risk_color
+    cv = risk_state
+    cds = f"{compound_risk_score}/{total_rules} rules matched"
+    card_cls = "metric-card metric-card-critical" if risk_state == 'CRITICAL' else "metric-card"
+    _c4_border = f"border-top:2px solid {cc};"
+    compound_bar = min(100, int(compound_risk_score / max(total_rules, 1) * 100))
     st.markdown(f"""
-    <div class="{crit_cls if compound_detected else 'metric-card'}">
-      <div class="metric-label">🔗 COMPOUND RISK</div>
-      <div class="metric-value" style="color:{cc};">{cv}</div>
-      <div class="metric-sub">{cds}</div>
-      <div style="position:absolute;right:14px;bottom:10px;font-size:42px;opacity:0.05;">🛡️</div>
+    <div class="{card_cls}" style="{_c4_border}">
+      <div class="metric-label">&#x1F517; COMPOUND RISK</div>
+      <div class="metric-value" style="color:{cc};font-size:28px;">{cv}</div>
+      <div class="metric-sub" style="margin-bottom:6px;">{cds}</div>
+      <div style="width:100%;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;">
+        <div style="width:{compound_bar}%;height:100%;background:{cc};border-radius:2px;"></div>
+      </div>
+      <div style="position:absolute;right:14px;bottom:12px;font-size:38px;opacity:0.06;">&#x1F6E1;&#xFE0F;</div>
     </div>""", unsafe_allow_html=True)
 
 st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
 
 
 
-tab_map, tab_cctv = st.tabs(["🗺️ RISK HEATMAP", "📹 AI CCTV SURVEILLANCE"])
-with tab_map:
-    # ════════════════════════════════════════════════════════════════════════════════
-    # HEATMAP (70%) + ZONE STATUS (30%)
-    # ════════════════════════════════════════════════════════════════════════════════
-    col_map, col_zones = st.columns([7, 3])
+if st.session_state.get('dev_mode', False):
+    tab_main, tab_diag = st.tabs(["🛡️ SAFETY CONTROL CONSOLE", "🛠️ SYSTEM INTEGRATIONS"])
+else:
+    tab_main = st.container()
+    tab_diag = None
 
-    with col_map:
-        st.markdown('<div class="section-header">🗺️ REAL-TIME RISK HEATMAP</div>', unsafe_allow_html=True)
-        st.iframe(build_heatmap_html(zone_risks, st.session_state.simulate_active), height=420)
-
-    with col_zones:
-        st.markdown('<div class="section-header">📋 ZONE STATUS</div>', unsafe_allow_html=True)
-
-        COLOR_MAP = {'CRITICAL':'#ef4444','HIGH':'#f59e0b','MEDIUM':'#eab308','LOW':'#22c55e'}
-        DOT_MAP   = {'CRITICAL':'dot dot-critical','HIGH':'dot dot-high','MEDIUM':'dot dot-medium','LOW':'dot dot-safe'}
-
+with tab_main:
+    # ─── 3-COLUMN UNIFIED OPERATIONS GRID ───
+    col_left, col_mid, col_right = st.columns([3.5, 5.0, 3.5])
+    
+    with col_left:
+        st.markdown('<div class="section-header">🗺️ PLANT ZONE HEATMAP</div>', unsafe_allow_html=True)
+        st.iframe(build_heatmap_html(zone_risks, st.session_state.simulate_active), height=180)
+        
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="section-header">📋 ZONE STATUS OVERVIEW</div>', unsafe_allow_html=True)
         for zone_id, zone_label in ZONE_STATUS_ORDER:
             z = zone_risks.get(zone_id, {'risk_level':'LOW','risk_score':0,'sensor_data':{}})
             lvl   = z.get('risk_level', 'LOW')
             score = z.get('risk_score', 0)
-            c     = COLOR_MAP.get(lvl, '#22c55e')
-            d     = DOT_MAP.get(lvl, 'dot dot-safe')
+            c     = get_zone_color(lvl)
 
             # Get gas ppm
             gas = 0.0
@@ -2316,80 +2792,181 @@ with tab_map:
             if gas == 0.0:
                 gas = latest.get(f'{zone_id}_gas_ppm', 0.0)
 
+            # Premium zone status row
+            is_crit = (lvl == 'CRITICAL')
+            hb_pts = "0,8 3,8 5,2 7,14 9,2 11,14 13,8 20,8" if is_crit else "0,8 4,8 6,5 8,11 10,8 14,8 16,6 20,8"
+            hb_color = "#EF4444" if is_crit else "#22C55E"
+            _row_bg = f"rgba(239,68,68,0.05)" if is_crit else f"rgba(17,24,39,0.6)"
+            _row_border = f"#EF444440" if is_crit else "#243447"
+            _badge_bg = f"rgba(239,68,68,0.15)" if is_crit else (
+                "rgba(245,158,11,0.15)" if lvl == 'HIGH' else "rgba(34,197,94,0.1)")
             st.markdown(f"""
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:6px;
-              background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.06);
-              border-radius:8px;font-family:'Outfit',sans-serif;">
-              <span class="{d}" style="flex-shrink:0;"></span>
-              <span style="color:#fff;font-size:12px;font-weight:600;flex:1;min-width:90px;">{zone_label}</span>
-              <span style="color:rgba(255,255,255,0.2);font-size:11px;">|</span>
-              <span style="color:{c};font-size:11px;font-weight:700;width:60px;">{lvl}</span>
-              <span style="color:rgba(255,255,255,0.2);font-size:11px;">|</span>
-              <span style="color:#6b7d94;font-size:11px;width:70px;">Score: {score:.0f}/20</span>
-              <span style="color:rgba(255,255,255,0.2);font-size:11px;">|</span>
-              <span style="color:#6b7d94;font-size:11px;">Gas: {gas:.1f}ppm</span>
+            <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;margin-bottom:5px;
+              background:{_row_bg};border:1px solid {_row_border};
+              border-radius:10px;transition:all 0.2s;">
+              <span style="width:7px;height:7px;border-radius:50%;background:{c};
+                           box-shadow:0 0 6px {c};flex-shrink:0;"></span>
+              <span style="color:#F8FAFC;font-size:11px;font-weight:600;flex:1;">{zone_label}</span>
+              <span style="background:{_badge_bg};color:{c};font-size:9px;font-weight:700;
+                           padding:2px 7px;border-radius:4px;letter-spacing:0.5px;
+                           border:1px solid {c}30;">{lvl}</span>
+              <span style="color:#64748B;font-size:10px;min-width:60px;text-align:right;">{score:.0f}/20</span>
+              <span style="color:#64748B;font-size:10px;min-width:58px;text-align:right;">{gas:.1f}ppm</span>
+              <svg width="22" height="16" viewBox="0 0 22 16" style="flex-shrink:0;opacity:0.9;">
+                <polyline points="{hb_pts}" fill="none" stroke="{hb_color}" stroke-width="1.5"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
             </div>""", unsafe_allow_html=True)
 
-    st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
-
-
-
-with tab_cctv:
-    # ─── HEADER ROW ───
-    st.markdown("""
-    <div style="display:flex; justify-content:space-between; align-items:center; 
-         padding: 8px 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); 
-         border-radius: 8px; margin-bottom: 15px; font-family:'Outfit',sans-serif;">
-        <span style="font-weight: 700; color: #fff; font-size: 16px;">🎥 AI CCTV SURVEILLANCE</span>
-        <div style="display:flex; align-items:center; gap:15px;">
-            <span style="color:#6b7d94; font-size:12px; font-weight:700; letter-spacing:0.5px;">⏱️ LIVE</span>
-            <span style="display:inline-flex; align-items:center; gap:6px; color:#00ff41; font-size:12px; font-weight:700;">
-                <span style="width:8px; height:8px; background-color:#00ff41; border-radius:50%; display:inline-block; box-shadow: 0 0 8px #00ff41;"></span>
-                SECURE
-            </span>
+    with col_mid:
+        selected_zone = st.selectbox(
+            "Select CCTV Camera Feed:",
+            options=SENSOR_ZONES,
+            format_func=lambda z: f"📹 {ZONE_LABELS.get(z, z)} Camera Feed",
+            key="cctv_zone_selector"
+        )
+        run_feed = True
+        
+        # ─── MAIN CCTV CONTAINER ───
+        with st.container(border=True):
+            st.markdown(f"""
+            <div style="font-family:'Outfit',sans-serif; font-weight:700; color:#fff; font-size:13px; 
+                 margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
+                📹 LIVE CCTV FEED - {ZONE_LABELS.get(selected_zone, selected_zone)}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            frame_placeholder = st.empty()
+            status_bar_placeholder = st.empty()
+            
+        st.markdown("<div style='height:15px;'></div>", unsafe_allow_html=True)
+        
+        # ─── ALERTS PANEL ───
+        st.markdown("""
+        <div style="font-weight: 700; color: #a0b4c8; font-size: 11px; letter-spacing: 0.5px; margin-bottom: 8px; text-transform: uppercase;">
+            🔔 LIVE ALERTS PANEL
         </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # ─── CONTROL BAR ROW ───
-    selected_zone = st.selectbox(
-        "Select CCTV Camera Feed:",
-        options=SENSOR_ZONES,
-        format_func=lambda z: f"📹 {ZONE_LABELS.get(z, z)} Camera Feed",
-        key="cctv_zone_selector"
-    )
-    run_feed = True
-    
-    # ─── MAIN CCTV CONTAINER ───
-    with st.container(border=True):
+        """, unsafe_allow_html=True)
+        alerts_placeholder = st.empty()
+        
+        st.markdown("<div style='height:15px;'></div>", unsafe_allow_html=True)
+        
+        # ─── BOTTOM SUMMARY GRID ───
+        grid_col1, grid_col2, grid_col3, grid_col4 = st.columns(4)
+        detections_placeholder = grid_col1.empty()
+        zone_status_placeholder = grid_col2.empty()
+        rules_placeholder = grid_col3.empty()
+        system_placeholder = grid_col4.empty()
+
+    with col_right:
+        st.markdown('<div class="section-header">📢 NOTIFICATION CHANNELS</div>', unsafe_allow_html=True)
+        
+        # Determine highest risk zone based on maximum risk score
+        highest_risk_zone = "N/A"
+        highest_score = -1
+        for zone_id, z in zone_risks.items():
+            if z.get('risk_score', 0) > highest_score:
+                highest_score = z.get('risk_score', 0)
+                highest_risk_zone = z.get('label', zone_id)
+        
+        if compound_risk_score == 0:
+            sms_status = ("STANDBY", "#6b7280", "Sent to: N/A")
+            email_status = ("STANDBY", "#6b7280", "Sent to: N/A")
+            siren_status = ("STANDBY", "#6b7280", "Zone: All clear")
+            sms_progress = "0%"
+            email_progress = "0%"
+            siren_progress = "0%"
+        else:
+            sms_status = ("DELIVERED ✓", "#22c55e", "Sent to: +123****890")
+            email_status = ("SENT ✓", "#22c55e", "Sent to: safety@***.com")
+            siren_status = (
+                "ACTIVE 🔊", 
+                "#ef4444", 
+                f"Zone: {highest_risk_zone} — SOUNDING"
+            )
+            sms_progress = "100%"
+            email_progress = "100%"
+            siren_progress = "100%"
+            
+        # Enhanced notification channel cards with timestamps
+        _notif_time = now_str if compound_risk_score > 0 else "—"
+        _sms_detail   = f"Alert sent to +123****890<br>at {_notif_time}" if compound_risk_score > 0 else "Sent to: N/A"
+        _email_detail = f"Email sent to safety@***.com<br>{_notif_time}" if compound_risk_score > 0 else "Sent to: N/A"
+        _siren_detail = f"Zone: {highest_risk_zone}<br>Status: ● SOUNDING<br>Duration: active" if compound_risk_score > 0 else "Zone: All clear"
+
         st.markdown(f"""
-        <div style="font-family:'Outfit',sans-serif; font-weight:700; color:#fff; font-size:13px; 
-             margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
-            📹 LIVE CCTV FEED - {ZONE_LABELS.get(selected_zone, selected_zone)}
+        <!-- SMS Channel -->
+        <div style="background:{'rgba(20,83,45,0.35)' if compound_risk_score > 0 else 'rgba(255,255,255,0.015)'}; border:1px solid {sms_status[1]}; border-radius:8px; padding:11px 13px; margin-bottom:8px; font-family:'Outfit',sans-serif;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700; color:#fff; font-size:11px; letter-spacing:0.5px;">📱 SMS CHANNEL</span>
+                <span style="color:{sms_status[1]}; font-size:10px; font-weight:800; text-transform:uppercase;">{"✓ " if compound_risk_score > 0 else ""}{sms_status[0]}</span>
+            </div>
+            <div style="font-size:10px; color:#94a3b8; margin-top:4px; line-height:1.6;">{_sms_detail}</div>
+            <div style="width:100%; height:3px; background:rgba(255,255,255,0.05); border-radius:2px; margin-top:7px; overflow:hidden;">
+                <div style="width:{sms_progress}; height:100%; background:{sms_status[1]}; transition:width 0.5s;"></div>
+            </div>
+        </div>
+        <!-- Email Channel -->
+        <div style="background:{'rgba(20,83,45,0.35)' if compound_risk_score > 0 else 'rgba(255,255,255,0.015)'}; border:1px solid {email_status[1]}; border-radius:8px; padding:11px 13px; margin-bottom:8px; font-family:'Outfit',sans-serif;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700; color:#fff; font-size:11px; letter-spacing:0.5px;">✉️ EMAIL CHANNEL</span>
+                <span style="color:{email_status[1]}; font-size:10px; font-weight:800; text-transform:uppercase;">{"✓ " if compound_risk_score > 0 else ""}{email_status[0]}</span>
+            </div>
+            <div style="font-size:10px; color:#94a3b8; margin-top:4px; line-height:1.6;">{_email_detail}</div>
+            <div style="width:100%; height:3px; background:rgba(255,255,255,0.05); border-radius:2px; margin-top:7px; overflow:hidden;">
+                <div style="width:{email_progress}; height:100%; background:{email_status[1]}; transition:width 0.5s;"></div>
+            </div>
+        </div>
+        <!-- Siren Channel -->
+        <div style="background:{'rgba(69,10,10,0.5)' if compound_risk_score > 0 else 'rgba(255,255,255,0.015)'}; border:1px solid {siren_status[1]}; border-radius:8px; padding:11px 13px; margin-bottom:8px; font-family:'Outfit',sans-serif;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700; color:#fff; font-size:11px; letter-spacing:0.5px;">🔊 SIREN CHANNEL</span>
+                <span style="color:{siren_status[1]}; font-size:10px; font-weight:800; text-transform:uppercase;" {'class="pulse-red"' if compound_risk_score > 0 else ''}>{"● " if compound_risk_score > 0 else ""}{siren_status[0]}</span>
+            </div>
+            <div style="font-size:10px; color:#94a3b8; margin-top:4px; line-height:1.6;">{_siren_detail}</div>
+            <div style="width:100%; height:3px; background:rgba(255,255,255,0.05); border-radius:2px; margin-top:7px; overflow:hidden;">
+                <div style="width:{siren_progress}; height:100%; background:{siren_status[1]};"></div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
         
-        frame_placeholder = st.empty()
-        status_bar_placeholder = st.empty()
+        # "All alerts escalated" badge when compound risk active
+        if compound_risk_score > 0:
+            st.markdown("""
+            <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:8px;
+                        padding:10px 13px;margin-top:4px;display:flex;align-items:center;gap:8px;">
+              <span style="font-size:18px;">✅</span>
+              <span style="color:#22c55e;font-size:11px;font-weight:600;">All critical alerts escalated to all channels</span>
+            </div>""", unsafe_allow_html=True)
         
-    st.markdown("<div style='height:15px;'></div>", unsafe_allow_html=True)
-    
-    # ─── ALERTS PANEL ───
-    st.markdown("""
-    <div style="font-weight: 700; color: #a0b4c8; font-size: 11px; letter-spacing: 0.5px; margin-bottom: 8px; text-transform: uppercase;">
-        🔔 ALERTS
-    </div>
-    """, unsafe_allow_html=True)
-    alerts_placeholder = st.empty()
-    
-    st.markdown("<div style='height:15px;'></div>", unsafe_allow_html=True)
-    
-    # ─── BOTTOM SUMMARY GRID ───
-    grid_col1, grid_col2, grid_col3, grid_col4 = st.columns(4)
-    detections_placeholder = grid_col1.empty()
-    zone_status_placeholder = grid_col2.empty()
-    rules_placeholder = grid_col3.empty()
-    system_placeholder = grid_col4.empty()
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="section-header">🗄️ PERSISTENT DATABASE LOGS</div>', unsafe_allow_html=True)
+        
+        # Query database and show styled HTML cards
+        import sqlite3
+        try:
+            conn = sqlite3.connect("data/alerts.db")
+            df_alerts = pd.read_sql_query("SELECT alert_id, timestamp, zone, risk_level, status, message FROM system_alerts ORDER BY timestamp DESC LIMIT 4", conn)
+            conn.close()
+            
+            if df_alerts.empty:
+                st.caption("No alerts persisted in database yet.")
+            else:
+                for _, r_val in df_alerts.iterrows():
+                    level = r_val['risk_level']
+                    lbl_color = '#ef4444' if level == 'CRITICAL' else '#f59e0b' if level == 'HIGH' else '#eab308' if level == 'MEDIUM' else '#22c55e'
+                    st.markdown(f"""
+                    <div style="background: rgba(17,24,39,0.55); border: 1px solid var(--border); border-left: 3px solid {lbl_color}; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; font-size: 11px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-weight: 700; color: #F8FAFC; font-family:'JetBrains Mono',monospace;">{r_val['alert_id']}</span>
+                            <span style="color: {lbl_color}; font-weight:800; font-size:8.5px; background:{lbl_color}1a; border: 1px solid {lbl_color}33; padding: 1px 6px; border-radius: 4px; letter-spacing:0.5px;">{level}</span>
+                        </div>
+                        <div style="color:var(--text2); margin-top:3px; font-size: 10px;">Zone: <b>{ZONE_LABELS.get(r_val['zone'], r_val['zone'])}</b> &nbsp;|&nbsp; Status: <span style="color:#22C55E;">{r_val['status']}</span></div>
+                        <div style="color:var(--muted); margin-top:3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{r_val['message']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+        except Exception:
+            pass
 
     import cv2
     
@@ -2403,7 +2980,7 @@ with tab_cctv:
     else:
         frame_processor.detector.use_simulation = True
     
-    # Helper to format summary grids
+    # Helper to format summary grids with premium glassmorphism
     def render_summary_grids(fps_val, p_count, h_count, rules_count, detections_list, zone_counts_dict):
         # DETECTIONS card
         p_c = max([d.confidence for d in detections_list if d.label == 'person'], default=0.0)
@@ -2414,20 +2991,20 @@ with tab_cctv:
         v_c_str = f"{v_c:.2f}" if v_c > 0 else "N/A"
         
         detections_placeholder.markdown(f"""
-        <div style="background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.06); 
-             border-radius:10px; padding:15px; min-height:115px; font-family:'Outfit',sans-serif;">
-            <div style="font-size:10px; color:#6b7d94; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; margin-bottom:8px;">
-                DETECTIONS
+        <div style="background:rgba(17,24,39,0.7); border:1px solid var(--border2); 
+             border-radius:12px; padding:12px 14px; min-height:110px; box-shadow:var(--shadow-sm);">
+            <div style="font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:8px;">
+                🔍 DETECTIONS
             </div>
-            <div style="font-size:12px; color:#fff; line-height:1.6;">
-                Person: <span style="color:#00ff41; font-weight:600;">{p_c_str}</span><br/>
-                Helmet: <span style="color:#00ff41; font-weight:600;">{h_c_str}</span><br/>
-                Vest: <span style="color:#00ff41; font-weight:600;">{v_c_str}</span>
+            <div style="font-size:11px; color:#F8FAFC; line-height:1.5; font-family:'JetBrains Mono',monospace;">
+                Person: <span style="color:#22C55E; font-weight:600;">{p_c_str}</span><br/>
+                Helmet: <span style="color:#22C55E; font-weight:600;">{h_c_str}</span><br/>
+                Vest: <span style="color:#22C55E; font-weight:600;">{v_c_str}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
-        # ZONE STATUS card — show all 5 zones from telemetry
+        # ZONE STATUS card
         z_a = zone_counts_dict.get('Zone_A', 0)
         z_b = zone_counts_dict.get('Zone_B', 0)
         z_c = zone_counts_dict.get('Zone_C', 0)
@@ -2435,51 +3012,51 @@ with tab_cctv:
         z_s = zone_counts_dict.get('Storage_Area', 0)
 
         def wc(n, alert=False):
-            col = '#ef4444' if alert else '#00ff41' if n == 0 else '#fff'
+            col = '#EF4444' if alert else '#22C55E' if n == 0 else '#F8FAFC'
             return f'<span style="font-weight:600;color:{col};">{n}w</span>'
 
         zone_status_placeholder.markdown(f"""
-        <div style="background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.06);
-             border-radius:10px; padding:15px; min-height:115px; font-family:'Outfit',sans-serif;">
-            <div style="font-size:10px; color:#6b7d94; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; margin-bottom:8px;">
-                ZONE STATUS
+        <div style="background:rgba(17,24,39,0.7); border:1px solid var(--border2);
+             border-radius:12px; padding:12px 14px; min-height:110px; box-shadow:var(--shadow-sm);">
+            <div style="font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:8px;">
+                👷 ZONE STATUS
             </div>
-            <div style="font-size:11px; color:#a0b4c8; line-height:1.7;">
-                Bat-4: {wc(z_a, z_a > 5)}&nbsp;
-                Bat-5: {wc(z_b)}&nbsp;
-                Bat-6: {wc(z_c)}<br/>
-                Reactor: {wc(z_r)}&nbsp;
-                Storage: {wc(z_s, z_s > 3)}
+            <div style="font-size:11px; color:var(--text2); line-height:1.6; font-family:'JetBrains Mono',monospace;">
+                Bat-4: {wc(z_a, z_a > 5)} &nbsp;
+                Bat-5: {wc(z_b)}<br/>
+                Bat-6: {wc(z_c)} &nbsp;
+                React: {wc(z_r)}<br/>
+                Store: {wc(z_s, z_s > 3)}
             </div>
         </div>
         """, unsafe_allow_html=True)
         
         # RULES card
         rules_placeholder.markdown(f"""
-        <div style="background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.06); 
-             border-radius:10px; padding:15px; min-height:115px; font-family:'Outfit',sans-serif;">
-            <div style="font-size:10px; color:#6b7d94; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; margin-bottom:8px;">
-                RULES
+        <div style="background:rgba(17,24,39,0.7); border:1px solid var(--border2); 
+             border-radius:12px; padding:12px 14px; min-height:110px; box-shadow:var(--shadow-sm);">
+            <div style="font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:8px;">
+                🛡️ COMPLIANCE
             </div>
-            <div style="font-size:12px; color:#fff; line-height:1.6;">
-                Scanned: <span style="font-weight:600; color:#fff;">6</span><br/>
-                Matched: <span style="color:{'#ef4444' if rules_count > 0 else '#00ff41'}; font-weight:600;">{rules_count}</span>
+            <div style="font-size:11px; color:#F8FAFC; line-height:1.5; font-family:'JetBrains Mono',monospace;">
+                Scanned: <span style="font-weight:600;">6</span><br/>
+                Matched: <span style="color:{'#EF4444' if rules_count > 0 else '#22C55E'}; font-weight:700;">{rules_count}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
         # SYSTEM card
         system_placeholder.markdown(f"""
-        <div style="background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.06); 
-             border-radius:10px; padding:15px; min-height:115px; font-family:'Outfit',sans-serif;">
-            <div style="font-size:10px; color:#6b7d94; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; margin-bottom:8px;">
-                SYSTEM
+        <div style="background:rgba(17,24,39,0.7); border:1px solid var(--border2); 
+             border-radius:12px; padding:12px 14px; min-height:110px; box-shadow:var(--shadow-sm);">
+            <div style="font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:8px;">
+                🖥️ SYSTEM
             </div>
-            <div style="font-size:20px; color:#00ff41; font-weight:800; line-height:1.2;">
+            <div style="font-size:20px; color:#22C55E; font-weight:800; line-height:1.2; text-shadow:0 0 10px rgba(34,197,94,0.3);">
                 100%
             </div>
-            <div style="font-size:10px; color:#6b7d94; margin-top:4px;">
-                Last 24 Hours
+            <div style="font-size:9.5px; color:var(--muted); margin-top:6px;">
+                Uptime Active
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -2550,6 +3127,41 @@ with tab_cctv:
             # Persist YOLO counts in session state so the entire dashboard updates dynamically
             st.session_state.yolo_worker_counts[selected_zone] = w_count
             latest[f"{selected_zone}_worker_count"] = w_count
+            
+            # Auto-evaluate alert conditions immediately
+            alert_conditions = evaluate_alert_conditions(
+                detections=active_dets,
+                violations=viol_count,
+                zone=selected_zone,
+                telemetry=latest
+            )
+            
+            if alert_conditions["should_alert"]:
+                # Incident-based debounce: only dispatch once per incident.
+                # An incident is identified by zone+severity pair.
+                alert_key = f"alert_active_{selected_zone}"
+                current_incident = f"{selected_zone}_{alert_conditions['severity']}"
+                if not st.session_state.get(alert_key, False) \
+                        or st.session_state.get("_last_incident") != current_incident:
+                    st.session_state[alert_key] = True
+                    st.session_state["_last_incident"] = current_incident
+                    # Reset safe-frame counter for this zone
+                    st.session_state[f"_safe_frames_{selected_zone}"] = 0
+                    dispatch_alerts(alert_conditions)
+                    _render_auto_banner(_auto_banner_placeholder)
+                else:
+                    # Already dispatched for this incident — reset safe-frame counter
+                    st.session_state[f"_safe_frames_{selected_zone}"] = 0
+            else:
+                # Hysteresis: require 10 consecutive safe frames before clearing the alert
+                safe_key = f"_safe_frames_{selected_zone}"
+                st.session_state[safe_key] = st.session_state.get(safe_key, 0) + 1
+                if st.session_state[safe_key] >= 10:
+                    if st.session_state.get(f"alert_active_{selected_zone}", False):
+                        clear_alert_if_safe(selected_zone)
+                        st.session_state[f"alert_active_{selected_zone}"] = False
+                        st.session_state["_last_incident"] = None
+                        _render_auto_banner(_auto_banner_placeholder)
             
             frame_placeholder.image(pil_img, width="stretch")
             
@@ -2903,17 +3515,51 @@ with col_alerts:
 
     alerts_list = alerts_list[-5:]
 
+    SEV_META = {
+        'CRITICAL': ('#ef4444', 'rgba(239,68,68,0.08)', '🔴'),
+        'HIGH':     ('#f97316', 'rgba(249,115,22,0.08)', '🟠'),
+        'MEDIUM':   ('#f59e0b', 'rgba(245,158,11,0.08)', '🟡'),
+        'LOW':      ('#22c55e', 'rgba(34,197,94,0.08)',  '🟢'),
+    }
+
     if alerts_list:
         for alert in reversed(alerts_list):
-            st.markdown(render_alert_card(alert, sim_start), unsafe_allow_html=True)
+            sc, sbg, sico = SEV_META.get(alert.risk_level, ('#6b7d94','rgba(107,125,148,0.08)','⚪'))
+            ts_str = alert.timestamp.strftime('%H:%M:%S') if hasattr(alert.timestamp, 'strftime') else str(alert.timestamp)[:8]
+            short_msg = (alert.message[:42] + '…') if len(alert.message) > 42 else alert.message
+            status_lbl = 'TRIGGERED' if alert.risk_level == 'CRITICAL' else 'ACKNOWLEDGED' if alert.risk_level == 'HIGH' else 'RESOLVED'
+            status_color = '#ef4444' if status_lbl == 'TRIGGERED' else '#f59e0b' if status_lbl == 'ACKNOWLEDGED' else '#22c55e'
+            st.markdown(f"""
+            <div style="background:{sbg};border-left:4px solid {sc};border-radius:6px;
+                        padding:9px 12px;margin-bottom:6px;font-family:'Outfit',sans-serif;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:8px;flex:1;">
+                  <span style="background:{sc};color:#fff;font-size:9px;font-weight:800;
+                               padding:2px 7px;border-radius:4px;white-space:nowrap;">{sico} {alert.risk_level}</span>
+                  <div>
+                    <div style="color:#fff;font-size:11px;font-weight:700;line-height:1.3;">{short_msg}</div>
+                    <div style="color:#64748b;font-size:10px;margin-top:1px;">
+                      {ZONE_LABELS.get(alert.zone, alert.zone)} &nbsp;|&nbsp; Score: {alert.risk_score:.0f}/20
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                  <span style="color:#64748b;font-size:10px;">{ts_str}</span>
+                  <span style="color:#64748b;font-size:12px;">📱 ✉️ 🔊</span>
+                  <span style="background:rgba(255,255,255,0.06);color:{status_color};font-size:9px;
+                               font-weight:800;padding:2px 8px;border-radius:4px;border:1px solid {status_color}44;">
+                    {status_lbl}</span>
+                </div>
+              </div>
+            </div>""", unsafe_allow_html=True)
     else:
         st.markdown(render_safe_card(), unsafe_allow_html=True)
 
     st.markdown("""
     <div style="display:flex;justify-content:space-between;align-items:center;
-    margin-top:10px;font-size:11px;font-family:'Outfit',sans-serif;">
-      <span style="color:#6b7d94;">Showing latest 5 alerts</span>
-      <a href="#" style="color:#00d4ff;text-decoration:none;font-weight:600;">View All Alerts →</a>
+    margin-top:8px;font-size:11px;font-family:'Outfit',sans-serif;">
+      <span style="color:#64748b;">Showing latest 5 alerts</span>
+      <a href="#" style="color:#00d4ff;text-decoration:none;font-weight:600;">View All →</a>
     </div>""", unsafe_allow_html=True)
 
 
@@ -2964,16 +3610,196 @@ with col_rules:
     </div>""", unsafe_allow_html=True)
 
 
+if tab_diag:
+    with tab_diag:
+        st.markdown('<div class="section-header">🛠️ SYSTEM INTEGRATIONS & DIAGNOSTICS</div>', unsafe_allow_html=True)
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+        
+        col_api, col_notif = st.columns(2)
+        
+        with col_api:
+            st.markdown('<div class="section-header">🌐 FASTAPI SERVICE STATUS</div>', unsafe_allow_html=True)
+            import requests
+            api_status = "🔴 Offline"
+            try:
+                res = requests.get("http://localhost:8000/api/v1/health", timeout=1.0)
+                if res.status_code == 200:
+                    api_status = "🟢 Operational (v1.0.0)"
+            except Exception:
+                pass
+            st.markdown(f"**FastAPI REST API Status:** `{api_status}`")
+            st.caption("External systems use this API to ingest telemetry and query alerts.")
+
+        with col_notif:
+            st.markdown('<div class="section-header">📢 NOTIFICATION CHANNELS</div>', unsafe_allow_html=True)
+            import os
+            email_configured = "🟢 Configured" if os.environ.get("SENDER_EMAIL") and os.environ.get("SENDER_PASSWORD") else "🟡 Simulation Mode"
+            telegram_configured = "🟢 Configured" if os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID") else "🟡 Simulation Mode"
+            st.markdown(f"**Email Channel (SMTP):** `{email_configured}`")
+            st.markdown(f"**Telegram Bot (SMS):** `{telegram_configured}`")
+            st.caption("Simulation Mode prints alerts to terminal console rather than sending real messages.")
+
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="section-header">🗄️ SQLite DATABASE MONITOR (data/alerts.db)</div>', unsafe_allow_html=True)
+        
+        # Test Alert Section
+        test_btn, clear_btn = st.columns([1, 1])
+        with test_btn:
+            if st.button("🚨 Trigger Test Alert (Writes to DB & Dispatches)", use_container_width=True):
+                test_row = pd.Series({'timestamp': datetime.now()})
+                test_result = {
+                    'risk_level': 'HIGH',
+                    'risk_score': 10,
+                    'zone': 'Reactor_Area',
+                    'factors': ['TEST_VIOLATION'],
+                    'compound_factors': [],
+                    'message': 'This is a test warning alert triggered manually from the integrations dashboard.'
+                }
+                alert_system.trigger_alert(test_row, test_result)
+                st.toast("Test alert triggered! Check database and/or terminal console.", icon="🚨")
+                
+        with clear_btn:
+            if st.button("🗑️ Clear Alerts Database", use_container_width=True):
+                import sqlite3
+                try:
+                    conn = sqlite3.connect("data/alerts.db")
+                    conn.execute("DELETE FROM system_alerts")
+                    conn.commit()
+                    conn.close()
+                    st.toast("Alerts database cleared successfully!", icon="🗑️")
+                except Exception as e:
+                    st.error(f"Error clearing database: {e}")
+                    
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+        
+        # Query database and show styled HTML table
+        import sqlite3
+        try:
+            conn = sqlite3.connect("data/alerts.db")
+            df_alerts = pd.read_sql_query("SELECT alert_id, timestamp, zone, risk_level, risk_score, status, message FROM system_alerts ORDER BY timestamp DESC", conn)
+            conn.close()
+            
+            if df_alerts.empty:
+                st.info("No persistent alerts stored in `data/alerts.db` yet. Trigger one via the CCTV feed or the button above.")
+            else:
+                html_table = """
+                <div style="overflow-x:auto; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; font-family: 'Outfit', sans-serif; font-size: 13px; color: #a0b4c8; background: rgba(255,255,255,0.015);">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); text-align: left;">
+                            <th style="padding: 10px 12px; color: #fff; font-weight: 700;">ID</th>
+                            <th style="padding: 10px 12px; color: #fff; font-weight: 700;">Timestamp</th>
+                            <th style="padding: 10px 12px; color: #fff; font-weight: 700;">Zone</th>
+                            <th style="padding: 10px 12px; color: #fff; font-weight: 700;">Severity</th>
+                            <th style="padding: 10px 12px; color: #fff; font-weight: 700;">Score</th>
+                            <th style="padding: 10px 12px; color: #fff; font-weight: 700;">Status</th>
+                            <th style="padding: 10px 12px; color: #fff; font-weight: 700;">Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                """
+                
+                COLOR_SEV = {
+                    'CRITICAL': '#ef4444',
+                    'HIGH': '#f59e0b',
+                    'MEDIUM': '#eab308',
+                    'LOW': '#22c55e'
+                }
+                
+                for _, row_val in df_alerts.iterrows():
+                    sev = row_val['risk_level']
+                    status = row_val['status']
+                    sev_color = COLOR_SEV.get(sev, '#a0b4c8')
+                    status_color = '#ef4444' if status == 'ACTIVE' else '#00d4ff' if status == 'ACKNOWLEDGED' else '#22c55e'
+                    
+                    try:
+                        t_str = datetime.fromisoformat(row_val['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        t_str = str(row_val['timestamp'])
+                    
+                    html_table += f"""
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.2s;">
+                        <td style="padding: 10px 12px; font-weight: 800; color: #fff;">{row_val['alert_id']}</td>
+                        <td style="padding: 10px 12px;">{t_str}</td>
+                        <td style="padding: 10px 12px; font-weight: 600;">{row_val['zone']}</td>
+                        <td style="padding: 10px 12px;"><span style="color: {sev_color}; font-weight: 700;">● {sev}</span></td>
+                        <td style="padding: 10px 12px; font-weight: 700;">{row_val['risk_score']}</td>
+                        <td style="padding: 10px 12px;"><span style="padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; background: {status_color}22; color: {status_color}; border: 1px solid {status_color}44;">{status}</span></td>
+                        <td style="padding: 10px 12px; max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{row_val['message']}">{row_val['message']}</td>
+                    </tr>
+                    """
+                    
+                html_table += """
+                    </tbody>
+                </table>
+                </div>
+                """
+                # Strip leading whitespace on each line to prevent markdown from parsing it as raw code blocks
+                clean_lines = [line.strip() for line in html_table.split("\n")]
+                clean_html = "".join(clean_lines)
+                st.markdown(clean_html, unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Error reading database: {e}")
+
+
 # ─── FOOTER ──────────────────────────────────────────────────────────────────
-st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-st.markdown("""
-<div style="text-align:center;padding:10px 0;font-size:11px;color:#6b7d94;
-letter-spacing:0.5px;font-family:'Outfit',sans-serif;
-border-top:1px solid rgba(255,255,255,0.05);margin-top:8px;">
-  SurakshaAI v3.0 &nbsp;│&nbsp; Built for Zero-Harm Operations &nbsp;│&nbsp; © 2026 Industrial Safety Intelligence Platform
+st.markdown("</div>", unsafe_allow_html=True)  # close main-content
+
+# ─── BOTTOM SIMULATION CONTROLS BAR ──────────────────────────────────────────
+st.markdown("""<div class="sim-bar">
+  <span style="font-weight:800;color:var(--blue);font-size:11px;letter-spacing:1px;text-transform:uppercase;">⚙️ CONTROL PANEL</span>
+  <span style="color:var(--border);font-size:16px;">│</span>
 </div>""", unsafe_allow_html=True)
 
-st.markdown('</div>', unsafe_allow_html=True)  # close main-content
+_sim_bc1, _sim_bc2, _sim_bc3, _sim_bc4, _sim_bc5, _sim_bc6, _sim_bc7 = st.columns([1.2, 1.0, 1.0, 0.5, 0.6, 0.6, 0.6])
+with _sim_bc1:
+    _sim_play = st.toggle("▶️ Autoplay", value=st.session_state.sim_play_active, key="sim_play_bottom")
+    if _sim_play != st.session_state.sim_play_active:
+        st.session_state.sim_play_active = _sim_play
+        st.rerun()
+with _sim_bc2:
+    if st.button("⏩ +20 min", key="ff_btn_bar", use_container_width=True, help="Fast-forward 20 min"):
+        st.session_state.scenario_offset_min += 20
+        st.rerun()
+with _sim_bc3:
+    if st.button("🔄 Reset", key="rst_btn_bar", use_container_width=True, help="Reset to minute 0"):
+        st.session_state.scenario_start_time = datetime.now()
+        st.session_state.scenario_offset_min = 20
+        st.session_state.compound_risk_active = False
+        st.session_state.simulate_active = False
+        st.session_state.sim_stage = 'normal'
+        st.session_state.ack_critical = False
+        st.session_state.ack_medium = False
+        st.session_state.ack_time = None
+        st.session_state.recovering = False
+        st.session_state.compound_risk_first_seen = None
+        st.session_state.sim_play_active = False
+        st.rerun()
+with _sim_bc4:
+    st.markdown(f"""<div style='padding-top:6px;'><span style='color:#64748b;font-size:11px;'>Speed:</span></div>""", unsafe_allow_html=True)
+with _sim_bc5:
+    if st.button("1x", key="spd_1x", use_container_width=True): pass
+with _sim_bc6:
+    if st.button("10x", key="spd_10x", use_container_width=True):
+        st.session_state.scenario_offset_min += 10
+        st.rerun()
+with _sim_bc7:
+    if st.button("30x", key="spd_30x", use_container_width=True):
+        st.session_state.scenario_offset_min += 30
+        st.rerun()
+
+_scenario_label = "Visakhapatnam Pattern" if st.session_state.compound_risk_active else "Monitoring"
+st.markdown(f"""
+<div style='background:#0a1628;border-top:1px solid #1e3a5f;padding:5px 20px;
+             display:flex;justify-content:space-between;font-size:11px;color:#64748b;
+             font-family:"Outfit",sans-serif;'>
+  <span>SurakshaAI v3.0 &nbsp;|&nbsp; Zero-Harm Operations</span>
+  <span>Scenario: <b style='color:#e2e8f0;'>{_scenario_label}</b></span>
+  <span>Elapsed: <b style='color:#e2e8f0;'>{_scenario_min_now:.1f} min</b></span>
+  <span>Status: <b style='color:{"#ef4444" if st.session_state.compound_risk_active else "#22c55e"};'>
+    {"Active Simulation" if st.session_state.compound_risk_active else "NOMINAL"}</b></span>
+</div>
+""", unsafe_allow_html=True)
 
 
 # ─── AUTOPLAY SIMULATION TICK ─────────────────────────────────────────────────
