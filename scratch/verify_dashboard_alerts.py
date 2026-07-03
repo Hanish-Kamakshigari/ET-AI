@@ -67,8 +67,6 @@ for video_path, selected_zone, frame_indices in tests:
             alerts_list.append("⚠️ WARNING - INADEQUATE FUME EXTRACTION: Inadequate Fume Extraction: The visible \"yellowish haze\" indicates poor ventilation, leading to an unsafe build-up of toxic welding fumes.")
             
         if selected_zone == 'Storage_Area':
-            alerts_list.append("⚠️ WARNING - TOXIC CHEMICAL HAZE: Visible chemical haze detected in the upper racks, indicating potential leakage of stored chemical drums.")
-            alerts_list.append("⚠️ CRITICAL - GAS DETECTOR ALARM: Stationary gas detector alarm unit has triggered. High VOC levels detected in the aisle. Evacuate if gas levels exceed 40 ppm.")
             alerts_list.append("⚠️ WARNING - AREA OVERCROWDING: More than 9 workers detected in the warehouse aisle under hazardous gas telemetry. Immediate shift rotation or aisle clearance required.")
             
         show_critical_alert = False

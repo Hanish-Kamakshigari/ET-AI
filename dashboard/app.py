@@ -2576,7 +2576,7 @@ with tab_cctv:
             # Render nominal / warning cards
             alerts_list = []
             
-            if viol_count > 0 and selected_zone not in ('Zone_A', 'Reactor_Area'):
+            if viol_count > 0 and selected_zone not in ('Zone_A', 'Reactor_Area', 'Storage_Area'):
                 if selected_zone == 'Zone_C':
                     missing_vests = w_count - len([d for d in active_dets if d.label == 'vest'])
                     msg = f"PPE violation: {missing_vests} worker missing hi-vis vest"
@@ -2646,34 +2646,6 @@ with tab_cctv:
                 """)
                 
             if selected_zone == 'Storage_Area':
-                alerts_list.append("""
-                <div style="background: rgba(255,255,255,0.03); 
-                            border-left: 4px solid #eab308;
-                            padding: 12px 16px;
-                            margin: 4px 0;
-                            border-radius: 8px;
-                            font-family:'Outfit',sans-serif;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom:4px;">
-                        <span style="font-weight: 600; color: #eab308; font-size:12px;">⚠️ WARNING - TOXIC CHEMICAL HAZE</span>
-                        <span style="color: #6b7d94; font-size: 0.8rem;">ACTIVE</span>
-                    </div>
-                    <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">Visible chemical haze detected in the upper racks, indicating potential leakage of stored chemical drums.</div>
-                </div>
-                """)
-                alerts_list.append("""
-                <div style="background: rgba(255,255,255,0.03); 
-                            border-left: 4px solid #ef4444;
-                            padding: 12px 16px;
-                            margin: 4px 0;
-                            border-radius: 8px;
-                            font-family:'Outfit',sans-serif;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom:4px;">
-                        <span style="font-weight: 600; color: #ef4444; font-size:12px;">⚠️ CRITICAL - GAS DETECTOR ALARM</span>
-                        <span style="color: #6b7d94; font-size: 0.8rem;">ACTIVE</span>
-                    </div>
-                    <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">Stationary gas detector alarm unit has triggered. High VOC levels detected in the aisle. Evacuate if gas levels exceed 40 ppm.</div>
-                </div>
-                """)
                 alerts_list.append("""
                 <div style="background: rgba(255,255,255,0.03); 
                             border-left: 4px solid #eab308;
