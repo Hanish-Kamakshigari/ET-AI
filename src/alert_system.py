@@ -383,9 +383,9 @@ class AlertSystem:
         self.running = False
 
 # Singleton instance
-alert_system = None
+_alert_system_instance = None
 def get_alert_system():
-    global alert_system
-    if alert_system is None:
-        alert_system = AlertSystem()
-    return alert_system
+    global _alert_system_instance
+    if _alert_system_instance is None:
+        _alert_system_instance = AlertSystem()
+    return _alert_system_instance
