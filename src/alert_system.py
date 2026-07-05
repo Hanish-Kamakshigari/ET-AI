@@ -16,6 +16,245 @@ import pandas as pd
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from dataclasses import dataclass, field
+from enum import Enum
+from datetime import datetime
+
+class AlertStatus(Enum):
+    TRIGGERED = "Triggered"    # Just detected
+    ACTIVE = "Active"          # Validated and ongoing
+    ACKNOWLEDGED = "Acknowledged" # Operator knows about it
+    RESOLVED = "Resolved"      # Danger is gone
+
+class AlertSeverity(Enum):
+    LOW = (1, "#3b82f6", "Low")
+    MEDIUM = (2, "#eab308", "Medium")
+    HIGH = (3, "#f97316", "High")
+    CRITICAL = (4, "#ef4444", "Critical")
+
+@dataclass
+class SafetyAlert:
+    alert_id: str
+    severity: AlertSeverity
+    message: str
+    zone: str
+    start_time: datetime = field(default_factory=datetime.now)
+    end_time: datetime = None
+    status: AlertStatus = AlertStatus.TRIGGERED
+    acknowledged_by: str = None
+    frame_counter: int = 1
+
+    @property
+    def duration(self):
+        end = self.end_time or datetime.now()
+        return (end - self.start_time).total_seconds()
+
+class AlertManager:
+    def __init__(self):
+        self.active_alerts = {}  # {alert_id: SafetyAlert}
+        self.history = []         # List of resolved alerts for auditing
+        self.persistence_threshold = 15 # Frames required to trigger alert
+
+    def map_severity(self, label):
+        mapping = {
+            "no_helmet": AlertSeverity.MEDIUM,
+            "no_vest": AlertSeverity.MEDIUM,
+            "gas_leak": AlertSeverity.HIGH,
+            "overheating": AlertSeverity.CRITICAL,
+            "fire": AlertSeverity.CRITICAL,
+            "smoke": AlertSeverity.CRITICAL,
+            "zone_violation": AlertSeverity.CRITICAL,
+            "overpressure": AlertSeverity.HIGH,
+        }
+        return mapping.get(label, None)
+
+    def get_message(self, label):
+        msg_map = {
+            "no_helmet": "Worker detected without helmet",
+            "no_vest": "Worker detected without hi-vis vest",
+            "gas_leak": "Gas leak detected by sensor overlay",
+            "overheating": "Critical equipment overheating detected",
+            "fire": "Fire hazard detected in active area",
+            "smoke": "Smoke detected in active area",
+            "zone_violation": "Unauthorized worker in restricted zone",
+            "overpressure": "OVERPRESSURE WARNING — Gauge in red zone",
+        }
+        return msg_map.get(label, f"Safety violation: {label} detected")
+
+    def update(self, current_detections, zone):
+        """
+        The main loop called every frame.
+        """
+        # 1. Handle New/Ongoing Detections
+        detected_ids = []
+        for det in current_detections:
+            is_violation = getattr(det, 'zone_violation', False)
+            label = "zone_violation" if is_violation else det.label
+            
+            severity = self.map_severity(label)
+            if severity is None:
+                continue
+                
+            alert_id = f"{zone}_{label}"
+            detected_ids.append(alert_id)
+
+            if alert_id not in self.active_alerts:
+                # New potential alert - Start tracking
+                self.active_alerts[alert_id] = SafetyAlert(
+                    alert_id=alert_id,
+                    severity=severity,
+                    message=self.get_message(label),
+                    zone=zone,
+                    status=AlertStatus.TRIGGERED,
+                    frame_counter=1
+                )
+            else:
+                # Ongoing alert - increment frame counter
+                alert = self.active_alerts[alert_id]
+                if alert.status == AlertStatus.TRIGGERED:
+                    alert.frame_counter += 1
+                    if alert.frame_counter >= self.persistence_threshold:
+                        alert.status = AlertStatus.ACTIVE
+
+        # 2. Clean up Resolved Alerts
+        for aid in list(self.active_alerts.keys()):
+            alert = self.active_alerts[aid]
+            # Only resolve alerts for the active zone
+            if alert.zone == zone and aid not in detected_ids:
+                if alert.status == AlertStatus.TRIGGERED:
+                    # Flicker / transient detection that didn't persist - discard silently
+                    self.active_alerts.pop(aid)
+                else:
+                    # Active/Acknowledged alert is now resolved
+                    alert = self.active_alerts.pop(aid)
+                    alert.status = AlertStatus.RESOLVED
+                    alert.end_time = datetime.now()
+                    self.history.append(alert)
+
+        # 3. Check for escalation/automatic promotion
+        for alert in self.active_alerts.values():
+            if alert.status in (AlertStatus.ACTIVE, AlertStatus.ACKNOWLEDGED):
+                dur = alert.duration
+                if alert.severity == AlertSeverity.LOW and dur > 60:
+                    alert.severity = AlertSeverity.MEDIUM
+                    alert.message = alert.message + " (Escalated to Medium)"
+                elif alert.severity == AlertSeverity.MEDIUM and dur > 120:
+                    alert.severity = AlertSeverity.HIGH
+                    alert.message = alert.message + " (Escalated to High)"
+                elif alert.severity == AlertSeverity.HIGH and dur > 180:
+                    alert.severity = AlertSeverity.CRITICAL
+                    alert.message = alert.message + " (CRITICAL ESCALATION)"
+
+    def acknowledge(self, alert_id, user_name):
+        if alert_id in self.active_alerts:
+            self.active_alerts[alert_id].status = AlertStatus.ACKNOWLEDGED
+            self.active_alerts[alert_id].acknowledged_by = user_name
+
+def render_improved_alerts(placeholder, alert_manager):
+    import streamlit as st
+    if not alert_manager.active_alerts:
+        nominal_html = (
+            '<div style="background: rgba(34, 197, 94, 0.04); backdrop-filter: blur(12px); border: 1px solid rgba(34, 197, 94, 0.2); border-radius: 12px; padding: 12px 14px; text-align: center; font-family: \'Outfit\', sans-serif;">'
+            '<div style="font-size: 20px; margin-bottom: 4px;">🟢</div>'
+            '<div style="color: #22c55e; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">All Zones Nominal</div>'
+            '<div style="color: #94a3b8; font-size: 11px; margin-top: 3px; line-height: 1.4;">All monitored zones are operating normally.</div>'
+            '</div>'
+        )
+        placeholder.markdown(nominal_html, unsafe_allow_html=True)
+        return
+
+    # Sort by severity (Critical first)
+    sorted_alerts = sorted(
+        alert_manager.active_alerts.values(),
+        key=lambda x: x.severity.value[0],
+        reverse=True
+    )
+
+    cards_html = []
+    
+    # Show up to 3 alerts
+    visible_alerts = sorted_alerts[:3]
+    extra_count = len(sorted_alerts) - 3
+    
+    # We map zone keys to clean readable labels
+    ZONE_LABELS_MAP = {
+        'Zone_A': 'Battery-4',
+        'Zone_B': 'Battery-5',
+        'Zone_C': 'Battery-6',
+        'Reactor_Area': 'Reactor Block',
+        'Storage_Area': 'Storage Area',
+        'Control_Room': 'Control Room'
+    }
+
+    for alert in visible_alerts:
+        color = alert.severity.value[1]
+        severity_label = alert.severity.value[2]
+        
+        sev_icons = {
+            "Low": "ℹ️",
+            "Medium": "🟡",
+            "High": "🟠",
+            "Critical": "🚨"
+        }
+        sev_icon = sev_icons.get(severity_label, "⚠️")
+
+        # Format duration (e.g., "00:12s")
+        dur = int(alert.duration)
+        time_str = f"{dur // 60:02d}:{dur % 60:02d}s"
+
+        # Status badge style
+        if alert.status in (AlertStatus.ACTIVE, AlertStatus.TRIGGERED):
+            status_bg = 'rgba(239, 68, 68, 0.15)'
+            status_color = '#ef4444'
+            status_border = 'rgba(239, 68, 68, 0.3)'
+        elif alert.status == AlertStatus.ACKNOWLEDGED:
+            status_bg = 'rgba(245, 158, 11, 0.15)'
+            status_color = '#f59e0b'
+            status_border = 'rgba(245, 158, 11, 0.3)'
+        else:
+            status_bg = 'rgba(34, 197, 94, 0.15)'
+            status_color = '#22c55e'
+            status_border = 'rgba(34, 197, 94, 0.3)'
+
+        # Acknowledge button or badge
+        if alert.status == AlertStatus.ACKNOWLEDGED:
+            ack_btn = f"""<span style="background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; text-transform: uppercase;">✔ ACKNOWLEDGED</span>"""
+        else:
+            ack_btn = f"""<a href="?ack_alert={alert.alert_id}" target="_self" style="text-decoration: none;"><span style="background: {color}; color: #fff; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase;">ACKNOWLEDGE</span></a>"""
+
+        zone_lbl = ZONE_LABELS_MAP.get(alert.zone, alert.zone)
+
+        card_html = (
+            f'<div style="background: rgba(17, 24, 39, 0.6); backdrop-filter: blur(12px); border: 1px solid {color}44; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; font-family: \'Outfit\', sans-serif;">'
+            f'<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">'
+            f'<span style="display: flex; align-items: center; gap: 4px; font-weight: 800; color: {color}; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;">'
+            f'{sev_icon} {severity_label}'
+            f'</span>'
+            f'<span style="background: {status_bg}; color: {status_color}; border: 1px solid {status_border}; border-radius: 4px; padding: 1px 6px; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">'
+            f'{alert.status.value}'
+            f'</span>'
+            f'</div>'
+            f'<div style="color: #fff; font-size: 12px; font-weight: 700; margin-bottom: 2px;">{alert.message}</div>'
+            f'<div style="display: flex; justify-content: space-between; align-items: center; color: #64748b; font-size: 10px; margin-top: 6px;">'
+            f'<span>Zone: <b style="color: #cbd5e1;">{zone_lbl}</b> | Duration: <b style="color: #cbd5e1;">{time_str}</b></span>'
+            f'{ack_btn}'
+            f'</div>'
+            f'</div>'
+        )
+        cards_html.append(card_html)
+
+    if extra_count > 0:
+        extra_card = (
+            f'<div style="background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px; text-align: center; color: #94a3b8; font-size: 11px; font-family: \'Outfit\', sans-serif; margin-bottom: 8px;">'
+            f'+ {extra_count} More Alerts'
+            f'</div>'
+        )
+        cards_html.append(extra_card)
+
+    placeholder.markdown("\n".join(cards_html), unsafe_allow_html=True)
+
+    placeholder.markdown("\n".join(cards_html), unsafe_allow_html=True)
+
 class AlertSystem:
     """
     Multi-channel alert system with escalation paths and local SQLite persistence.

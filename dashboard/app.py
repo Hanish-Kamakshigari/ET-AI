@@ -181,6 +181,9 @@ class CompoundRiskEngine:
 
 
 # ─── ALERT SYSTEM ─────────────────────────────────────────────────────────────
+import importlib
+import src.alert_system
+importlib.reload(src.alert_system)
 from src.alert_system import AlertSystem as PersistentAlertSystem, evaluate_alert_conditions, dispatch_alerts, clear_alert_if_safe
 
 class AlertSystem:
@@ -1535,6 +1538,256 @@ svg{{width:100%;display:block;}}
 </body></html>"""
 
 
+def get_alert_title_fallback(severity, msg, zone):
+    if 'compatibility' in msg.lower() or 'triple-threat' in msg.lower():
+        return "Compatibility Violation"
+    if 'smoke' in msg.lower() or 'fire' in msg.lower():
+        return "Fire / Smoke Detection"
+    if 'ppe' in msg.lower() or 'helmet' in msg.lower() or 'vest' in msg.lower():
+        return "PPE Violation"
+    if 'gas' in msg.lower():
+        return "Gas Telemetry Alert"
+    if 'overpressure' in msg.lower() or 'pressure' in msg.lower():
+        return "Overpressure Threat"
+    if 'intruder' in msg.lower() or 'intrusion' in msg.lower():
+        return "Restricted Area Intrusion"
+    return f"{severity.title()} Alert"
+
+
+def render_live_alerts_sidebar(placeholder, selected_zone, viol_count=0, w_count=0, active_dets=None, overpressure_active=False):
+    if active_dets is None:
+        active_dets = []
+        
+    active_alerts = []
+    
+    # 1. Get database and mock active alerts
+    try:
+        db_active = alert_system.get_active_alerts()
+        for a in db_active:
+            alert_id = a.get('alert_id', 'ALT-000')
+            severity = a.get('risk_level', 'LOW')
+            msg = a.get('message', '')
+            zone = a.get('zone', 'Unknown')
+            ts = a.get('timestamp', '')
+            status = a.get('status', 'ACTIVE')
+            
+            # Format timestamp
+            if 'T' in ts:
+                try:
+                    ts = ts.split('T')[1][:8]
+                except Exception:
+                    pass
+            elif len(ts) > 8:
+                ts = ts[:8]
+                
+            active_alerts.append({
+                'id': alert_id,
+                'severity': severity,
+                'title': get_alert_title_fallback(severity, msg, zone),
+                'message': msg,
+                'zone': zone,
+                'timestamp': ts,
+                'status': status
+            })
+    except Exception:
+        pass
+
+    # 2. Get current livestream active alert if any
+    if st.session_state.get('banner_visible') and st.session_state.get('active_alert'):
+        live_alert = st.session_state.active_alert
+        severity = live_alert.get('severity', 'LOW')
+        zone = live_alert.get('zone', 'Unknown')
+        
+        # Check if already exists to avoid duplicate
+        exists = any(a['zone'] == zone and a['severity'] == severity for a in active_alerts)
+        if not exists:
+            ts = live_alert.get('timestamp', '')
+            if 'T' in ts:
+                try:
+                    ts = ts.split('T')[1][:8]
+                except Exception:
+                    pass
+            elif len(ts) > 8:
+                ts = ts[:8]
+                
+            active_alerts.append({
+                'id': f"ALT-LIVE-{zone}",
+                'severity': severity,
+                'title': get_alert_title_fallback(severity, live_alert.get('summary', ''), zone),
+                'message': live_alert.get('summary', ''),
+                'zone': zone,
+                'timestamp': ts,
+                'status': 'ACTIVE'
+            })
+
+    # 3. Local CCTV/Video warnings
+    if selected_zone:
+        # PPE Violations
+        if viol_count > 0 and selected_zone not in ('Zone_A', 'Reactor_Area', 'Storage_Area'):
+            if selected_zone == 'Zone_C':
+                missing_vests = w_count - len([d for d in active_dets if d.label == 'vest'])
+                msg = f"PPE violation: {missing_vests} worker missing hi-vis vest"
+            else:
+                missing_helmets = w_count - len([d for d in active_dets if d.label == 'helmet'])
+                msg = f"PPE violation detected: {missing_helmets} worker(s) missing helmet. Immediate compliance check required."
+            
+            if not any("PPE" in a['title'] and a['zone'] == selected_zone for a in active_alerts):
+                active_alerts.append({
+                    'id': f"ALT-PPE-{selected_zone}",
+                    'severity': 'MEDIUM',
+                    'title': 'PPE Violation',
+                    'message': msg,
+                    'zone': selected_zone,
+                    'timestamp': datetime.now().strftime("%H:%M:%S"),
+                    'status': 'ACTIVE'
+                })
+        
+        # Overpressure
+        if overpressure_active:
+            msg = "OVERPRESSURE WARNING — Gauge in red zone"
+            if not any("Overpressure" in a['title'] and a['zone'] == selected_zone for a in active_alerts):
+                active_alerts.append({
+                    'id': f"ALT-PRES-{selected_zone}",
+                    'severity': 'HIGH',
+                    'title': 'Overpressure',
+                    'message': msg,
+                    'zone': selected_zone,
+                    'timestamp': datetime.now().strftime("%H:%M:%S"),
+                    'status': 'ACTIVE'
+                })
+                
+        # Reactor Area custom warnings
+        if selected_zone == 'Reactor_Area':
+            msg1 = "Bystander Flash Burns: The second worker is far too close to the welding arc without any eye or face protection."
+            if not any("Flash Burns" in a['title'] for a in active_alerts):
+                active_alerts.append({
+                    'id': f"ALT-BURN-{selected_zone}",
+                    'severity': 'HIGH',
+                    'title': 'Bystander Flash Burns',
+                    'message': msg1,
+                    'zone': selected_zone,
+                    'timestamp': datetime.now().strftime("%H:%M:%S"),
+                    'status': 'ACTIVE'
+                })
+            msg2 = "Inadequate Fume Extraction: The visible \"yellowish haze\" indicates poor ventilation, leading to an unsafe build-up of toxic welding fumes."
+            if not any("Fume Extraction" in a['title'] for a in active_alerts):
+                active_alerts.append({
+                    'id': f"ALT-FUME-{selected_zone}",
+                    'severity': 'HIGH',
+                    'title': 'Inadequate Fume Extraction',
+                    'message': msg2,
+                    'zone': selected_zone,
+                    'timestamp': datetime.now().strftime("%H:%M:%S"),
+                    'status': 'ACTIVE'
+                })
+                
+        # Storage Area custom warnings
+        if selected_zone == 'Storage_Area':
+            msg = "More than 9 workers detected in the warehouse aisle under hazardous gas telemetry. Immediate shift rotation or aisle clearance required."
+            if not any("Overcrowding" in a['title'] for a in active_alerts):
+                active_alerts.append({
+                    'id': f"ALT-CROWD-{selected_zone}",
+                    'severity': 'HIGH',
+                    'title': 'Area Overcrowding',
+                    'message': msg,
+                    'zone': selected_zone,
+                    'timestamp': datetime.now().strftime("%H:%M:%S"),
+                    'status': 'ACTIVE'
+                })
+
+    # Sort: highest severity first
+    severity_order = {'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1}
+    active_alerts.sort(key=lambda x: severity_order.get(x['severity'], 0), reverse=True)
+    
+    # Render
+    if not active_alerts:
+        nominal_html = """
+        <div style="background: rgba(34, 197, 94, 0.04); backdrop-filter: blur(12px); border: 1px solid rgba(34, 197, 94, 0.2); border-radius: 12px; padding: 12px 14px; text-align: center; font-family: 'Outfit', sans-serif;">
+            <div style="font-size: 20px; margin-bottom: 4px;">🟢</div>
+            <div style="color: #22c55e; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">No Active Alerts</div>
+            <div style="color: #94a3b8; font-size: 11px; margin-top: 3px; line-height: 1.4;">All monitored zones are operating normally.</div>
+        </div>
+        """
+        placeholder.markdown(nominal_html, unsafe_allow_html=True)
+    else:
+        # Display up to 3 alerts
+        visible_alerts = active_alerts[:3]
+        extra_count = len(active_alerts) - 3
+        
+        cards_html = []
+        for a in visible_alerts:
+            severity = a['severity']
+            status = a['status']
+            
+            # Severity mapping
+            if severity == 'CRITICAL':
+                sev_icon = '🚨'
+                sev_color = '#ef4444'
+                border_color = 'rgba(239, 68, 68, 0.4)'
+                glow_shadow = '0 0 10px rgba(239, 68, 68, 0.25)' if status in ('ACTIVE', 'TRIGGERED') else 'none'
+            elif severity == 'HIGH':
+                sev_icon = '⚠️'
+                sev_color = '#f97316'
+                border_color = 'rgba(249, 115, 22, 0.4)'
+                glow_shadow = '0 0 10px rgba(249, 115, 22, 0.2)' if status in ('ACTIVE', 'TRIGGERED') else 'none'
+            elif severity == 'MEDIUM':
+                sev_icon = '⚠️'
+                sev_color = '#eab308'
+                border_color = 'rgba(234, 179, 8, 0.4)'
+                glow_shadow = '0 0 10px rgba(234, 179, 8, 0.15)' if status in ('ACTIVE', 'TRIGGERED') else 'none'
+            else: # LOW
+                sev_icon = 'ℹ️'
+                sev_color = '#3b82f6'
+                border_color = 'rgba(59, 130, 246, 0.4)'
+                glow_shadow = '0 0 5px rgba(59, 130, 246, 0.1)' if status in ('ACTIVE', 'TRIGGERED') else 'none'
+                
+            # Status badge styling
+            if status in ('ACTIVE', 'TRIGGERED'):
+                status_bg = 'rgba(239, 68, 68, 0.15)'
+                status_color = '#ef4444'
+                status_border = 'rgba(239, 68, 68, 0.3)'
+            elif status == 'ACKNOWLEDGED':
+                status_bg = 'rgba(245, 158, 11, 0.15)'
+                status_color = '#f59e0b'
+                status_border = 'rgba(245, 158, 11, 0.3)'
+            else:
+                status_bg = 'rgba(34, 197, 94, 0.15)'
+                status_color = '#22c55e'
+                status_border = 'rgba(34, 197, 94, 0.3)'
+                
+            zone_label = ZONE_LABELS.get(a['zone'], a['zone'])
+            
+            card = f"""
+            <div style="background: rgba(17, 24, 39, 0.6); backdrop-filter: blur(12px); border: 1px solid {border_color}; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; font-family: 'Outfit', sans-serif; box-shadow: {glow_shadow};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="display: flex; align-items: center; gap: 4px; font-weight: 800; color: {sev_color}; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;">
+                        {sev_icon} {severity}
+                    </span>
+                    <span style="background: {status_bg}; color: {status_color}; border: 1px solid {status_border}; border-radius: 4px; padding: 1px 6px; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
+                        {status}
+                    </span>
+                </div>
+                <div style="color: #fff; font-size: 12px; font-weight: 700; margin-bottom: 2px;">{a['title']}</div>
+                <div style="color: #94a3b8; font-size: 10.5px; line-height: 1.35; margin-bottom: 4px;">{a['message']}</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; color: #64748b; font-size: 10px;">
+                    <span>Zone: <b style="color: #cbd5e1;">{zone_label}</b></span>
+                    <span>{a['timestamp']}</span>
+                </div>
+            </div>
+            """
+            cards_html.append(card)
+            
+        if extra_count > 0:
+            extra_card = f"""
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px; text-align: center; color: #94a3b8; font-size: 11px; font-family: 'Outfit', sans-serif; margin-bottom: 8px;">
+                + {extra_count} More Alerts
+            </div>
+            """
+            cards_html.append(extra_card)
+            
+        placeholder.markdown("\n".join(cards_html), unsafe_allow_html=True)
+
+
 # ─── DATA LOADING ─────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
@@ -1583,6 +1836,14 @@ engine       = init_engine()
 alert_system = init_alerts(engine, df)
 frame_processor = init_frame_processor()
 
+import importlib
+import src.alert_system
+importlib.reload(src.alert_system)
+from src.alert_system import AlertManager, AlertStatus, AlertSeverity, SafetyAlert, render_improved_alerts
+if 'alert_manager' not in st.session_state:
+    st.session_state.alert_manager = AlertManager()
+am = st.session_state.alert_manager
+
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
 _defaults = {
     'simulate_active':False,'sim_stage':'normal',
@@ -1613,6 +1874,7 @@ if st.session_state.scenario_start_time is None:
 # URL-based acknowledgment
 if 'ack_alert' in st.query_params:
     aid = st.query_params['ack_alert']
+    am.acknowledge(aid, "Operator")
     alert_system.acknowledge_alert(aid)
     if aid == 'ALT-001':
         st.session_state.ack_critical = True
@@ -1625,6 +1887,13 @@ if 'ack_alert' in st.query_params:
     else:
         st.toast(f'✔ Alert {aid} Acknowledged.', icon='✔')
     del st.query_params['ack_alert']
+    st.rerun()
+
+if 'ack_auto_alert' in st.query_params:
+    st.session_state.banner_visible = False
+    st.session_state.active_alert = None
+    del st.query_params['ack_auto_alert']
+    st.toast("✔ Alert Acknowledged", icon="🚨")
     st.rerun()
 
 # ─── SIMULATION INJECTION LOADING SCREEN ─────────────────────────────────────
@@ -1945,7 +2214,63 @@ section[data-testid="stSidebar"] > div { padding-top: 0 !important; }
 /* ═══════════════════════════════════════════════════════════
    MAIN CONTENT
 ═══════════════════════════════════════════════════════════ */
-.main-content { padding: 14px 18px 90px 18px; }
+.main-content {
+  padding: 0px 18px 110px 18px;
+  margin-top: -45px !important;
+}
+/* ── Fix 1: Collapse ALL gaps between navbar and first content block ── */
+header[data-testid="stHeader"] {
+  display: none !important;
+}
+.block-container {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-top: 0 !important;
+}
+section.main > div:first-child {
+  padding-top: 0 !important;
+}
+div[data-testid="stVerticalBlock"] > div {
+  margin-top: 0px !important;
+  gap: 0.35rem !important;
+}
+div[data-testid="stVerticalBlock"] > div:has(.top-navbar) {
+  margin-bottom: 0px !important;
+}
+div[data-testid="stVerticalBlock"] > div:has(.top-navbar) + div {
+  margin-top: -68px !important;
+}
+div[data-testid="stVerticalBlock"] > div:has(.main-content) {
+  margin-top: 0px !important;
+  padding-top: 0px !important;
+}
+/* ── Fix 6a: Horizontal block gap + equal-height column stretching ── */
+div[data-testid="stHorizontalBlock"] {
+  gap: 0.5rem !important;
+  align-items: stretch !important;
+}
+div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div[data-testid="stVerticalBlock"] {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+}
+div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div.element-container {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+/* ── Fix 6b: Tighten element-container spacing ── */
+.element-container {
+  margin-bottom: 0.2rem !important;
+}
+/* ── Fix 6c: Remove extra top margin from selectbox ── */
+div[data-baseweb="select"] {
+  margin-top: 0 !important;
+}
 
 /* ═══════════════════════════════════════════════════════════
    SIDEBAR
@@ -2277,9 +2602,16 @@ iframe {
 /* ═══════════════════════════════════════════════════════════
    IMAGE (CCTV)
 ═══════════════════════════════════════════════════════════ */
+/* Fix 3: Allow custom CCTV wrapper to control image borders */
+div[data-testid="stImage"] {
+  margin: 0 !important;
+  padding: 0 !important;
+}
 div[data-testid="stImage"] img {
-  border-radius: var(--radius) !important;
-  border: 1px solid var(--border2) !important;
+  border-radius: 0 !important;
+  border: none !important;
+  display: block;
+  width: 100% !important;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2404,9 +2736,22 @@ with st.sidebar:
     if st.session_state.get('compound_risk_active', False) or st.session_state.get('sim_stage') == 'active':
         report += "\n## Compound Patterns Detected\n- ⚠️ Visakhapatnam triple-threat disaster pattern detected in Battery-4 (Zone A)!\n"
 
-    report += "\n## Active Incidents\n"
-    for a in alert_system.get_active_alerts():
-        report += f"\n### {a['alert_id']}\n- Zone: {a.get('zone_label',a['zone'])}\n- Level: {a['risk_level']}\n- Ack'd: {a['acknowledged']}\n"
+    report += "\n## Stateful Active Alerts\n"
+    if not am.active_alerts:
+        report += "No active alerts.\n"
+    else:
+        for a in am.active_alerts.values():
+            report += f"\n### Alert: {a.message}\n- Zone: {ZONE_LABELS.get(a.zone, a.zone)}\n- Severity: {a.severity.value[2]}\n- Status: {a.status.value}\n- Duration: {int(a.duration)}s\n"
+            if a.acknowledged_by:
+                report += f"- Acknowledged by: {a.acknowledged_by}\n"
+
+    report += "\n## Stateful Resolved Alerts History (Audit Log)\n"
+    if not am.history:
+        report += "No resolved alerts in this session.\n"
+    else:
+        for a in am.history:
+            report += f"\n### Alert: {a.message}\n- Zone: {ZONE_LABELS.get(a.zone, a.zone)}\n- Severity: {a.severity.value[2]}\n- Duration: {int(a.duration)}s\n- Status: Resolved\n- Acknowledged by: {a.acknowledged_by or 'N/A'}\n- Resolved at: {a.end_time.strftime('%H:%M:%S') if a.end_time else 'N/A'}\n"
+
     report += "\n---\nSurakshaAI v3.0 | Zero-Harm Operations\n"
 
     st.download_button("📋 Export Compliance Report", data=report,
@@ -2539,10 +2884,17 @@ def _render_auto_banner(placeholder):
                 🚨 {alert["severity"]} ALERT — {ZONE_LABELS.get(alert["zone"], alert["zone"])}
             </b>
             <p style='color:#fca5a5; margin:4px 0; font-size:12px;'>{alert["summary"]}</p>
-            <small style='color:#9ca3af;'>
-                Triggered: {alert["timestamp"]} &nbsp;|
-                Channels: {", ".join(alert["channels"]).upper()}
-            </small>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-top:8px;">
+                <small style='color:#9ca3af;'>
+                    Triggered: {alert["timestamp"]} &nbsp;|&nbsp;
+                    Channels: {", ".join(alert["channels"]).upper()}
+                </small>
+                <a href="?ack_auto_alert=1" target="_self" style="text-decoration: none;">
+                    <span style="background: #ef4444; color: #fff; border-radius: 4px; padding: 4px 12px; font-size: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase; display: inline-block;">
+                        ACKNOWLEDGE ALERT
+                    </span>
+                </a>
+            </div>
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -2551,30 +2903,7 @@ def _render_auto_banner(placeholder):
 _render_auto_banner(_auto_banner_placeholder)
 
 
-# Scenario controls in top-right
-top_col1, top_col2, top_col3 = st.columns([5.5, 1.2, 1.2])
-with top_col2:
-    st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
-    if st.button("⏩ Fast-Forward", key="ff_btn_top", width="stretch",
-                 help="Advance scenario 20 minutes"):
-        st.session_state.scenario_offset_min += 20
-        st.rerun()
-with top_col3:
-    st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
-    if st.button("🔄 Reset", key="reset_btn2", width="stretch",
-                 help="Reset scenario to minute 0"):
-        st.session_state.scenario_start_time = datetime.now()
-        st.session_state.scenario_offset_min = 20
-        st.session_state.compound_risk_active = False
-        st.session_state.simulate_active = False
-        st.session_state.sim_stage = 'normal'
-        st.session_state.ack_critical = False
-        st.session_state.ack_medium = False
-        st.session_state.ack_time = None
-        st.session_state.recovering = False
-        st.session_state.compound_risk_first_seen = None
-        st.session_state.sim_play_active = False
-        st.rerun()
+
 
 # ─── STATUS BANNER ────────────────────────────────────────────────────────────
 if banner_level is not None:
@@ -2767,15 +3096,77 @@ else:
     tab_diag = None
 
 with tab_main:
-    # ─── 3-COLUMN UNIFIED OPERATIONS GRID ───
-    col_left, col_mid, col_right = st.columns([3.5, 5.0, 3.5])
+    # ─── ROW A: Heatmap standalone — full width across 6 columns ───
+    st.markdown('<div class="section-header">🗺️ PLANT ZONE HEATMAP</div>', unsafe_allow_html=True)
+    
+    cards_html = []
+    for zone_id, label in [('Zone_A', 'Battery-4'), ('Zone_B', 'Battery-5'), ('Zone_C', 'Battery-6'),
+                           ('Reactor_Area', 'Reactor Block'), ('Storage_Area', 'Storage Area'), ('Control_Room', 'Control Room')]:
+        if zone_id == 'Control_Room':
+            lvl = 'SAFE'
+            score = 0
+            gas = 0.0
+            color = '#22c55e'
+            icon = '🟢'
+        else:
+            z = zone_risks.get(zone_id, {'risk_level':'LOW','risk_score':0,'sensor_data':{}})
+            lvl = z.get('risk_level', 'LOW')
+            score = z.get('risk_score', 0)
+            
+            # Fetch gas ppm
+            gas = 0.0
+            sd = z.get('sensor_data', {})
+            for k, v in sd.items():
+                if 'gas' in k.lower():
+                    gas = float(v)
+                    break
+            if gas == 0.0:
+                gas = latest.get(f'{zone_id}_gas_ppm', 0.0)
+                
+            color_map = {"CRITICAL": "#ef4444", "HIGH": "#f97316", "MEDIUM": "#f59e0b", "LOW": "#22c55e"}
+            color = color_map.get(lvl, "#22c55e")
+            icon = "⚠️" if lvl in ("CRITICAL", "HIGH", "MEDIUM") else "🟢"
+            
+        # Glow only for alert states
+        glow = f'box-shadow:0 0 14px {color}55;' if lvl in ('CRITICAL', 'HIGH', 'MEDIUM') else ''
+        # Distinct icon per severity
+        icon_map = {'CRITICAL': '🔴', 'HIGH': '🟠', 'MEDIUM': '🟡', 'LOW': '🟢', 'SAFE': '🟢'}
+        disp_icon = icon_map.get(lvl, '🟢')
+        card = (
+            f'<div class="zone-heatmap-card" style="'
+            f'background:linear-gradient(135deg,#0f1f38,#0a1628);'
+            f'border:2px solid {color};'
+            f'border-radius:10px;'
+            f'padding:8px 6px;'
+            f'height:130px;'
+            f'display:flex;flex-direction:column;justify-content:center;align-items:center;'
+            f'text-align:center;font-family:\'Outfit\',sans-serif;{glow}">'
+            f'<div style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;'
+            f'letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+            f'width:100%;padding:0 2px;">{label}</div>'
+            f'<div style="font-size:9px;margin-top:3px;">{disp_icon}</div>'
+            f'<div style="font-size:13px;font-weight:800;color:{color};margin-top:1px;'
+            f'white-space:nowrap;text-shadow:0 0 8px {color}88;">{lvl}</div>'
+            f'<div style="font-size:9.5px;color:#e2e8f0;font-weight:600;margin-top:4px;">{gas:.1f} ppm</div>'
+            f'<div style="font-size:8.5px;color:#64748b;margin-top:1px;">Score: {score:.0f}/20</div>'
+            f'</div>'
+        )
+        cards_html.append(card)
+        
+    st.markdown(f"""
+    <div style="display:grid; grid-template-columns: repeat(6, 1fr); gap:8px; width:100%; margin-bottom:12px;">
+        {"".join(cards_html)}
+    </div>
+    """, unsafe_allow_html=True)
+        
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+    # ─── ROW B: Zone status list | CCTV + dropdown | Notification channels ───
+    col_left, col_mid, col_right = st.columns([1.2, 2.5, 1.3])
     
     with col_left:
-        st.markdown('<div class="section-header">🗺️ PLANT ZONE HEATMAP</div>', unsafe_allow_html=True)
-        st.iframe(build_heatmap_html(zone_risks, st.session_state.simulate_active), height=180)
-        
-        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
         st.markdown('<div class="section-header">📋 ZONE STATUS OVERVIEW</div>', unsafe_allow_html=True)
+        st.markdown("<div style='display:flex; flex-direction:column; gap:4px;'>", unsafe_allow_html=True)
         for zone_id, zone_label in ZONE_STATUS_ORDER:
             z = zone_risks.get(zone_id, {'risk_level':'LOW','risk_score':0,'sensor_data':{}})
             lvl   = z.get('risk_level', 'LOW')
@@ -2792,32 +3183,199 @@ with tab_main:
             if gas == 0.0:
                 gas = latest.get(f'{zone_id}_gas_ppm', 0.0)
 
-            # Premium zone status row
             is_crit = (lvl == 'CRITICAL')
+            is_high = (lvl == 'HIGH')
             hb_pts = "0,8 3,8 5,2 7,14 9,2 11,14 13,8 20,8" if is_crit else "0,8 4,8 6,5 8,11 10,8 14,8 16,6 20,8"
-            hb_color = "#EF4444" if is_crit else "#22C55E"
-            _row_bg = f"rgba(239,68,68,0.05)" if is_crit else f"rgba(17,24,39,0.6)"
-            _row_border = f"#EF444440" if is_crit else "#243447"
-            _badge_bg = f"rgba(239,68,68,0.15)" if is_crit else (
-                "rgba(245,158,11,0.15)" if lvl == 'HIGH' else "rgba(34,197,94,0.1)")
-            st.markdown(f"""
-            <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;margin-bottom:5px;
-              background:{_row_bg};border:1px solid {_row_border};
-              border-radius:10px;transition:all 0.2s;">
-              <span style="width:7px;height:7px;border-radius:50%;background:{c};
-                           box-shadow:0 0 6px {c};flex-shrink:0;"></span>
-              <span style="color:#F8FAFC;font-size:11px;font-weight:600;flex:1;">{zone_label}</span>
-              <span style="background:{_badge_bg};color:{c};font-size:9px;font-weight:700;
-                           padding:2px 7px;border-radius:4px;letter-spacing:0.5px;
-                           border:1px solid {c}30;">{lvl}</span>
-              <span style="color:#64748B;font-size:10px;min-width:60px;text-align:right;">{score:.0f}/20</span>
-              <span style="color:#64748B;font-size:10px;min-width:58px;text-align:right;">{gas:.1f}ppm</span>
-              <svg width="22" height="16" viewBox="0 0 22 16" style="flex-shrink:0;opacity:0.9;">
-                <polyline points="{hb_pts}" fill="none" stroke="{hb_color}" stroke-width="1.5"
-                          stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>""", unsafe_allow_html=True)
+            hb_color = "#EF4444" if is_crit else ("#F97316" if is_high else "#22C55E")
+            _row_bg = "rgba(239,68,68,0.05)" if is_crit else ("rgba(249,115,22,0.03)" if is_high else "rgba(255,255,255,0.015)")
+            _badge_bg = "rgba(239,68,68,0.15)" if is_crit else (
+                "rgba(249,115,22,0.15)" if is_high else
+                "rgba(245,158,11,0.12)" if lvl == 'MEDIUM' else "rgba(34,197,94,0.08)")
+            dot_dot = "🔴" if is_crit else ("🟠" if is_high else ("🟡" if lvl == 'MEDIUM' else "🟢"))
+            row_html = (
+                f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                f'padding:5px 8px;background:{_row_bg};border-radius:6px;margin-bottom:2px;'
+                f'border:1px solid rgba(255,255,255,0.04);font-family:\'Outfit\',sans-serif;">'
+                f'<div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">'
+                f'<span style="font-size:9px;flex-shrink:0;">{dot_dot}</span>'
+                f'<span style="color:#f1f5f9;font-size:10.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{zone_label}</span>'
+                f'</div>'
+                f'<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">'
+                f'<span style="background:{_badge_bg};color:{c};font-size:7.5px;font-weight:800;'
+                f'padding:1px 5px;border-radius:3px;letter-spacing:0.4px;border:1px solid {c}30;'
+                f'text-transform:uppercase;">{lvl}</span>'
+                f'<span style="color:#64748b;font-size:9px;font-family:monospace;min-width:30px;text-align:right;">{score:.0f}/20</span>'
+                f'<span style="color:#94a3b8;font-size:9px;font-family:monospace;min-width:40px;text-align:right;">{gas:.1f}p</span>'
+                f'<svg width="20" height="12" viewBox="0 0 22 16" style="flex-shrink:0;opacity:0.9;">'
+                f'<polyline points="{hb_pts}" fill="none" stroke="{hb_color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+                f'</svg>'
+                f'</div></div>'
+            )
+            st.markdown(row_html, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
+        # ─── PLANT FAILSAFE SYSTEMS STATUS PANEL ───
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="section-header">🛡️ PLANT FAILSAFE SYSTEMS</div>', unsafe_allow_html=True)
+        
+        # Calculate dynamic status based on telemetry & risk
+        highest_risk = STATUS.get('level', 'LOW')
+        is_evacuate_active = st.session_state.get('chk_evacuate', False) or (highest_risk == 'CRITICAL')
+        is_gas_isolated = st.session_state.get('chk_isolate', False) or (highest_risk == 'CRITICAL')
+        is_siren_active = compound_risk_score > 0 or (highest_risk in ('HIGH', 'CRITICAL'))
+        
+        # Ventilation Speed
+        if highest_risk in ('HIGH', 'CRITICAL'):
+            vent_status = "MAX SPEED (100%)"
+            vent_color = "#ef4444"
+            vent_bg = "rgba(239, 68, 68, 0.1)"
+        elif highest_risk == 'MEDIUM':
+            vent_status = "INCREASED FLOW (75%)"
+            vent_color = "#f59e0b"
+            vent_bg = "rgba(245, 158, 11, 0.08)"
+        else:
+            vent_status = "NORMAL FLOW (35%)"
+            vent_color = "#22c55e"
+            vent_bg = "rgba(34, 197, 94, 0.05)"
+            
+        # Gas Isolation Valve
+        if is_gas_isolated:
+            valve_status = "ISOLATED & SHUT 🛑"
+            valve_color = "#ef4444"
+            valve_bg = "rgba(239, 68, 68, 0.1)"
+        else:
+            valve_status = "FLOWING NOMINAL ✅"
+            valve_color = "#22c55e"
+            valve_bg = "rgba(34, 197, 94, 0.05)"
+            
+        # Emergency Sirens
+        if is_siren_active:
+            siren_status = "ACTIVE & PULSING 🔊"
+            siren_color = "#ef4444"
+            siren_bg = "rgba(239, 68, 68, 0.1)"
+        else:
+            siren_status = "STANDBY MODE 🔕"
+            siren_color = "#64748b"
+            siren_bg = "rgba(255, 255, 255, 0.015)"
+            
+        # Evacuation Route
+        if is_evacuate_active:
+            evac_status = "MUSTER POINT ALPHA 🚨"
+            evac_color = "#ef4444"
+            evac_bg = "rgba(239, 68, 68, 0.1)"
+        else:
+            evac_status = "STATION NOMINAL ✅"
+            evac_color = "#22c55e"
+            evac_bg = "rgba(34, 197, 94, 0.05)"
+
+        failsafes_html = f"""
+        <div style="background: rgba(17,24,39,0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 12px; font-family: 'Outfit', sans-serif;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Exhaust Ventilation -->
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: {vent_bg}; border: 1px solid {vent_color}25; border-radius: 8px;">
+                    <div>
+                        <div style="font-size: 8px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">🌀 EXHAUST VENTILATION</div>
+                        <div style="font-size: 11px; font-weight: 600; color: #fff; margin-top: 1px;">Auto Fan Speed Controller</div>
+                    </div>
+                    <span style="color: {vent_color}; font-size: 9.5px; font-weight: 800; font-family: monospace; text-transform: uppercase;">{vent_status}</span>
+                </div>
+                <!-- Gas Isolation Valve -->
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: {valve_bg}; border: 1px solid {valve_color}25; border-radius: 8px;">
+                    <div>
+                        <div style="font-size: 8px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">🛑 MAIN GAS ISOLATION VALVE</div>
+                        <div style="font-size: 11px; font-weight: 600; color: #fff; margin-top: 1px;">Emergency Zone-Shutoff</div>
+                    </div>
+                    <span style="color: {valve_color}; font-size: 9.5px; font-weight: 800; font-family: monospace; text-transform: uppercase;">{valve_status}</span>
+                </div>
+                <!-- Alarms / Sirens -->
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: {siren_bg}; border: 1px solid {siren_color}25; border-radius: 8px;">
+                    <div>
+                        <div style="font-size: 8px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">🔊 PLANT-WIDE SIRENS</div>
+                        <div style="font-size: 11px; font-weight: 600; color: #fff; margin-top: 1px;">Audible Evacuation Alarm</div>
+                    </div>
+                    <span style="color: {siren_color}; font-size: 9.5px; font-weight: 800; font-family: monospace; text-transform: uppercase;">{siren_status}</span>
+                </div>
+                <!-- Evacuation Muster Stations -->
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: {evac_bg}; border: 1px solid {evac_color}25; border-radius: 8px;">
+                    <div>
+                        <div style="font-size: 8px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">🏃 MUSTER STATION FLOW</div>
+                        <div style="font-size: 11px; font-weight: 600; color: #fff; margin-top: 1px;">Crew Assembly Status</div>
+                    </div>
+                    <span style="color: {evac_color}; font-size: 9.5px; font-weight: 800; font-family: monospace; text-transform: uppercase;">{evac_status}</span>
+                </div>
+            </div>
+        </div>
+        """
+        st.markdown(failsafes_html, unsafe_allow_html=True)
+        # ─── PLANT UTILITIES & POWER STATUS PANEL ───
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="section-header">⚡ PLANT UTILITIES & POWER</div>', unsafe_allow_html=True)
+        
+        # Calculate dynamic values based on highest risk state
+        highest_gas_any_zone = max([latest.get(f"{z}_gas_ppm", 0.0) for z in SENSOR_ZONES if z != 'Control_Room'], default=0.0)
+        ups_charge = 99.4 if highest_risk == 'SAFE' else (98.2 if highest_risk == 'MEDIUM' else 96.8)
+        cooling_status = "MAX FLOW (120 GPM)" if highest_risk in ('HIGH', 'CRITICAL') else "NOMINAL (85 GPM)"
+        cooling_color = "#22c55e" if highest_risk == 'SAFE' else "#ef4444"
+        
+        utilities_html = f"""
+        <div style="background: rgba(17,24,39,0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 12px; font-family: 'Outfit', sans-serif;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Main Grid -->
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: #94a3b8; font-weight: 500;">⚡ Primary Power Grid</span>
+                    <span style="color: #22c55e; font-weight: 700;">CONNECTED ✅</span>
+                </div>
+                <!-- Backup Generator -->
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: #94a3b8; font-weight: 500;">🔌 Diesel Gen-Set B-3</span>
+                    <span style="color: #64748b; font-weight: 700;">STANDBY ✅</span>
+                </div>
+                <!-- UPS Battery -->
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: #94a3b8; font-weight: 500;">🔋 Central UPS Charge</span>
+                    <span style="color: #00d4ff; font-weight: 700; font-family: monospace;">{ups_charge:.1f}%</span>
+                </div>
+                <!-- Cooling Systems -->
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: #94a3b8; font-weight: 500;">❄️ Reactor Cooling Pump</span>
+                    <span style="color: {cooling_color}; font-weight: 700;">{cooling_status}</span>
+                </div>
+                <!-- Peak Gas Sensor -->
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px; margin-top: 2px;">
+                    <span style="color: #94a3b8; font-weight: 500;">📈 Peak Gas Telemetry</span>
+                    <span style="color: #ff9f43; font-weight: 700; font-family: monospace;">{highest_gas_any_zone:.1f} ppm</span>
+                </div>
+            </div>
+        </div>
+        """
+        st.markdown(utilities_html, unsafe_allow_html=True)
+
+        # ─── SYSTEM COMPLIANCE AUDIT PANEL ───
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="section-header">📋 SYSTEM COMPLIANCE AUDIT</div>', unsafe_allow_html=True)
+        compliance_html = f"""
+        <div style="background: rgba(17,24,39,0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 12px; font-family: 'Outfit', sans-serif;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: #94a3b8; font-weight: 500;">📋 OSHA PPE Compliance</span>
+                    <span style="color: #22c55e; font-weight: 700;">100% SECURE ✅</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: #94a3b8; font-weight: 500;">🛡️ ISO 45001 Standard</span>
+                    <span style="color: #22c55e; font-weight: 700;">ACTIVE CERT ✅</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: #94a3b8; font-weight: 500;">🏃 Monthly Fire Drill</span>
+                    <span style="color: #22c55e; font-weight: 700;">COMPLETED ✅</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px; margin-top: 2px;">
+                    <span style="color: #94a3b8; font-weight: 500;">🔍 Next Safety Audit</span>
+                    <span style="color: #00d4ff; font-weight: 700;">15 AUG (10:00 AM)</span>
+                </div>
+            </div>
+        </div>
+        """
+        st.markdown(compliance_html, unsafe_allow_html=True)
     with col_mid:
         selected_zone = st.selectbox(
             "Select CCTV Camera Feed:",
@@ -2827,41 +3385,84 @@ with tab_main:
         )
         run_feed = True
         
-        # ─── MAIN CCTV CONTAINER ───
-        with st.container(border=True):
-            st.markdown(f"""
-            <div style="font-family:'Outfit',sans-serif; font-weight:700; color:#fff; font-size:13px; 
-                 margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
-                📹 LIVE CCTV FEED - {ZONE_LABELS.get(selected_zone, selected_zone)}
-            </div>
-            """, unsafe_allow_html=True)
-            
-            frame_placeholder = st.empty()
-            status_bar_placeholder = st.empty()
-            
-        st.markdown("<div style='height:15px;'></div>", unsafe_allow_html=True)
-        
-        # ─── ALERTS PANEL ───
+        # ─── CCTV CUSTOM STYLING OVERRIDES ───
         st.markdown("""
-        <div style="font-weight: 700; color: #a0b4c8; font-size: 11px; letter-spacing: 0.5px; margin-bottom: 8px; text-transform: uppercase;">
-            🔔 LIVE ALERTS PANEL
-        </div>
+        <style>
+        .cctv-header {
+            background: linear-gradient(90deg, #0a1628 0%, #0f1f38 100%);
+            border: 1px solid #1e3a5f;
+            border-bottom: none;
+            border-radius: 10px 10px 0 0;
+            padding: 10px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: 'Outfit', sans-serif;
+        }
+        .live-badge {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            animation: blinker 1.5s linear infinite;
+        }
+        @keyframes blinker {
+            50% { opacity: 0; }
+        }
+        /* Fix 3: CCTV image fills seamlessly with zero margins */
+        div[data-testid="stImage"] {
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 0 !important;
+        }
+        div[data-testid="stImage"] img {
+            border: none !important;
+            border-left: 1px solid #1e3a5f !important;
+            border-right: 1px solid #1e3a5f !important;
+            border-radius: 0 !important;
+            display: block !important;
+            width: 100% !important;
+            margin: 0 !important;
+        }
+        </style>
         """, unsafe_allow_html=True)
-        alerts_placeholder = st.empty()
+
+        header_placeholder = st.empty()
+        frame_placeholder = st.empty()
+        status_bar_placeholder = st.empty()
         
-        st.markdown("<div style='height:15px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
         
-        # ─── BOTTOM SUMMARY GRID ───
-        grid_col1, grid_col2, grid_col3, grid_col4 = st.columns(4)
-        detections_placeholder = grid_col1.empty()
-        zone_status_placeholder = grid_col2.empty()
-        rules_placeholder = grid_col3.empty()
-        system_placeholder = grid_col4.empty()
+        # ─── Row 3: LIVE RISK TIMELINE & COMPOUND RISK ENGINE ───
+        col_r1_1, col_r1_2 = st.columns([1.0, 1.0])
+        timeline_placeholder = col_r1_1.empty()
+        risk_engine_placeholder = col_r1_2.empty()
+        
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+        
+        # ─── Row 4: AI DECISION | LIVE TELEMETRY | ZONE RESPONSE ───
+        col_r2_1, col_r2_2, col_r2_3 = st.columns([1.0, 1.0, 1.0])
+        ai_decision_placeholder = col_r2_1.empty()
+        telemetry_trends_placeholder = col_r2_2.empty()
+        zone_response_placeholder = col_r2_3.empty()
+        
+
 
     with col_right:
+        st.markdown("""
+        <style>
+        div[data-testid="stVerticalBlock"] > div {
+            gap: 0.3rem !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
         st.markdown('<div class="section-header">📢 NOTIFICATION CHANNELS</div>', unsafe_allow_html=True)
         
-        # Determine highest risk zone based on maximum risk score
         highest_risk_zone = "N/A"
         highest_score = -1
         for zone_id, z in zone_risks.items():
@@ -2888,7 +3489,6 @@ with tab_main:
             email_progress = "100%"
             siren_progress = "100%"
             
-        # Enhanced notification channel cards with timestamps
         _notif_time = now_str if compound_risk_score > 0 else "—"
         _sms_detail   = f"Alert sent to +123****890<br>at {_notif_time}" if compound_risk_score > 0 else "Sent to: N/A"
         _email_detail = f"Email sent to safety@***.com<br>{_notif_time}" if compound_risk_score > 0 else "Sent to: N/A"
@@ -2930,7 +3530,6 @@ with tab_main:
         </div>
         """, unsafe_allow_html=True)
         
-        # "All alerts escalated" badge when compound risk active
         if compound_risk_score > 0:
             st.markdown("""
             <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:8px;
@@ -2938,6 +3537,15 @@ with tab_main:
               <span style="font-size:18px;">✅</span>
               <span style="color:#22c55e;font-size:11px;font-weight:600;">All critical alerts escalated to all channels</span>
             </div>""", unsafe_allow_html=True)
+        
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div style="font-weight: 700; color: #a0b4c8; font-size: 11px; letter-spacing: 0.5px; margin-bottom: 8px; text-transform: uppercase;">
+            🔔 LIVE ALERTS
+        </div>
+        """, unsafe_allow_html=True)
+        alerts_placeholder = st.empty()
         
         st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
         st.markdown('<div class="section-header">🗄️ PERSISTENT DATABASE LOGS</div>', unsafe_allow_html=True)
@@ -2968,6 +3576,34 @@ with tab_main:
         except Exception:
             pass
 
+        # ─── SCADA GATEWAYS & INTEGRATION PANEL ───
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="section-header">📡 SCADA GATEWAYS & INTEGRATION</div>', unsafe_allow_html=True)
+        scada_html = f"""
+        <div style="background: rgba(17,24,39,0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 12px; font-family: 'Outfit', sans-serif;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: #94a3b8; font-weight: 500;">📡 MQTT Broker Gateway</span>
+                    <span style="color: #22c55e; font-weight: 700;">ONLINE (10.0.0.45) ✅</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: #94a3b8; font-weight: 500;">🔌 Modbus TCP Bridge</span>
+                    <span style="color: #22c55e; font-weight: 700;">ACTIVE (PORT 502) ✅</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: #94a3b8; font-weight: 500;">🖥️ OPC UA Safety Server</span>
+                    <span style="color: #22c55e; font-weight: 700;">CONNECTED ✅</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px; margin-top: 2px;">
+                    <span style="color: #94a3b8; font-weight: 500;">☁️ AWS IoT Cloud Sync</span>
+                    <span style="color: #22c55e; font-weight: 700;">CONNECTED ✅</span>
+                </div>
+            </div>
+        </div>
+        """
+        st.markdown(scada_html, unsafe_allow_html=True)
+
+
     import cv2
     
     # Load YOLO if needed
@@ -2980,86 +3616,414 @@ with tab_main:
     else:
         frame_processor.detector.use_simulation = True
     
+
+    
     # Helper to format summary grids with premium glassmorphism
     def render_summary_grids(fps_val, p_count, h_count, rules_count, detections_list, zone_counts_dict):
-        # DETECTIONS card
-        p_c = max([d.confidence for d in detections_list if d.label == 'person'], default=0.0)
-        h_c = max([d.confidence for d in detections_list if d.label == 'helmet'], default=0.0)
-        v_c = max([d.confidence for d in detections_list if d.label == 'vest'], default=0.0)
-        p_c_str = f"{p_c:.2f}" if p_c > 0 else "N/A"
-        h_c_str = f"{h_c:.2f}" if h_c > 0 else "N/A"
-        v_c_str = f"{v_c:.2f}" if v_c > 0 else "N/A"
-        
-        detections_placeholder.markdown(f"""
-        <div style="background:rgba(17,24,39,0.7); border:1px solid var(--border2); 
-             border-radius:12px; padding:12px 14px; min-height:110px; box-shadow:var(--shadow-sm);">
-            <div style="font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:8px;">
-                🔍 DETECTIONS
-            </div>
-            <div style="font-size:11px; color:#F8FAFC; line-height:1.5; font-family:'JetBrains Mono',monospace;">
-                Person: <span style="color:#22C55E; font-weight:600;">{p_c_str}</span><br/>
-                Helmet: <span style="color:#22C55E; font-weight:600;">{h_c_str}</span><br/>
-                Vest: <span style="color:#22C55E; font-weight:600;">{v_c_str}</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # ZONE STATUS card
-        z_a = zone_counts_dict.get('Zone_A', 0)
-        z_b = zone_counts_dict.get('Zone_B', 0)
-        z_c = zone_counts_dict.get('Zone_C', 0)
-        z_r = zone_counts_dict.get('Reactor_Area', 0)
-        z_s = zone_counts_dict.get('Storage_Area', 0)
+        # Calculate if overpressure warning is active
+        is_overpressure = False
+        if selected_zone == 'Zone_C' and st.session_state.get('cctv_frame_index', 0) >= 95:
+            is_overpressure = True
 
-        def wc(n, alert=False):
-            col = '#EF4444' if alert else '#22C55E' if n == 0 else '#F8FAFC'
-            return f'<span style="font-weight:600;color:{col};">{n}w</span>'
+        # Initialize rolling buffers if not present in session state
+        if 'telemetry_history_gas' not in st.session_state:
+            st.session_state.telemetry_history_gas = [0.0] * 15
+        if 'telemetry_history_temp' not in st.session_state:
+            st.session_state.telemetry_history_temp = [0.0] * 15
+        if 'telemetry_history_press' not in st.session_state:
+            st.session_state.telemetry_history_press = [0.0] * 15
+        if 'telemetry_history_workers' not in st.session_state:
+            st.session_state.telemetry_history_workers = [0.0] * 15
 
-        zone_status_placeholder.markdown(f"""
-        <div style="background:rgba(17,24,39,0.7); border:1px solid var(--border2);
-             border-radius:12px; padding:12px 14px; min-height:110px; box-shadow:var(--shadow-sm);">
-            <div style="font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:8px;">
-                👷 ZONE STATUS
-            </div>
-            <div style="font-size:11px; color:var(--text2); line-height:1.6; font-family:'JetBrains Mono',monospace;">
-                Bat-4: {wc(z_a, z_a > 5)} &nbsp;
-                Bat-5: {wc(z_b)}<br/>
-                Bat-6: {wc(z_c)} &nbsp;
-                React: {wc(z_r)}<br/>
-                Store: {wc(z_s, z_s > 3)}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        # Fetch telemetry metrics from `latest` or fallbacks
+        current_gas = float(latest.get(f"{selected_zone}_gas_ppm", 0.0))
+        current_temp = float(latest.get(f"{selected_zone}_temperature_c", 0.0))
+        current_press = float(latest.get(f"{selected_zone}_pressure_bar", 0.0))
+        current_workers = float(p_count)  # p_count is active worker detections in current frame
+
+        # Append and slide
+        st.session_state.telemetry_history_gas.append(current_gas)
+        st.session_state.telemetry_history_gas = st.session_state.telemetry_history_gas[-15:]
         
-        # RULES card
-        rules_placeholder.markdown(f"""
-        <div style="background:rgba(17,24,39,0.7); border:1px solid var(--border2); 
-             border-radius:12px; padding:12px 14px; min-height:110px; box-shadow:var(--shadow-sm);">
-            <div style="font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:8px;">
-                🛡️ COMPLIANCE
-            </div>
-            <div style="font-size:11px; color:#F8FAFC; line-height:1.5; font-family:'JetBrains Mono',monospace;">
-                Scanned: <span style="font-weight:600;">6</span><br/>
-                Matched: <span style="color:{'#EF4444' if rules_count > 0 else '#22C55E'}; font-weight:700;">{rules_count}</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.session_state.telemetry_history_temp.append(current_temp)
+        st.session_state.telemetry_history_temp = st.session_state.telemetry_history_temp[-15:]
         
-        # SYSTEM card
-        system_placeholder.markdown(f"""
-        <div style="background:rgba(17,24,39,0.7); border:1px solid var(--border2); 
-             border-radius:12px; padding:12px 14px; min-height:110px; box-shadow:var(--shadow-sm);">
-            <div style="font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:8px;">
-                🖥️ SYSTEM
+        st.session_state.telemetry_history_press.append(current_press)
+        st.session_state.telemetry_history_press = st.session_state.telemetry_history_press[-15:]
+        
+        st.session_state.telemetry_history_workers.append(current_workers)
+        st.session_state.telemetry_history_workers = st.session_state.telemetry_history_workers[-15:]
+
+        # Helper to generate unicode sparkline
+        def generate_sparkline(values):
+            if not values:
+                return ""
+            min_val = min(values)
+            max_val = max(values)
+            diff = max_val - min_val
+            blocks = [' ', '▂', '▃', '▄', '▅', '▆', '▇', '█']
+            sparkline = []
+            for v in values:
+                if diff == 0:
+                    idx = 0
+                else:
+                    idx = int(((v - min_val) / diff) * (len(blocks) - 1))
+                sparkline.append(blocks[idx])
+            return "".join(sparkline)
+
+        # Generate sparklines
+        gas_spark = generate_sparkline(st.session_state.telemetry_history_gas)
+        temp_spark = generate_sparkline(st.session_state.telemetry_history_temp)
+        press_spark = generate_sparkline(st.session_state.telemetry_history_press)
+        workers_spark = generate_sparkline(st.session_state.telemetry_history_workers)
+
+        # 1. LIVE INCIDENT TIMELINE
+        events = []
+        # Database alerts
+        try:
+            db_alerts = alert_system.get_recent_alerts(10)
+            for a in db_alerts:
+                ts = a.get('timestamp', '')
+                if 'T' in ts:
+                    try:
+                        ts = ts.split('T')[1][:8]
+                    except Exception:
+                        pass
+                elif len(ts) > 8:
+                    ts = ts[:8]
+                level = a.get('risk_level', 'LOW')
+                msg = a.get('message', '')
+                icon = '🔴' if level == 'CRITICAL' else '🟠' if level == 'HIGH' else '🟡' if level == 'MEDIUM' else '🟢'
+                events.append({'time': ts, 'icon': icon, 'message': msg})
+        except Exception:
+            pass
+
+        # Compound risk flow alerts
+        if st.session_state.get('compound_risk_active', False):
+            first_seen = st.session_state.get('compound_risk_first_seen')
+            t_base = first_seen if first_seen else (datetime.now() - timedelta(seconds=30))
+            t_str = lambda s: (t_base + timedelta(seconds=s)).strftime("%H:%M:%S")
+            events.append({'time': t_str(0), 'icon': '🟡', 'message': 'Gas level rising in Battery-4'})
+            events.append({'time': t_str(2), 'icon': '🟠', 'message': 'Hot Work Permit activated'})
+            events.append({'time': t_str(5), 'icon': '🔴', 'message': 'Compound Rule: Triple Threat Triggered'})
+            events.append({'time': t_str(7), 'icon': '🚨', 'message': 'Critical Alert Dispatched to siren/SMS/email'})
+            events.append({'time': t_str(8), 'icon': '📱', 'message': 'SMS Escalation: Sent to safety lead'})
+            events.append({'time': t_str(9), 'icon': '📧', 'message': 'Email Escalation: Sent to operator team'})
+            events.append({'time': t_str(10), 'icon': '🔊', 'message': 'Siren Channel: Sounding in Battery-4'})
+
+        # Local visual alerts
+        if selected_zone:
+            now_t = datetime.now().strftime("%H:%M:%S")
+            if h_count > 0:
+                events.append({'time': now_t, 'icon': '🟡', 'message': f'PPE compliance check failed in {ZONE_LABELS.get(selected_zone, selected_zone)}'})
+            if is_overpressure:
+                events.append({'time': now_t, 'icon': '🔴', 'message': f'Critical overpressure warning in {ZONE_LABELS.get(selected_zone, selected_zone)}'})
+
+        # Backfill timeline if short
+        if len(events) < 6:
+            sc_start = st.session_state.get('scenario_start_time') or (datetime.now() - timedelta(minutes=10))
+            t_nom = lambda offset_sec: (sc_start + timedelta(seconds=offset_sec)).strftime("%H:%M:%S")
+            nominal_events = [
+                {'time': t_nom(0), 'icon': '🟢', 'message': 'System initialized. Feeds secure.'},
+                {'time': t_nom(15), 'icon': '🟢', 'message': 'YOLO model loaded. Detections active.'},
+                {'time': t_nom(45), 'icon': '🔵', 'message': 'Telemetry database connection active.'},
+                {'time': t_nom(120), 'icon': '🟢', 'message': 'All systems scanned. All parameters nominal.'},
+                {'time': t_nom(300), 'icon': '🟢', 'message': 'Status report logged to plant DB.'}
+            ]
+            for ne in nominal_events:
+                if len(events) >= 8:
+                    break
+                if not any(e['time'] == ne['time'] for e in events):
+                    events.append(ne)
+
+        events.sort(key=lambda x: x['time'], reverse=True)
+        events = events[:8]
+
+        events_html = []
+        for e in events:
+            events_html.append(
+                f'<div style="display: flex; gap: 6px; margin-bottom: 4px; align-items: center;">'
+                f'<span style="color: #64748b; font-family: monospace; font-size: 9px;">{e["time"]}</span>'
+                f'<span style="font-size: 10px;">{e["icon"]}</span>'
+                f'<span style="color: #cbd5e1; font-weight: 500;">{e["message"]}</span>'
+                f'</div>'
+            )
+
+        timeline_html = (
+            f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 16px; padding: 10px 12px; min-height: 122px; box-shadow: var(--shadow-sm); font-family: \'Outfit\', sans-serif;">'
+            f'<div style="font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px;">📈 LIVE INCIDENT TIMELINE</div>'
+            f'<div style="max-height: 86px; overflow-y: auto; font-size: 9.5px; line-height: 1.3;">'
+            f'{"".join(events_html)}'
+            f'</div></div>'
+        )
+        timeline_placeholder.markdown(timeline_html, unsafe_allow_html=True)
+
+        # 2. RULE ENGINE STATUS (Compound Risk Engine)
+        rule_states = [
+            ("Fire Detection", any(d.label == 'fire' for d in detections_list)),
+            ("Smoke Detection", any(d.label == 'smoke' for d in detections_list)),
+            ("Gas Critical", current_gas > 35),
+            ("Gas Elevated", current_gas > 20),
+            ("Temp Critical", current_temp > 95),
+            ("Intrusion", any(getattr(d, 'zone_violation', False) for d in detections_list)),
+            ("Pressure Alert", is_overpressure),
+            ("PPE Rules", h_count > 0),
+            ("Overcrowding", current_workers > 9),
+            ("Shift Change", latest.get('shift_change', 0) == 1 and current_gas > 30),
+            ("Maint Gas Leak", latest.get(f"{selected_zone}_maintenance_active", 0) == 1 and current_gas > 35),
+            ("Triple Threat", st.session_state.get('compound_risk_active', False))
+        ]
+        
+        badges = []
+        for name, matched in rule_states:
+            if matched:
+                bg = 'rgba(239, 68, 68, 0.15)'
+                border = '#ef4444'
+                color = '#ef4444'
+                status = 'MATCHED'
+            else:
+                bg = 'rgba(34, 197, 94, 0.08)'
+                border = 'rgba(34, 197, 94, 0.3)'
+                color = '#22c55e'
+                status = 'MONITORING'
+                
+            badges.append(
+                f'<div style="background: {bg}; border: 1px solid {border}; color: {color}; border-radius: 4px; padding: 2px; text-align: center; font-size: 7.5px; display: flex; flex-direction: column; justify-content: center; min-height: 24px;">'
+                f'<div style="font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{name}</div>'
+                f'<div style="font-size:6px; opacity:0.8; font-weight:800; letter-spacing:0.3px;">{status}</div>'
+                f'</div>'
+            )
+            
+        risk_engine_html = (
+            f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 16px; padding: 10px 12px; min-height: 122px; box-shadow: var(--shadow-sm); font-family: \'Outfit\', sans-serif;">'
+            f'<div style="font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px;">⚙️ COMPOUND RISK ENGINE</div>'
+            f'<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; max-height: 86px; overflow-y: auto;">'
+            f'{"".join(badges)}'
+            f'</div></div>'
+        )
+        risk_engine_placeholder.markdown(risk_engine_html, unsafe_allow_html=True)
+
+        # 3. AI DECISION ENGINE card
+        level = STATUS.get('level', 'LOW')
+        risk_color = STATUS.get('color', '#22c55e')
+        
+        if level == 'CRITICAL':
+            risk_icon = '🔴'
+            risk_level = 'CRITICAL'
+            confidence = "98%"
+        elif level == 'HIGH':
+            risk_icon = '🟠'
+            risk_level = 'HIGH'
+            confidence = "94%"
+        elif level == 'MEDIUM':
+            risk_icon = '🟡'
+            risk_level = 'MEDIUM'
+            confidence = "88%"
+        else:
+            risk_icon = '🟢'
+            risk_level = 'LOW'
+            confidence = "99%"
+
+        # Gather reasoning points
+        matched_list_items = []
+        for name, matched in rule_states:
+            if matched:
+                matched_list_items.append(f"<div style='color:#ef4444; font-weight:600; font-size:9.5px;'>✓ {name}</div>")
+        if not matched_list_items:
+            matched_list_items.append("<div style='color:#22c55e; font-weight:600; font-size:9.5px;'>✓ All Systems Nominal</div>")
+            
+        reasons_bullets = "".join(matched_list_items[:2])
+
+        # Recommendation action
+        if level == 'CRITICAL':
+            recommendation = f"Evacuate {ZONE_LABELS.get(selected_zone, 'Battery-4')} Immediately"
+        elif level == 'HIGH':
+            recommendation = "Deploy Emergency Response Team. Restrict Zone Access."
+        elif level == 'MEDIUM':
+            recommendation = "Verify compliance and telemetry levels."
+        else:
+            recommendation = "Continue standard plant surveillance."
+
+        ai_decision_html = (
+            f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:12px 14px; min-height:245px; font-family:\'Outfit\',sans-serif;">'
+            f'<div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">🧠 AI DECISION ENGINE</div>'
+            f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">'
+            f'<div><span style="font-size:9px; color:#64748b; text-transform:uppercase; font-weight:600;">Risk Level</span><div style="font-size:15px; font-weight:800; color:{risk_color}; display:flex; align-items:center; gap:4px;">{risk_icon} {risk_level}</div></div>'
+            f'<div style="text-align:right;"><span style="font-size:9px; color:#64748b; text-transform:uppercase; font-weight:600;">Confidence</span><div style="font-size:15px; font-weight:800; color:#3b82f6;">{confidence}</div></div>'
+            f'</div>'
+            f'<div style="margin-bottom:10px;">'
+            f'<span style="font-size:9px; color:#64748b; text-transform:uppercase; font-weight:600; display:block; margin-bottom:3px;">Matched Rules</span>'
+            f'<div style="line-height:1.3; max-height:42px; overflow-y:auto; font-size:10.5px;">{reasons_bullets}</div>'
+            f'</div>'
+            f'<div>'
+            f'<span style="font-size:9px; color:#64748b; text-transform:uppercase; font-weight:600; display:block; margin-bottom:2px;">Recommendation</span>'
+            f'<div style="font-size:12px; font-weight:700; color:#fff; line-height:1.35;">{recommendation}</div>'
+            f'</div></div>'
+        )
+        ai_decision_placeholder.markdown(ai_decision_html, unsafe_allow_html=True)
+
+        # 4. LIVE TELEMETRY card (Highly visual custom SVG gauges and sparkline trend)
+        import math
+        def get_svg_gauge(value, min_val, max_val, title, color_theme, warning_val, critical_val, unit=""):
+            # Map value to angle (180 deg to 0 deg)
+            percentage = (value - min_val) / (max_val - min_val)
+            percentage = max(0.0, min(1.0, percentage))
+            # Angle in radians (from pi to 0)
+            angle = math.pi - (percentage * math.pi)
+            
+            # Needle coordinates (radius = 28, center = (50, 42))
+            nx = 50 + 26 * math.cos(angle)
+            ny = 42 - 26 * math.sin(angle)
+            
+            # Color based on value
+            bar_color = color_theme
+            if value >= critical_val:
+                bar_color = "#ef4444"
+            elif value >= warning_val:
+                bar_color = "#f97316"
+                
+            # SVG layout
+            svg = f"""
+            <svg width="100%" height="60" viewBox="0 0 100 50" style="overflow:visible;">
+                <!-- Background Track -->
+                <path d="M 20 42 A 30 30 0 0 1 80 42" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7" stroke-linecap="round" />
+                <!-- Value Track -->
+                <path d="M 20 42 A 30 30 0 0 1 {50 + 30 * math.cos(angle)} {42 - 30 * math.sin(angle)}" fill="none" stroke="{bar_color}" stroke-width="7" stroke-linecap="round" />
+                <!-- Needle -->
+                <line x1="50" y1="42" x2="{nx}" y2="{ny}" stroke="#fff" stroke-width="1.8" stroke-linecap="round" />
+                <circle cx="50" cy="42" r="2.5" fill="#fff" />
+                <!-- Labels -->
+                <text x="50" y="38" font-size="9" font-weight="900" fill="#fff" text-anchor="middle">{value:.1f}{unit}</text>
+                <text x="50" y="49" font-size="6.5" fill="#94a3b8" text-anchor="middle" font-weight="700" style="text-transform:uppercase;letter-spacing:0.3px;">{title}</text>
+            </svg>
+            """
+            return svg
+
+        def get_svg_sparkline(values, width=220, height=45, stroke_color="#ff9f43"):
+            if not values:
+                return ""
+            min_val = min(values)
+            max_val = max(values)
+            range_val = max_val - min_val if max_val != min_val else 1.0
+            
+            # Generate coordinates
+            pts = []
+            n = len(values)
+            for i, v in enumerate(values):
+                x = (i / (n - 1)) * width if n > 1 else width / 2
+                y = height - 4 - ((v - min_val) / range_val) * (height - 8)
+                pts.append((x, y))
+                
+            pts_str = " ".join(f"{x},{y}" for x, y in pts)
+            fill_pts_str = f"0,{height} " + pts_str + f" {width},{height}"
+            
+            svg = f"""
+            <svg width="100%" height="{height}" viewBox="0 0 {width} {height}" style="overflow:visible; display:block;">
+                <defs>
+                    <linearGradient id="sparkline-grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="{stroke_color}" stop-opacity="0.2"/>
+                        <stop offset="100%" stop-color="{stroke_color}" stop-opacity="0.0"/>
+                    </linearGradient>
+                </defs>
+                <!-- Area Fill -->
+                <polygon points="{fill_pts_str}" fill="url(#sparkline-grad)" />
+                <!-- Stroke Line -->
+                <polyline points="{pts_str}" fill="none" stroke="{stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            """
+            return svg
+
+        temp_gauge_svg = get_svg_gauge(current_temp, 0, 120, "Temp (°C)", "#10ac84", 88, 95)
+        press_gauge_svg = get_svg_gauge(current_press, 0, 100, "Press (bar)", "#2e86de", 60, 80)
+        gas_spark_svg = get_svg_sparkline(st.session_state.telemetry_history_gas, stroke_color="#ff9f43")
+        
+        telemetry_html = f"""
+        <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:12px 14px; min-height:245px; font-family:'Outfit',sans-serif;">
+            <div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">📊 LIVE TELEMETRY</div>
+            
+            <!-- Side-by-side SVG Gauges -->
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px;">
+                <div style="flex:1; background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.03); border-radius:8px; padding:6px 4px;">
+                    {temp_gauge_svg}
+                </div>
+                <div style="flex:1; background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.03); border-radius:8px; padding:6px 4px;">
+                    {press_gauge_svg}
+                </div>
             </div>
-            <div style="font-size:20px; color:#22C55E; font-weight:800; line-height:1.2; text-shadow:0 0 10px rgba(34,197,94,0.3);">
-                100%
+            
+            <!-- Gas Level Sparkline Trend -->
+            <div style="font-size:9.5px; color:#ff9f43; font-weight:700; margin-bottom:2px; display:flex; justify-content:space-between;">
+                <span>📈 GAS LEVEL TREND</span>
+                <span style="font-family:monospace;">Current: {current_gas:.1f} ppm</span>
             </div>
-            <div style="font-size:9.5px; color:var(--muted); margin-top:6px;">
-                Uptime Active
+            <div style="background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.03); border-radius:8px; padding:4px 6px;">
+                {gas_spark_svg}
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """
+        # Clean up double line spacing or trailing whitespace to avoid Markdown compiler thinking it's code block
+        clean_lines = [line.strip() for line in telemetry_html.split("\n")]
+        clean_telemetry_html = "".join(clean_lines)
+        telemetry_trends_placeholder.markdown(clean_telemetry_html, unsafe_allow_html=True)
+
+        # 5. ZONE RESPONSE PANEL & OPERATOR ACTIONS
+        teams_str = alert_system.teams.get(selected_zone, 'Alpha & Beta Teams')
+        
+        # Channels, deadline, action and checklist actions depending on level
+        if level == 'CRITICAL':
+            channels = "Dashboard, SMS, Phone, Email, Siren"
+            deadline = "60 seconds"
+            action = "Mandatory Evacuation / Ack"
+            actions_html = """
+            <div style="color: #ef4444; font-weight: 700; margin-bottom: 2px;">✓ Evacuate Zone Immediately</div>
+            <div style="color: #ef4444; font-weight: 700; margin-bottom: 2px;">✓ Activate Emergency Shutdown</div>
+            <div style="color: #cbd5e1; margin-bottom: 2px;">✓ Alert Shift Supervisor</div>
+            """
+        elif level == 'HIGH':
+            channels = "Dashboard, SMS, Email"
+            deadline = "5 minutes"
+            action = "Dispatch ERT / Halt Work"
+            actions_html = """
+            <div style="color: #f97316; font-weight: 700; margin-bottom: 2px;">✓ Dispatch Emergency Teams</div>
+            <div style="color: #f97316; font-weight: 700; margin-bottom: 2px;">✓ Halt Active Permits</div>
+            <div style="color: #cbd5e1; margin-bottom: 2px;">✓ Restrict Zone Access</div>
+            """
+        elif level == 'MEDIUM':
+            channels = "Dashboard, Email"
+            deadline = "15 minutes"
+            action = "Verify Compliance Logs"
+            actions_html = """
+            <div style="color: #eab308; font-weight: 600; margin-bottom: 2px;">✓ Verify PPE Compliance</div>
+            <div style="color: #cbd5e1; margin-bottom: 2px;">✓ Increase Telemetry Logs</div>
+            <div style="color: #cbd5e1; margin-bottom: 2px;">✓ Check Fume Extraction</div>
+            """
+        else:
+            channels = "Dashboard Only"
+            deadline = "N/A"
+            action = "Routine Surveillance"
+            actions_html = """
+            <div style="color: #22c55e; margin-bottom: 2px;">✓ Routine CCTV Monitoring</div>
+            <div style="color: #cbd5e1; margin-bottom: 2px;">✓ Check System Telemetry</div>
+            <div style="color: #cbd5e1; margin-bottom: 2px;">✓ Normal Shift Handover</div>
+            """
+
+        zone_response_html = (
+            f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:12px 14px; min-height:245px; font-family:\'Outfit\',sans-serif;">'
+            f'<div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">🛡️ ZONE RESPONSE & ACTIONS</div>'
+            f'<div style="display:flex; flex-direction:column; gap:4px; font-size:10.5px; line-height:1.2;">'
+            f'<div><span style="color:#64748b; font-weight:600;">Affected Zone:</span> <span style="color:#fff; font-weight:700;">{ZONE_LABELS.get(selected_zone, selected_zone)}</span></div>'
+            f'<div><span style="color:#64748b; font-weight:600;">Emergency Teams:</span> <span style="color:#cbd5e1;">{teams_str}</span></div>'
+            f'<div><span style="color:#64748b; font-weight:600;">Channels:</span> <span style="color:#cbd5e1; font-size:9px;">{channels}</span></div>'
+            f'<div><span style="color:#64748b; font-weight:600;">Deadline:</span> <span style="color:#fff; font-weight:700;">{deadline}</span></div>'
+            f'<div><span style="color:#64748b; font-weight:600;">Action:</span> <span style="color:{risk_color}; font-weight:700; font-size:10px;">{action}</span></div>'
+            f'<div style="border-top:1px solid rgba(255,255,255,0.06); padding-top:6px; margin-top:2px;">'
+            f'<div style="font-size:9px; color:#64748b; text-transform:uppercase; font-weight:600; margin-bottom:3px;">Operator Failsafes</div>'
+            f'<div style="line-height:1.3;">{actions_html}</div>'
+            f'</div></div></div>'
+        )
+        zone_response_placeholder.markdown(zone_response_html, unsafe_allow_html=True)
+
+
 
     # Reset frame index if the selected zone changes
     if 'prev_selected_zone' not in st.session_state:
@@ -3163,6 +4127,15 @@ with tab_main:
                         st.session_state["_last_incident"] = None
                         _render_auto_banner(_auto_banner_placeholder)
             
+            # Render CCTV header dynamically
+            selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
+            header_placeholder.markdown(f"""
+            <div class='cctv-header'>
+                <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
+                <span class='live-badge'>● LIVE</span>
+            </div>
+            """, unsafe_allow_html=True)
+
             frame_placeholder.image(pil_img, width="stretch")
             
             # Render status bar dynamically in sync with the video
@@ -3178,13 +4151,14 @@ with tab_main:
             safe_zones = 4 if (h_count > 0 or (viol_count > 0 and selected_zone not in ('Zone_A', 'Reactor_Area', 'Storage_Area'))) else 5
             
             status_bar_placeholder.markdown(f"""
-            <div style="display:flex; justify-content:space-between; align-items:center; 
-                 padding: 8px 16px; background: rgba(0,0,0,0.4); border-top: 1px solid rgba(255,255,255,0.06); 
-                 margin-top: 8px; font-family:'Outfit',sans-serif; font-size: 12px; color: #a0b4c8;">
-                <span>📹 FPS: <b>25.0</b></span>
-                <span>👷 Workers: <b>{w_count}</b></span>
-                <span style="color:{'#ef4444' if h_count > 0 else '#a0b4c8'}; font-weight:{'700' if h_count > 0 else 'normal'};">⚠️ Hazards: <b>{h_count}</b></span>
-                <span style="color:#00ff41;">🟢 Safe Zones: <b>{safe_zones}</b></span>
+            <div style='background:#0a1628; border:1px solid #1e3a5f; border-top:none;
+                        border-radius:0 0 8px 8px; padding:8px 16px;
+                        display:flex; justify-content:space-around; align-items:center;
+                        font-family:"Outfit",sans-serif; font-size:12px;'>
+                <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">25.0</b></span>
+                <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">{w_count}</b></span>
+                <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">{h_count}</b></span>
+                <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">{safe_zones}</b></span>
             </div>
             """, unsafe_allow_html=True)
             
@@ -3319,25 +4293,11 @@ with tab_main:
                     </div>
                     """)
                     
-            if not alerts_list:
-                alerts_html = """
-                <div style="background:rgba(34,197,94,0.04);border-left:4px solid #22c55e;
-                     border-top:1px solid rgba(34,197,94,0.15);border-right:1px solid rgba(34,197,94,0.15);
-                     border-bottom:1px solid rgba(34,197,94,0.15);
-                     border-radius:10px;padding:12px 16px;margin:4px 0;
-                     font-family:'Outfit',sans-serif;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <span style="font-weight:600;color:#22c55e;font-size:12px;">🟢 NOMINAL - FEED SECURE</span>
-                    <span style="color:#6b7d94;font-size:11px;">MONITORING</span>
-                  </div>
-                  <div style="color:#a0b4c8;font-size:12px;line-height:1.4;">
-                    CCTV feed matches all safety standards. Helmet and vest compliance active. No hazardous smoke, fire, or gas leaks detected.
-                  </div>
-                </div>
-                """
-            else:
-                alerts_html = "\n".join([item.strip() for item in alerts_list])
-            alerts_placeholder.markdown(alerts_html, unsafe_allow_html=True)
+            if overpressure_active:
+                from src.cctv.object_detector import Detection
+                active_dets.append(Detection(label="overpressure", confidence=0.99, bbox=(0,0,0,0)))
+            am.update(active_dets, selected_zone)
+            render_improved_alerts(alerts_placeholder, am)
             
             # Update summary grids
             render_summary_grids(25.0, w_count, h_count, 1 if (viol_count > 0 and selected_zone not in ('Zone_A', 'Reactor_Area')) else 0, active_dets, {
@@ -3359,11 +4319,19 @@ with tab_main:
         st.session_state.cctv_frame_index = frame_idx
     else:
         # Standby screen when no video is found or feed is stopped
+        selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper() if selected_zone else "STANDBY"
+        header_placeholder.markdown(f"""
+        <div class='cctv-header'>
+            <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
+            <span style='color:#6b7d94; font-weight:bold; font-size:11px;'>● OFFLINE</span>
+        </div>
+        """, unsafe_allow_html=True)
+
         msg = "Enable the live stream switch above to start real-time AI surveillance."
         if video_path and not os.path.exists(video_path):
             msg = f"CCTV footage file not found: <b>{video_path}</b>"
         frame_placeholder.markdown(f"""
-        <div style="background:#0a0e17; height:380px; display:flex; flex-direction:column; justify-content:center; align-items:center; border: 1px dashed rgba(255,255,255,0.1); border-radius:8px;">
+        <div style="background:#0a0e17; height:380px; display:flex; flex-direction:column; justify-content:center; align-items:center; border: 1px dashed rgba(255,255,255,0.1); border-radius:0;">
             <span style="font-size:32px; margin-bottom:12px;">⚠️</span>
             <span style="font-family:'Outfit',sans-serif; font-weight:700; color:#6b7d94; text-transform:uppercase; letter-spacing:1.5px; font-size:13px;">CCTV Stream Standby</span>
             <span style="font-family:'Outfit',sans-serif; color:#4a5568; font-size:11px; margin-top:4px;">{msg}</span>
@@ -3371,28 +4339,25 @@ with tab_main:
         """, unsafe_allow_html=True)
         
         status_bar_placeholder.markdown("""
-        <div style="display:flex; justify-content:space-between; align-items:center; 
-             padding: 8px 16px; background: rgba(0,0,0,0.4); border-top: 1px solid rgba(255,255,255,0.06); 
-             margin-top: 8px; font-family:'Outfit',sans-serif; font-size: 12px; color: #a0b4c8;">
-            <span>📹 FPS: <b>0.0</b></span>
-            <span>👷 Workers: <b>0</b></span>
-            <span>⚠️ Hazards: <b>0</b></span>
-            <span style="color:#00ff41;">🟢 Safe Zones: <b>6</b></span>
+        <div style='background:#0a1628; border:1px solid #1e3a5f; border-top:none;
+                    border-radius:0 0 8px 8px; padding:8px 16px;
+                    display:flex; justify-content:space-around; align-items:center;
+                    font-family:"Outfit",sans-serif; font-size:12px;'>
+            <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">0.0</b></span>
+            <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">0</b></span>
+            <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">0</b></span>
+            <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">6</b></span>
         </div>
         """, unsafe_allow_html=True)
         
-        alerts_placeholder.markdown("""
-        <div style="background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.15);padding:12px;border-radius:6px;text-align:center;color:#22c55e;font-size:12px;font-weight:600;">
-          🟢 CCTV feed offline. Waiting for video source.
-        </div>
-        """, unsafe_allow_html=True)
+        render_improved_alerts(alerts_placeholder, am)
         
         render_summary_grids(0.0, 0, 0, 0, [], {})
 
 # ════════════════════════════════════════════════════════════════════════════════
 # BOTTOM: TREND (3.5) | ALERTS (3.8) | RULES (2.7)
 # ════════════════════════════════════════════════════════════════════════════════
-col_trend, col_alerts, col_rules = st.columns([3.5, 3.8, 2.7])
+col_trend, col_alerts, col_rules = st.columns([1.8, 1.8, 1.0])
 
 # ─── 24-HOUR RISK TREND ───────────────────────────────────────────────────────
 with col_trend:
@@ -3460,7 +4425,7 @@ with col_trend:
                        range=[0, 22], tickfont=dict(size=9, family="Outfit"),
                        title=dict(text='RISK SCORE', font=dict(size=9, color='#6b7d94')))
         )
-        st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 
 # ─── ACTIVE ALERTS ────────────────────────────────────────────────────────────
@@ -3546,8 +4511,8 @@ with col_alerts:
                 <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
                   <span style="color:#64748b;font-size:10px;">{ts_str}</span>
                   <span style="color:#64748b;font-size:12px;">📱 ✉️ 🔊</span>
-                  <span style="background:rgba(255,255,255,0.06);color:{status_color};font-size:9px;
-                               font-weight:800;padding:2px 8px;border-radius:4px;border:1px solid {status_color}44;">
+                  <span style="background-color:{status_color};color:#fff;font-size:9px;
+                               font-weight:800;padding:2px 8px;border-radius:10px;white-space:nowrap;">
                     {status_lbl}</span>
                 </div>
               </div>
@@ -3594,13 +4559,13 @@ with col_rules:
         <div style="display:flex;justify-content:space-between;align-items:center;
           padding:9px 12px;margin-bottom:7px;background:{bg};
           border:1px solid rgba(255,255,255,0.06);border-radius:8px;
-          font-family:'Outfit',sans-serif;">
-          <div style="display:flex;align-items:center;gap:8px;">
+          font-family:'Outfit',sans-serif; min-width:0; width:100%;">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
             {icon_html}
-            <span style="color:#fff;font-size:12px;font-weight:600;">{rule_name}</span>
+            <span style="color:#fff;font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{rule_name}</span>
           </div>
           <span style="color:{c};font-size:11px;font-weight:800;text-transform:uppercase;
-            letter-spacing:0.5px;">{lbl}</span>
+            letter-spacing:0.5px;white-space:nowrap;margin-left:8px;flex-shrink:0;">{lbl}</span>
         </div>""", unsafe_allow_html=True)
 
     st.markdown("""
@@ -3608,6 +4573,53 @@ with col_rules:
     font-family:'Outfit',sans-serif;">
       <a href="#" style="color:#00d4ff;text-decoration:none;font-weight:600;">View All Rules →</a>
     </div>""", unsafe_allow_html=True)
+
+    # NEW: Safety Compliance Audit Log at the bottom of tab_main
+    st.markdown("<hr style='border:1px solid rgba(255,255,255,0.06);margin:20px 0;'>", unsafe_allow_html=True)
+    st.markdown('<div class="section-header">🗄️ PERSISTENT SAFETY COMPLIANCE AUDIT LOG</div>', unsafe_allow_html=True)
+    
+    # Filter selection
+    filter_col1, filter_spacer = st.columns([2, 3])
+    with filter_col1:
+        filter_severity = st.multiselect(
+            "Filter Severity Level:", 
+            ["CRITICAL", "HIGH", "MEDIUM", "LOW"], 
+            default=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+            key="audit_log_severity_filter"
+        )
+    
+    import sqlite3
+    try:
+        conn = sqlite3.connect("data/alerts.db")
+        df_alerts = pd.read_sql_query("SELECT alert_id, timestamp, zone, risk_level, risk_score, status, message FROM system_alerts ORDER BY timestamp DESC", conn)
+        conn.close()
+        
+        if df_alerts.empty:
+            st.info("No safety alerts logged in database yet.")
+        else:
+            # Filter
+            df_filtered = df_alerts[df_alerts['risk_level'].isin(filter_severity)]
+            
+            if df_filtered.empty:
+                st.caption("No alerts matching selected severity.")
+            else:
+                # Use st.dataframe
+                st.dataframe(
+                    df_filtered, 
+                    use_container_width=True,
+                    column_config={
+                        "alert_id": st.column_config.TextColumn("ID", width="small"),
+                        "timestamp": st.column_config.TextColumn("Timestamp", width="medium"),
+                        "zone": st.column_config.TextColumn("Zone", width="small"),
+                        "risk_level": st.column_config.TextColumn("Severity", width="small"),
+                        "risk_score": st.column_config.NumberColumn("Risk Score", format="%d", width="small"),
+                        "status": st.column_config.TextColumn("Status", width="small"),
+                        "message": st.column_config.TextColumn("Compliance Message", width="large")
+                    },
+                    hide_index=True
+                )
+    except Exception as e:
+        st.error(f"Error loading safety audit log: {e}")
 
 
 if tab_diag:
@@ -3789,15 +4801,19 @@ with _sim_bc7:
         st.rerun()
 
 _scenario_label = "Visakhapatnam Pattern" if st.session_state.compound_risk_active else "Monitoring"
+_sys_status_color = "#22c55e" if not st.session_state.compound_risk_active else "#ef4444"
+_sys_status_label = "NOMINAL" if not st.session_state.compound_risk_active else "ACTIVE SIMULATION"
 st.markdown(f"""
-<div style='background:#0a1628;border-top:1px solid #1e3a5f;padding:5px 20px;
-             display:flex;justify-content:space-between;font-size:11px;color:#64748b;
-             font-family:"Outfit",sans-serif;'>
-  <span>SurakshaAI v3.0 &nbsp;|&nbsp; Zero-Harm Operations</span>
-  <span>Scenario: <b style='color:#e2e8f0;'>{_scenario_label}</b></span>
-  <span>Elapsed: <b style='color:#e2e8f0;'>{_scenario_min_now:.1f} min</b></span>
-  <span>Status: <b style='color:{"#ef4444" if st.session_state.compound_risk_active else "#22c55e"};'>
-    {"Active Simulation" if st.session_state.compound_risk_active else "NOMINAL"}</b></span>
+<div style='position:fixed;bottom:0;left:0;right:0;z-index:9999;
+             background:linear-gradient(90deg,#060d1a 0%,#0a1628 100%);
+             border-top:1px solid #1e3a5f;padding:7px 24px;
+             display:flex;justify-content:space-between;align-items:center;
+             font-size:11px;color:#64748b;font-family:"Outfit",sans-serif;
+             box-shadow:0 -4px 20px rgba(0,0,0,0.5);'>
+  <span>🛡️ <span style='color:#3b82f6;font-weight:700;'>SurakshaAI v3.0</span> &nbsp;|&nbsp; Zero-Harm Operations</span>
+  <span>📋 Scenario: <b style='color:#e2e8f0;'>{_scenario_label}</b></span>
+  <span>⏱ Elapsed: <b style='color:#e2e8f0;'>{_scenario_min_now:.1f} min</b></span>
+  <span>🌐 Status: <b style='color:{_sys_status_color};'>{_sys_status_label}</b></span>
 </div>
 """, unsafe_allow_html=True)
 

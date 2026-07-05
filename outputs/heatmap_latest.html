@@ -3,6 +3,57 @@
 <head>
     
     <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    
+        <style>
+        @keyframes folium-pulse {
+            0% { transform: scale(0.6); opacity: 0.8; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.2); opacity: 0.3; box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.6); opacity: 0; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .pulsing-marker-critical {
+            width: 24px;
+            height: 24px;
+            background: rgba(239, 68, 68, 0.35);
+            border: 2px solid #ef4444;
+            border-radius: 50%;
+            animation: folium-pulse 1.4s infinite ease-out;
+            pointer-events: none;
+        }
+        .pulsing-marker-high {
+            width: 18px;
+            height: 18px;
+            background: rgba(245, 158, 11, 0.25);
+            border: 2px solid #f59e0b;
+            border-radius: 50%;
+            animation: folium-pulse 1.8s infinite ease-out;
+            pointer-events: none;
+        }
+        /* Custom Popup styling to match dark theme */
+        .leaflet-popup-content-wrapper {
+            background: #131b2b !important;
+            color: #ffffff !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+            padding: 2px !important;
+        }
+        .leaflet-popup-content {
+            margin: 8px 10px !important;
+        }
+        .leaflet-popup-tip {
+            background: #131b2b !important;
+            border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+        .leaflet-popup-close-button {
+            color: #a0b4c8 !important;
+            padding: 8px 8px 0 0 !important;
+        }
+        .leaflet-popup-close-button:hover {
+            color: #ffffff !important;
+        }
+        </style>
+        
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -17,7 +68,7 @@
             <meta name="viewport" content="width=device-width,
                 initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
             <style>
-                #map_0668a250cc297b5229020c372e66e750 {
+                #map_884801d703dcd1ee7aa5871a4682ac2d {
                     position: relative;
                     width: 100.0%;
                     height: 100.0%;
@@ -54,88 +105,72 @@
 <body>
     
     
-        <div style="position: fixed; bottom: 50px; left: 50px; width: 150px; height: 150px; 
-                    background-color: white; border: 2px solid grey; border-radius: 5px; 
-                    padding: 10px; z-index: 9999; font-family: Arial, sans-serif; font-size: 14px;">
-            <p style="margin: 0 0 5px 0; font-weight: bold;">Risk Legend</p>
-            <p style="margin: 2px 0; color: #00ff00;">Low</p>
-            <p style="margin: 2px 0; color: #ffff00;">Medium</p>
-            <p style="margin: 2px 0; color: #ff8c00;">High</p>
-            <p style="margin: 2px 0; color: #ff0000;">Critical</p>
+        <div style="position: fixed; bottom: 15px; right: 15px; width: 130px; 
+                    background: rgba(19, 27, 43, 0.9); backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; 
+                    padding: 8px 10px; z-index: 9999; font-family: 'Outfit', sans-serif; font-size: 11px;
+                    color: #ffffff; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+            <p style="margin: 0 0 6px 0; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; font-size: 9px; color: #a0b4c8;">Risk Status</p>
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: #ef4444; border-radius: 2px; margin-right: 6px;"></span>
+                <span style="font-weight: 500;">Critical</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: #f59e0b; border-radius: 2px; margin-right: 6px;"></span>
+                <span style="font-weight: 500;">High</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: #eab308; border-radius: 2px; margin-right: 6px;"></span>
+                <span style="font-weight: 500;">Medium</span>
+            </div>
+            <div style="display: flex; align-items: center;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: #22c55e; border-radius: 2px; margin-right: 6px;"></span>
+                <span style="font-weight: 500;">Low</span>
+            </div>
         </div>
         
     
-            <div class="folium-map" id="map_0668a250cc297b5229020c372e66e750" ></div>
+            <div class="folium-map" id="map_884801d703dcd1ee7aa5871a4682ac2d" ></div>
         
 </body>
 <script>
     
     
-            var map_0668a250cc297b5229020c372e66e750 = L.map(
-                "map_0668a250cc297b5229020c372e66e750",
+            var map_884801d703dcd1ee7aa5871a4682ac2d = L.map(
+                "map_884801d703dcd1ee7aa5871a4682ac2d",
                 {
-                    center: [28.618, 77.238],
+                    center: [0.0, -0.002],
                     crs: L.CRS.EPSG3857,
                     ...{
   "zoom": 16,
   "zoomControl": true,
   "preferCanvas": false,
+  "scrollWheelZoom": false,
+  "dragging": true,
 }
 
                 }
             );
-            L.control.scale().addTo(map_0668a250cc297b5229020c372e66e750);
 
             
 
         
     
-            var tile_layer_5f301e28697c9551cd8073f364bf6d09 = L.tileLayer(
-                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                {
-  "minZoom": 0,
-  "maxZoom": 19,
-  "maxNativeZoom": 19,
-  "noWrap": false,
-  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
-  "subdomains": "abc",
-  "detectRetina": false,
-  "tms": false,
-  "opacity": 1,
-}
-
-            );
+            var rectangle_025d1578a23deb5ac5a3dcb6f7d115b1 = L.rectangle(
+                [[-90.0, -180.0], [90.0, 180.0]],
+                {"bubblingMouseEvents": true, "color": "#0a0e17", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#0a0e17", "fillOpacity": 1.0, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 1.0, "smoothFactor": 1.0, "stroke": true, "weight": 0}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
         
     
-            tile_layer_5f301e28697c9551cd8073f364bf6d09.addTo(map_0668a250cc297b5229020c372e66e750);
+            var rectangle_023b3be8b6be00c55badbcb4e27425e9 = L.rectangle(
+                [[-0.008, -0.018], [0.008, 0.014]],
+                {"bubblingMouseEvents": true, "color": "#3a3a4a", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#131b2b", "fillOpacity": 0.4, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 1.0, "smoothFactor": 1.0, "stroke": true, "weight": 2}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
         
     
-            var rectangle_8fcc1240100de4b63faa82a4188a642d = L.rectangle(
-                [[28.605, 77.225], [28.63, 77.25]],
-                {"bubblingMouseEvents": true, "color": "#000000", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#000000", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 1.0, "smoothFactor": 1.0, "stroke": true, "weight": 2}
-            ).addTo(map_0668a250cc297b5229020c372e66e750);
-        
-    
-        var popup_112c11332695a44970151248a0592c91 = L.popup({
-  "maxWidth": "100%",
-});
-
-        
-            
-                var html_ce6ed95fb8360e796292f30f7aeded32 = $(`<div id="html_ce6ed95fb8360e796292f30f7aeded32" style="width: 100.0%; height: 100.0%;">Plant Boundary</div>`)[0];
-                popup_112c11332695a44970151248a0592c91.setContent(html_ce6ed95fb8360e796292f30f7aeded32);
-            
-        
-
-        rectangle_8fcc1240100de4b63faa82a4188a642d.bindPopup(popup_112c11332695a44970151248a0592c91)
-        ;
-
-        
-    
-    
-            rectangle_8fcc1240100de4b63faa82a4188a642d.bindTooltip(
+            rectangle_023b3be8b6be00c55badbcb4e27425e9.bindTooltip(
                 `<div>
-                     Suraksha Plant
+                     SurakshaAI Plant Site
                  </div>`,
                 {
   "sticky": true,
@@ -143,32 +178,192 @@
             );
         
     
-            var circle_marker_5435454563207dfb2b00d3ee6a6e01ba = L.circleMarker(
-                [28.61, 77.23],
-                {"bubblingMouseEvents": true, "color": "#00ff00", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#00ff00", "fillOpacity": 0.7, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 30, "stroke": true, "weight": 1}
-            ).addTo(map_0668a250cc297b5229020c372e66e750);
+            var poly_line_3f53854d7d8f1f46b15b5a3224021a45 = L.polyline(
+                [[-0.008, -0.018], [-0.008, 0.014]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
         
     
-        var popup_9f39e81a77fe12c31ede46c8f74f0e78 = L.popup({
+            var poly_line_0254072f255daba545c4f31ab2c3cf99 = L.polyline(
+                [[-0.006, -0.018], [-0.006, 0.014]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_23e8d2bd5fddaae2bb75c8a7b357b289 = L.polyline(
+                [[-0.004, -0.018], [-0.004, 0.014]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_06f59a4d153303d7c929061cc3045451 = L.polyline(
+                [[-0.002, -0.018], [-0.002, 0.014]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_f9cdb248d73c06f03c0a2113ac84e179 = L.polyline(
+                [[0.0, -0.018], [0.0, 0.014]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_2d70fa1f578d29922d5311534b552fac = L.polyline(
+                [[0.002, -0.018], [0.002, 0.014]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_df609e33999c0c48441361cf434ce608 = L.polyline(
+                [[0.004, -0.018], [0.004, 0.014]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_aaa8225d96d65fe89cbf30e799714b7a = L.polyline(
+                [[0.006, -0.018], [0.006, 0.014]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_c16ceaa8ee83155fb4cd51b2003f6f27 = L.polyline(
+                [[0.008, -0.018], [0.008, 0.014]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_7746dd89af63adbac9552ff304522e73 = L.polyline(
+                [[-0.008, -0.018], [0.008, -0.018]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_9825c20acde1233be5cdfe769439da42 = L.polyline(
+                [[-0.008, -0.015714285714285712], [0.008, -0.015714285714285712]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_7d7087cc56d10a53c52b2d9c4d4d262c = L.polyline(
+                [[-0.008, -0.013428571428571427], [0.008, -0.013428571428571427]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_6a3569d13e36bed11c7f72595012cb15 = L.polyline(
+                [[-0.008, -0.011142857142857142], [0.008, -0.011142857142857142]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_fee3f49346c691d0e4a119e3279ddc9f = L.polyline(
+                [[-0.008, -0.008857142857142855], [0.008, -0.008857142857142855]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_bce876d0c7cb8fca9447afbbfe349637 = L.polyline(
+                [[-0.008, -0.006571428571428568], [0.008, -0.006571428571428568]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_a1f467815e720fa7bfe18c37761f7b75 = L.polyline(
+                [[-0.008, -0.004285714285714283], [0.008, -0.004285714285714283]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_10dd3f6b558b089bcaab4c80f2ff6ce2 = L.polyline(
+                [[-0.008, -0.0019999999999999983], [0.008, -0.0019999999999999983]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_db024f44a6ddec00f49b49a72a20f2af = L.polyline(
+                [[-0.008, 0.00028571428571428845], [0.008, 0.00028571428571428845]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_31c536b6d2309e78148c91d5430fc60b = L.polyline(
+                [[-0.008, 0.002571428571428575], [0.008, 0.002571428571428575]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_675692d4b485f496a99d5618e19c3ad5 = L.polyline(
+                [[-0.008, 0.004857142857142862], [0.008, 0.004857142857142862]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_7cf2ab2bd50afbfdb0d13f93abb84f62 = L.polyline(
+                [[-0.008, 0.007142857142857145], [0.008, 0.007142857142857145]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_789fe19ee6863082c1cf8264e8e24e97 = L.polyline(
+                [[-0.008, 0.009428571428571432], [0.008, 0.009428571428571432]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_1a5116158bf7ab7df7fe8d4b83aa7865 = L.polyline(
+                [[-0.008, 0.011714285714285719], [0.008, 0.011714285714285719]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var poly_line_88c3668a661ffd4bff8d45eadee0aa6e = L.polyline(
+                [[-0.008, 0.014], [0.008, 0.014]],
+                {"bubblingMouseEvents": true, "color": "#2a2844", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#2a2844", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.3, "smoothFactor": 1.0, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var marker_50fdd794d706126d61ee0461a6e4fe70 = L.marker(
+                [0.004, -0.015],
+                {
+}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var div_icon_86d718f15df29a0b53a1187f15dc48fb = L.divIcon({
+  "html": "\u003cdiv style=\"font-family: \u0027Outfit\u0027, sans-serif; font-size: 11px; font-weight: 700; color: #ffffff; text-align: center; width: 100px; transform: translate(-50%, -50%); text-shadow: 1px 1px 3px #000; pointer-events: none;\"\u003eBattery-1\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_50fdd794d706126d61ee0461a6e4fe70.setIcon(div_icon_86d718f15df29a0b53a1187f15dc48fb);
+            
+    
+            var circle_87d6670b8116d89fcf020da5d710f767 = L.circle(
+                [0.004, -0.015],
+                {"bubblingMouseEvents": true, "color": "#22c55e", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#22c55e", "fillOpacity": 0.15, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 28, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+        var popup_cf8a79fe3732d12f6579b6add65f46ba = L.popup({
   "maxWidth": 300,
 });
 
         
             
-                var html_86a0ffddb61feb4e485946f1678abd4a = $(`<div id="html_86a0ffddb61feb4e485946f1678abd4a" style="width: 100.0%; height: 100.0%;">         <div style="font-family: Arial, sans-serif; min-width: 200px; padding: 10px;">             <h3 style="margin: 0 0 10px 0; color: #00ff00;">                  Zone_A             </h3>             <p><b>Risk Level:</b> <span style="color: #00ff00;">                 LOW</span></p>             <hr style="margin: 8px 0;">             <table style="width: 100%; font-size: 14px;">                          <tr>                     <td><b>Zone A Gas Ppm:</b></td>                     <td style="color: black">0.9</td>                 </tr>                                  <tr>                     <td><b>Zone A Temperature C:</b></td>                     <td style="color: black">44.7</td>                 </tr>                                  <tr>                     <td><b>Zone A Pressure Bar:</b></td>                     <td style="color: black">1.3</td>                 </tr>                                  <tr>                     <td><b>Zone A Worker Count:</b></td>                     <td style="color: black">5.7</td>                 </tr>                                  <tr>                     <td><b>Zone A Maintenance Active:</b></td>                     <td style="color: black">0</td>                 </tr>                                  <tr>                     <td><b>Zone A Permit Active:</b></td>                     <td style="color: black">0</td>                 </tr>                              </table>             <hr style="margin: 8px 0;">             <small style="color: #666;">Last updated: 17:31:17</small>         </div>         </div>`)[0];
-                popup_9f39e81a77fe12c31ede46c8f74f0e78.setContent(html_86a0ffddb61feb4e485946f1678abd4a);
+                var html_ff243f4a93e5da4857c49029243c29a6 = $(`<div id="html_ff243f4a93e5da4857c49029243c29a6" style="width: 100.0%; height: 100.0%;">         <div style="font-family: 'Outfit', sans-serif; min-width: 220px; padding: 4px; background: #131b2b; color: #ffffff;">             <h4 style="margin: 0 0 6px 0; color: #22c55e; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">                 Battery-1             </h4>             <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; color: #a0b4c8;">                 Risk State: <span style="color: #22c55e; font-weight: 800;">LOW</span>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">                 <table style="width: 100%; font-size: 11px; border-collapse: collapse; color: #a0b4c8;">                          </table>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; padding-top: 6px; font-size: 9px; color: #6b7d94; text-align: right;">                 Telemetry Refreshed             </div>         </div>         </div>`)[0];
+                popup_cf8a79fe3732d12f6579b6add65f46ba.setContent(html_ff243f4a93e5da4857c49029243c29a6);
             
         
 
-        circle_marker_5435454563207dfb2b00d3ee6a6e01ba.bindPopup(popup_9f39e81a77fe12c31ede46c8f74f0e78)
+        circle_87d6670b8116d89fcf020da5d710f767.bindPopup(popup_cf8a79fe3732d12f6579b6add65f46ba)
         ;
 
         
     
     
-            circle_marker_5435454563207dfb2b00d3ee6a6e01ba.bindTooltip(
+            circle_87d6670b8116d89fcf020da5d710f767.bindTooltip(
                 `<div>
-                     Zone_A: LOW
+                     Battery-1: LOW
                  </div>`,
                 {
   "sticky": true,
@@ -176,32 +371,48 @@
             );
         
     
-            var circle_marker_cee2d0cb31caa7367df605b76f03e9e0 = L.circleMarker(
-                [28.62, 77.235],
-                {"bubblingMouseEvents": true, "color": "#00ff00", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#00ff00", "fillOpacity": 0.7, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 30, "stroke": true, "weight": 1}
-            ).addTo(map_0668a250cc297b5229020c372e66e750);
+            var marker_a27e3cec08d9071bff27263c0a202caf = L.marker(
+                [0.004, -0.01],
+                {
+}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
         
     
-        var popup_9e1fbc4b83dd708e80b8c3f8c7a8cf76 = L.popup({
+            var div_icon_aa5d3ef8d2f3e338ac4c12c7db20301d = L.divIcon({
+  "html": "\u003cdiv style=\"font-family: \u0027Outfit\u0027, sans-serif; font-size: 11px; font-weight: 700; color: #ffffff; text-align: center; width: 100px; transform: translate(-50%, -50%); text-shadow: 1px 1px 3px #000; pointer-events: none;\"\u003eBattery-2\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_a27e3cec08d9071bff27263c0a202caf.setIcon(div_icon_aa5d3ef8d2f3e338ac4c12c7db20301d);
+            
+    
+            var circle_126deba17649e1eebf9f311193cf9533 = L.circle(
+                [0.004, -0.01],
+                {"bubblingMouseEvents": true, "color": "#22c55e", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#22c55e", "fillOpacity": 0.15, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 28, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+        var popup_6ae2c463ebc7047d578d54f4ac3f18b1 = L.popup({
   "maxWidth": 300,
 });
 
         
             
-                var html_9b3399511f2088a967a499c339451645 = $(`<div id="html_9b3399511f2088a967a499c339451645" style="width: 100.0%; height: 100.0%;">         <div style="font-family: Arial, sans-serif; min-width: 200px; padding: 10px;">             <h3 style="margin: 0 0 10px 0; color: #00ff00;">                  Zone_B             </h3>             <p><b>Risk Level:</b> <span style="color: #00ff00;">                 LOW</span></p>             <hr style="margin: 8px 0;">             <table style="width: 100%; font-size: 14px;">                          <tr>                     <td><b>Zone B Gas Ppm:</b></td>                     <td style="color: black">3.6</td>                 </tr>                                  <tr>                     <td><b>Zone B Temperature C:</b></td>                     <td style="color: black">87.1</td>                 </tr>                                  <tr>                     <td><b>Zone B Pressure Bar:</b></td>                     <td style="color: black">6.6</td>                 </tr>                                  <tr>                     <td><b>Zone B Worker Count:</b></td>                     <td style="color: black">3.4</td>                 </tr>                                  <tr>                     <td><b>Zone B Maintenance Active:</b></td>                     <td style="color: black">0</td>                 </tr>                                  <tr>                     <td><b>Zone B Permit Active:</b></td>                     <td style="color: black">0</td>                 </tr>                              </table>             <hr style="margin: 8px 0;">             <small style="color: #666;">Last updated: 17:31:17</small>         </div>         </div>`)[0];
-                popup_9e1fbc4b83dd708e80b8c3f8c7a8cf76.setContent(html_9b3399511f2088a967a499c339451645);
+                var html_c50566e44d373cc468f2722a9c6c0744 = $(`<div id="html_c50566e44d373cc468f2722a9c6c0744" style="width: 100.0%; height: 100.0%;">         <div style="font-family: 'Outfit', sans-serif; min-width: 220px; padding: 4px; background: #131b2b; color: #ffffff;">             <h4 style="margin: 0 0 6px 0; color: #22c55e; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">                 Battery-2             </h4>             <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; color: #a0b4c8;">                 Risk State: <span style="color: #22c55e; font-weight: 800;">LOW</span>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">                 <table style="width: 100%; font-size: 11px; border-collapse: collapse; color: #a0b4c8;">                          </table>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; padding-top: 6px; font-size: 9px; color: #6b7d94; text-align: right;">                 Telemetry Refreshed             </div>         </div>         </div>`)[0];
+                popup_6ae2c463ebc7047d578d54f4ac3f18b1.setContent(html_c50566e44d373cc468f2722a9c6c0744);
             
         
 
-        circle_marker_cee2d0cb31caa7367df605b76f03e9e0.bindPopup(popup_9e1fbc4b83dd708e80b8c3f8c7a8cf76)
+        circle_126deba17649e1eebf9f311193cf9533.bindPopup(popup_6ae2c463ebc7047d578d54f4ac3f18b1)
         ;
 
         
     
     
-            circle_marker_cee2d0cb31caa7367df605b76f03e9e0.bindTooltip(
+            circle_126deba17649e1eebf9f311193cf9533.bindTooltip(
                 `<div>
-                     Zone_B: LOW
+                     Battery-2: LOW
                  </div>`,
                 {
   "sticky": true,
@@ -209,32 +420,48 @@
             );
         
     
-            var circle_marker_ce5f88759034001742bc6221b347924f = L.circleMarker(
-                [28.615, 77.24],
-                {"bubblingMouseEvents": true, "color": "#00ff00", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#00ff00", "fillOpacity": 0.7, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 30, "stroke": true, "weight": 1}
-            ).addTo(map_0668a250cc297b5229020c372e66e750);
+            var marker_d0f33ade7b7a660fc0c934eca8346087 = L.marker(
+                [0.004, -0.005],
+                {
+}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
         
     
-        var popup_9004314784f20299e0923a06da51e1e4 = L.popup({
+            var div_icon_9b34e8fb4d3af674c0773943b25d8d2e = L.divIcon({
+  "html": "\u003cdiv style=\"font-family: \u0027Outfit\u0027, sans-serif; font-size: 11px; font-weight: 700; color: #ffffff; text-align: center; width: 100px; transform: translate(-50%, -50%); text-shadow: 1px 1px 3px #000; pointer-events: none;\"\u003eBattery-3\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_d0f33ade7b7a660fc0c934eca8346087.setIcon(div_icon_9b34e8fb4d3af674c0773943b25d8d2e);
+            
+    
+            var circle_b4a5d17109c5dce8ecce40f9eec9205f = L.circle(
+                [0.004, -0.005],
+                {"bubblingMouseEvents": true, "color": "#22c55e", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#22c55e", "fillOpacity": 0.15, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 28, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+        var popup_82e0175a4db7d166150899c1c204178a = L.popup({
   "maxWidth": 300,
 });
 
         
             
-                var html_81411acd4e7f60e433733246c147dce6 = $(`<div id="html_81411acd4e7f60e433733246c147dce6" style="width: 100.0%; height: 100.0%;">         <div style="font-family: Arial, sans-serif; min-width: 200px; padding: 10px;">             <h3 style="margin: 0 0 10px 0; color: #00ff00;">                  Zone_C             </h3>             <p><b>Risk Level:</b> <span style="color: #00ff00;">                 LOW</span></p>             <hr style="margin: 8px 0;">             <table style="width: 100%; font-size: 14px;">                          <tr>                     <td><b>Zone C Gas Ppm:</b></td>                     <td style="color: black">0.8</td>                 </tr>                                  <tr>                     <td><b>Zone C Temperature C:</b></td>                     <td style="color: black">85.1</td>                 </tr>                                  <tr>                     <td><b>Zone C Pressure Bar:</b></td>                     <td style="color: black">6.2</td>                 </tr>                                  <tr>                     <td><b>Zone C Worker Count:</b></td>                     <td style="color: black">4.2</td>                 </tr>                                  <tr>                     <td><b>Zone C Maintenance Active:</b></td>                     <td style="color: black">0</td>                 </tr>                                  <tr>                     <td><b>Zone C Permit Active:</b></td>                     <td style="color: black">1</td>                 </tr>                              </table>             <hr style="margin: 8px 0;">             <small style="color: #666;">Last updated: 17:31:17</small>         </div>         </div>`)[0];
-                popup_9004314784f20299e0923a06da51e1e4.setContent(html_81411acd4e7f60e433733246c147dce6);
+                var html_6a4ee7cc2af97f625aef89a26fc7d12a = $(`<div id="html_6a4ee7cc2af97f625aef89a26fc7d12a" style="width: 100.0%; height: 100.0%;">         <div style="font-family: 'Outfit', sans-serif; min-width: 220px; padding: 4px; background: #131b2b; color: #ffffff;">             <h4 style="margin: 0 0 6px 0; color: #22c55e; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">                 Battery-3             </h4>             <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; color: #a0b4c8;">                 Risk State: <span style="color: #22c55e; font-weight: 800;">LOW</span>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">                 <table style="width: 100%; font-size: 11px; border-collapse: collapse; color: #a0b4c8;">                          </table>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; padding-top: 6px; font-size: 9px; color: #6b7d94; text-align: right;">                 Telemetry Refreshed             </div>         </div>         </div>`)[0];
+                popup_82e0175a4db7d166150899c1c204178a.setContent(html_6a4ee7cc2af97f625aef89a26fc7d12a);
             
         
 
-        circle_marker_ce5f88759034001742bc6221b347924f.bindPopup(popup_9004314784f20299e0923a06da51e1e4)
+        circle_b4a5d17109c5dce8ecce40f9eec9205f.bindPopup(popup_82e0175a4db7d166150899c1c204178a)
         ;
 
         
     
     
-            circle_marker_ce5f88759034001742bc6221b347924f.bindTooltip(
+            circle_b4a5d17109c5dce8ecce40f9eec9205f.bindTooltip(
                 `<div>
-                     Zone_C: LOW
+                     Battery-3: LOW
                  </div>`,
                 {
   "sticky": true,
@@ -242,32 +469,48 @@
             );
         
     
-            var circle_marker_adbd74b7f30450ded59af064b44d8794 = L.circleMarker(
-                [28.625, 77.228],
-                {"bubblingMouseEvents": true, "color": "#00ff00", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#00ff00", "fillOpacity": 0.7, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 30, "stroke": true, "weight": 1}
-            ).addTo(map_0668a250cc297b5229020c372e66e750);
+            var marker_c6d03bc66caa6437c411a83ebbfb5a08 = L.marker(
+                [0.004, 0.0],
+                {
+}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
         
     
-        var popup_eed3ee754a583fad080dd18d127e3e57 = L.popup({
+            var div_icon_f6a6d16f9725d910d0bc2d3e22d46647 = L.divIcon({
+  "html": "\u003cdiv style=\"font-family: \u0027Outfit\u0027, sans-serif; font-size: 11px; font-weight: 700; color: #ffffff; text-align: center; width: 100px; transform: translate(-50%, -50%); text-shadow: 1px 1px 3px #000; pointer-events: none;\"\u003eBattery-4\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_c6d03bc66caa6437c411a83ebbfb5a08.setIcon(div_icon_f6a6d16f9725d910d0bc2d3e22d46647);
+            
+    
+            var circle_0b193d63c38d495998dd1d01dc5a6a79 = L.circle(
+                [0.004, 0.0],
+                {"bubblingMouseEvents": true, "color": "#22c55e", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#22c55e", "fillOpacity": 0.15, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 28, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+        var popup_7db81ba058dc28f8a8b631d7ccbd48ab = L.popup({
   "maxWidth": 300,
 });
 
         
             
-                var html_7fcde6e04012d33b1d6f136feff785ff = $(`<div id="html_7fcde6e04012d33b1d6f136feff785ff" style="width: 100.0%; height: 100.0%;">         <div style="font-family: Arial, sans-serif; min-width: 200px; padding: 10px;">             <h3 style="margin: 0 0 10px 0; color: #00ff00;">                  Reactor_Area             </h3>             <p><b>Risk Level:</b> <span style="color: #00ff00;">                 LOW</span></p>             <hr style="margin: 8px 0;">             <table style="width: 100%; font-size: 14px;">                          <tr>                     <td><b>Reactor Area Gas Ppm:</b></td>                     <td style="color: black">2.5</td>                 </tr>                                  <tr>                     <td><b>Reactor Area Temperature C:</b></td>                     <td style="color: black">98.9</td>                 </tr>                                  <tr>                     <td><b>Reactor Area Pressure Bar:</b></td>                     <td style="color: black">4.9</td>                 </tr>                                  <tr>                     <td><b>Reactor Area Worker Count:</b></td>                     <td style="color: black">4.5</td>                 </tr>                                  <tr>                     <td><b>Reactor Area Maintenance Active:</b></td>                     <td style="color: black">0</td>                 </tr>                                  <tr>                     <td><b>Reactor Area Permit Active:</b></td>                     <td style="color: black">0</td>                 </tr>                              </table>             <hr style="margin: 8px 0;">             <small style="color: #666;">Last updated: 17:31:17</small>         </div>         </div>`)[0];
-                popup_eed3ee754a583fad080dd18d127e3e57.setContent(html_7fcde6e04012d33b1d6f136feff785ff);
+                var html_b4190f7facc2a402b74d9b3ff8dfeff8 = $(`<div id="html_b4190f7facc2a402b74d9b3ff8dfeff8" style="width: 100.0%; height: 100.0%;">         <div style="font-family: 'Outfit', sans-serif; min-width: 220px; padding: 4px; background: #131b2b; color: #ffffff;">             <h4 style="margin: 0 0 6px 0; color: #22c55e; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">                 Battery-4             </h4>             <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; color: #a0b4c8;">                 Risk State: <span style="color: #22c55e; font-weight: 800;">LOW</span>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">                 <table style="width: 100%; font-size: 11px; border-collapse: collapse; color: #a0b4c8;">                      <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Gas (ppm)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">4.1</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Temperature (°C)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">78.1</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Pressure (bar)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">4.4</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Crew Members</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">3.1</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Maintenance Status</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Permit Status</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0</td>             </tr>                              </table>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; padding-top: 6px; font-size: 9px; color: #6b7d94; text-align: right;">                 Telemetry Refreshed             </div>         </div>         </div>`)[0];
+                popup_7db81ba058dc28f8a8b631d7ccbd48ab.setContent(html_b4190f7facc2a402b74d9b3ff8dfeff8);
             
         
 
-        circle_marker_adbd74b7f30450ded59af064b44d8794.bindPopup(popup_eed3ee754a583fad080dd18d127e3e57)
+        circle_0b193d63c38d495998dd1d01dc5a6a79.bindPopup(popup_7db81ba058dc28f8a8b631d7ccbd48ab)
         ;
 
         
     
     
-            circle_marker_adbd74b7f30450ded59af064b44d8794.bindTooltip(
+            circle_0b193d63c38d495998dd1d01dc5a6a79.bindTooltip(
                 `<div>
-                     Reactor_Area: LOW
+                     Battery-4: LOW
                  </div>`,
                 {
   "sticky": true,
@@ -275,32 +518,244 @@
             );
         
     
-            var circle_marker_66c86f49c656d964d6c10f48be2b69b6 = L.circleMarker(
-                [28.618, 77.245],
-                {"bubblingMouseEvents": true, "color": "#00ff00", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#00ff00", "fillOpacity": 0.7, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 30, "stroke": true, "weight": 1}
-            ).addTo(map_0668a250cc297b5229020c372e66e750);
+            var marker_5807ebabb212775f827d9c02492d8afd = L.marker(
+                [0.004, 0.005],
+                {
+}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
         
     
-        var popup_47ee59fdaa672274ba57b822d31bd9e6 = L.popup({
+            var div_icon_abe00c0f7f7b19adf137890c7a11206b = L.divIcon({
+  "html": "\u003cdiv style=\"font-family: \u0027Outfit\u0027, sans-serif; font-size: 11px; font-weight: 700; color: #ffffff; text-align: center; width: 100px; transform: translate(-50%, -50%); text-shadow: 1px 1px 3px #000; pointer-events: none;\"\u003eBattery-5\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_5807ebabb212775f827d9c02492d8afd.setIcon(div_icon_abe00c0f7f7b19adf137890c7a11206b);
+            
+    
+            var circle_9a50c103331abc17f1d5fd153829aa4f = L.circle(
+                [0.004, 0.005],
+                {"bubblingMouseEvents": true, "color": "#22c55e", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#22c55e", "fillOpacity": 0.15, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 28, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+        var popup_e6f31443afcca41b9c216d55e805a1ae = L.popup({
   "maxWidth": 300,
 });
 
         
             
-                var html_27d48a990752a53f356d11e569e60f33 = $(`<div id="html_27d48a990752a53f356d11e569e60f33" style="width: 100.0%; height: 100.0%;">         <div style="font-family: Arial, sans-serif; min-width: 200px; padding: 10px;">             <h3 style="margin: 0 0 10px 0; color: #00ff00;">                  Storage_Area             </h3>             <p><b>Risk Level:</b> <span style="color: #00ff00;">                 LOW</span></p>             <hr style="margin: 8px 0;">             <table style="width: 100%; font-size: 14px;">                          <tr>                     <td><b>Storage Area Gas Ppm:</b></td>                     <td style="color: black">0.0</td>                 </tr>                                  <tr>                     <td><b>Storage Area Temperature C:</b></td>                     <td style="color: black">93.6</td>                 </tr>                                  <tr>                     <td><b>Storage Area Pressure Bar:</b></td>                     <td style="color: black">2.9</td>                 </tr>                                  <tr>                     <td><b>Storage Area Worker Count:</b></td>                     <td style="color: black">5.3</td>                 </tr>                                  <tr>                     <td><b>Storage Area Maintenance Active:</b></td>                     <td style="color: black">0</td>                 </tr>                                  <tr>                     <td><b>Storage Area Permit Active:</b></td>                     <td style="color: black">0</td>                 </tr>                              </table>             <hr style="margin: 8px 0;">             <small style="color: #666;">Last updated: 17:31:17</small>         </div>         </div>`)[0];
-                popup_47ee59fdaa672274ba57b822d31bd9e6.setContent(html_27d48a990752a53f356d11e569e60f33);
+                var html_8753c591c6a315fdc57a6eefb3e3d8bd = $(`<div id="html_8753c591c6a315fdc57a6eefb3e3d8bd" style="width: 100.0%; height: 100.0%;">         <div style="font-family: 'Outfit', sans-serif; min-width: 220px; padding: 4px; background: #131b2b; color: #ffffff;">             <h4 style="margin: 0 0 6px 0; color: #22c55e; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">                 Battery-5             </h4>             <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; color: #a0b4c8;">                 Risk State: <span style="color: #22c55e; font-weight: 800;">LOW</span>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">                 <table style="width: 100%; font-size: 11px; border-collapse: collapse; color: #a0b4c8;">                      <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Gas (ppm)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0.6</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Temperature (°C)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">75.1</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Pressure (bar)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">4.4</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Crew Members</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">3.0</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Maintenance Status</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Permit Status</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0</td>             </tr>                              </table>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; padding-top: 6px; font-size: 9px; color: #6b7d94; text-align: right;">                 Telemetry Refreshed             </div>         </div>         </div>`)[0];
+                popup_e6f31443afcca41b9c216d55e805a1ae.setContent(html_8753c591c6a315fdc57a6eefb3e3d8bd);
             
         
 
-        circle_marker_66c86f49c656d964d6c10f48be2b69b6.bindPopup(popup_47ee59fdaa672274ba57b822d31bd9e6)
+        circle_9a50c103331abc17f1d5fd153829aa4f.bindPopup(popup_e6f31443afcca41b9c216d55e805a1ae)
         ;
 
         
     
     
-            circle_marker_66c86f49c656d964d6c10f48be2b69b6.bindTooltip(
+            circle_9a50c103331abc17f1d5fd153829aa4f.bindTooltip(
                 `<div>
-                     Storage_Area: LOW
+                     Battery-5: LOW
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var marker_6fde3323f5bf945aa42a6233b766d012 = L.marker(
+                [0.004, 0.01],
+                {
+}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var div_icon_76c2f7d4c814e9bb1c2acc5b73945c96 = L.divIcon({
+  "html": "\u003cdiv style=\"font-family: \u0027Outfit\u0027, sans-serif; font-size: 11px; font-weight: 700; color: #ffffff; text-align: center; width: 100px; transform: translate(-50%, -50%); text-shadow: 1px 1px 3px #000; pointer-events: none;\"\u003eBattery-6\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_6fde3323f5bf945aa42a6233b766d012.setIcon(div_icon_76c2f7d4c814e9bb1c2acc5b73945c96);
+            
+    
+            var circle_3ed608e28cfb595f97f01fcea7e5fb2f = L.circle(
+                [0.004, 0.01],
+                {"bubblingMouseEvents": true, "color": "#22c55e", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#22c55e", "fillOpacity": 0.15, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 28, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+        var popup_0973b0fd91b5628bd8396ad194b4fc2c = L.popup({
+  "maxWidth": 300,
+});
+
+        
+            
+                var html_b0843ebffab4e2216055bc96bbc5396e = $(`<div id="html_b0843ebffab4e2216055bc96bbc5396e" style="width: 100.0%; height: 100.0%;">         <div style="font-family: 'Outfit', sans-serif; min-width: 220px; padding: 4px; background: #131b2b; color: #ffffff;">             <h4 style="margin: 0 0 6px 0; color: #22c55e; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">                 Battery-6             </h4>             <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; color: #a0b4c8;">                 Risk State: <span style="color: #22c55e; font-weight: 800;">LOW</span>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">                 <table style="width: 100%; font-size: 11px; border-collapse: collapse; color: #a0b4c8;">                      <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Gas (ppm)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0.5</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Temperature (°C)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">69.8</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Pressure (bar)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">4.7</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Crew Members</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">3.2</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Maintenance Status</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Permit Status</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0</td>             </tr>                              </table>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; padding-top: 6px; font-size: 9px; color: #6b7d94; text-align: right;">                 Telemetry Refreshed             </div>         </div>         </div>`)[0];
+                popup_0973b0fd91b5628bd8396ad194b4fc2c.setContent(html_b0843ebffab4e2216055bc96bbc5396e);
+            
+        
+
+        circle_3ed608e28cfb595f97f01fcea7e5fb2f.bindPopup(popup_0973b0fd91b5628bd8396ad194b4fc2c)
+        ;
+
+        
+    
+    
+            circle_3ed608e28cfb595f97f01fcea7e5fb2f.bindTooltip(
+                `<div>
+                     Battery-6: LOW
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var marker_0c7532109ef173897bdf822a5afb1794 = L.marker(
+                [-0.004, -0.01],
+                {
+}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var div_icon_e1368dddc834c4b092efdc12cec9bb84 = L.divIcon({
+  "html": "\u003cdiv style=\"font-family: \u0027Outfit\u0027, sans-serif; font-size: 11px; font-weight: 700; color: #ffffff; text-align: center; width: 100px; transform: translate(-50%, -50%); text-shadow: 1px 1px 3px #000; pointer-events: none;\"\u003eReactor Block\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_0c7532109ef173897bdf822a5afb1794.setIcon(div_icon_e1368dddc834c4b092efdc12cec9bb84);
+            
+    
+            var circle_b53d8f25c485895e33d00a7eb03e795b = L.circle(
+                [-0.004, -0.01],
+                {"bubblingMouseEvents": true, "color": "#22c55e", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#22c55e", "fillOpacity": 0.15, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 28, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+        var popup_c540ea4fd6b84c96b6049551067c07e7 = L.popup({
+  "maxWidth": 300,
+});
+
+        
+            
+                var html_1b12be84d0a6414183480b9dfd186368 = $(`<div id="html_1b12be84d0a6414183480b9dfd186368" style="width: 100.0%; height: 100.0%;">         <div style="font-family: 'Outfit', sans-serif; min-width: 220px; padding: 4px; background: #131b2b; color: #ffffff;">             <h4 style="margin: 0 0 6px 0; color: #22c55e; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">                 Reactor Block             </h4>             <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; color: #a0b4c8;">                 Risk State: <span style="color: #22c55e; font-weight: 800;">LOW</span>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">                 <table style="width: 100%; font-size: 11px; border-collapse: collapse; color: #a0b4c8;">                      <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Gas (ppm)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">3.4</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Temperature (°C)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">76.8</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Pressure (bar)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">4.5</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Crew Members</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">3.0</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Maintenance Status</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Permit Status</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0</td>             </tr>                              </table>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; padding-top: 6px; font-size: 9px; color: #6b7d94; text-align: right;">                 Telemetry Refreshed             </div>         </div>         </div>`)[0];
+                popup_c540ea4fd6b84c96b6049551067c07e7.setContent(html_1b12be84d0a6414183480b9dfd186368);
+            
+        
+
+        circle_b53d8f25c485895e33d00a7eb03e795b.bindPopup(popup_c540ea4fd6b84c96b6049551067c07e7)
+        ;
+
+        
+    
+    
+            circle_b53d8f25c485895e33d00a7eb03e795b.bindTooltip(
+                `<div>
+                     Reactor Block: LOW
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var marker_1ca836842be5dc895a043396dd51a85e = L.marker(
+                [-0.004, -0.001],
+                {
+}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var div_icon_62e45c79a6295114adfb457b83959991 = L.divIcon({
+  "html": "\u003cdiv style=\"font-family: \u0027Outfit\u0027, sans-serif; font-size: 11px; font-weight: 700; color: #ffffff; text-align: center; width: 100px; transform: translate(-50%, -50%); text-shadow: 1px 1px 3px #000; pointer-events: none;\"\u003eControl Room\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_1ca836842be5dc895a043396dd51a85e.setIcon(div_icon_62e45c79a6295114adfb457b83959991);
+            
+    
+            var circle_7f2baf68eed4eda3cee79577c9d35761 = L.circle(
+                [-0.004, -0.001],
+                {"bubblingMouseEvents": true, "color": "#22c55e", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#22c55e", "fillOpacity": 0.15, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 28, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+        var popup_56f146f4c05f9c126a753c4dfb4f2f3e = L.popup({
+  "maxWidth": 300,
+});
+
+        
+            
+                var html_ea867eed269bd4471bfa248b23cf697c = $(`<div id="html_ea867eed269bd4471bfa248b23cf697c" style="width: 100.0%; height: 100.0%;">         <div style="font-family: 'Outfit', sans-serif; min-width: 220px; padding: 4px; background: #131b2b; color: #ffffff;">             <h4 style="margin: 0 0 6px 0; color: #22c55e; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">                 Control Room             </h4>             <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; color: #a0b4c8;">                 Risk State: <span style="color: #22c55e; font-weight: 800;">LOW</span>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">                 <table style="width: 100%; font-size: 11px; border-collapse: collapse; color: #a0b4c8;">                          </table>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; padding-top: 6px; font-size: 9px; color: #6b7d94; text-align: right;">                 Telemetry Refreshed             </div>         </div>         </div>`)[0];
+                popup_56f146f4c05f9c126a753c4dfb4f2f3e.setContent(html_ea867eed269bd4471bfa248b23cf697c);
+            
+        
+
+        circle_7f2baf68eed4eda3cee79577c9d35761.bindPopup(popup_56f146f4c05f9c126a753c4dfb4f2f3e)
+        ;
+
+        
+    
+    
+            circle_7f2baf68eed4eda3cee79577c9d35761.bindTooltip(
+                `<div>
+                     Control Room: LOW
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var marker_08f3524a2d6539f365d4aff4ca698968 = L.marker(
+                [-0.004, 0.008],
+                {
+}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+            var div_icon_a509dd06ae483f4f534206d866c1ce36 = L.divIcon({
+  "html": "\u003cdiv style=\"font-family: \u0027Outfit\u0027, sans-serif; font-size: 11px; font-weight: 700; color: #ffffff; text-align: center; width: 100px; transform: translate(-50%, -50%); text-shadow: 1px 1px 3px #000; pointer-events: none;\"\u003eStorage Area\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_08f3524a2d6539f365d4aff4ca698968.setIcon(div_icon_a509dd06ae483f4f534206d866c1ce36);
+            
+    
+            var circle_c2d950a01c181a34ce9f803845a2f5c4 = L.circle(
+                [-0.004, 0.008],
+                {"bubblingMouseEvents": true, "color": "#22c55e", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#22c55e", "fillOpacity": 0.15, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 28, "stroke": true, "weight": 1}
+            ).addTo(map_884801d703dcd1ee7aa5871a4682ac2d);
+        
+    
+        var popup_f793074a55ac778ce1a4282578bd4ea2 = L.popup({
+  "maxWidth": 300,
+});
+
+        
+            
+                var html_5f83ed6b770d96398a087b117b093fe8 = $(`<div id="html_5f83ed6b770d96398a087b117b093fe8" style="width: 100.0%; height: 100.0%;">         <div style="font-family: 'Outfit', sans-serif; min-width: 220px; padding: 4px; background: #131b2b; color: #ffffff;">             <h4 style="margin: 0 0 6px 0; color: #22c55e; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">                 Storage Area             </h4>             <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; color: #a0b4c8;">                 Risk State: <span style="color: #22c55e; font-weight: 800;">LOW</span>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">                 <table style="width: 100%; font-size: 11px; border-collapse: collapse; color: #a0b4c8;">                      <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Gas (ppm)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0.0</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Temperature (°C)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">72.2</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Pressure (bar)</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">4.5</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Crew Members</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">2.6</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Maintenance Status</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0</td>             </tr>                          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">                 <td style="padding: 4px 0; font-weight: 500;">Permit Status</td>                 <td style="padding: 4px 0; text-align: right; color: #ffffff; font-weight: 600;">0</td>             </tr>                              </table>             </div>             <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; padding-top: 6px; font-size: 9px; color: #6b7d94; text-align: right;">                 Telemetry Refreshed             </div>         </div>         </div>`)[0];
+                popup_f793074a55ac778ce1a4282578bd4ea2.setContent(html_5f83ed6b770d96398a087b117b093fe8);
+            
+        
+
+        circle_c2d950a01c181a34ce9f803845a2f5c4.bindPopup(popup_f793074a55ac778ce1a4282578bd4ea2)
+        ;
+
+        
+    
+    
+            circle_c2d950a01c181a34ce9f803845a2f5c4.bindTooltip(
+                `<div>
+                     Storage Area: LOW
                  </div>`,
                 {
   "sticky": true,

@@ -648,6 +648,7 @@ def run_inference(
             hx, hy, hw, hh = px1 + int(pw * 0.35), py1 + 2, int(pw * 0.3), int(ph * 0.16)
             draw.rectangle([hx, hy, hx+hw, hy+hh], outline="#ef4444", width=2)
             draw.text((hx, hy), "⚠ NO HELMET", fill="#ef4444", font=font)
+            active_detections.append(Detection(label="no_helmet", confidence=0.90, bbox=(hx, hy, hw, hh)))
             
         if status["has_vest"]:
             vx, vy, vw, vh = px1 + int(pw * 0.15), py1 + int(ph * 0.18), int(pw * 0.7), int(ph * 0.45)
@@ -665,6 +666,7 @@ def run_inference(
             vx, vy, vw, vh = px1 + int(pw * 0.15), py1 + int(ph * 0.18), int(pw * 0.7), int(ph * 0.45)
             draw.rectangle([vx, vy, vx+vw, vy+vh], outline="#f97316", width=2)
             draw.text((vx, vy), "⚠ NO VEST", fill="#f97316", font=font)
+            active_detections.append(Detection(label="no_vest", confidence=0.88, bbox=(vx, vy, vw, vh)))
             
     # 6. Draw Fire / Smoke detections
     for fx1, fy1, fx2, fy2, label, conf in fire_items:
