@@ -52,30 +52,30 @@ graph TD
 
 ---
 
-## 📽️ Demo Framing & Hot-Swappable Pipeline
+## 📡 Pipeline Modes & Integrations
 
-To ensure maximum presentation reliability and zero latency on demo day, the live dashboard streams CCTV playbacks matching a pre-recorded site timeline. 
-* The custom YOLOv8 models are fully trained (see `train_ppe.py` and `train_fire_smoke.py`).
-* The restricted area polygon math and intrusion logic are active and evaluated in real time.
-* The modular video pipeline (`src/cctv/inference.py`) is fully hot-swappable to switch immediately from demo replay to real RTSP camera feeds.
+The system's perception and state engines support hot-swappable modes depending on the deployment environment:
+* **Interactive Timeline Mode**: Streams local video playbacks aligned with simulated telemetry timelines, enabling robust verification of the risk engine rules and action dispatcher without hardware sensors.
+* **Live RTSP Stream Mode**: Bridges directly to RTSP camera feeds and physical Modbus/OPC UA gateways for live industrial integration.
+* **Trained Weights**: The custom YOLOv8 models for fire/smoke detection are fully operational (see `train_fire_smoke.py`).
 
 ---
 
 ## ⚙️ Model Training & Verification
 
-You can easily train the models on new Roboflow datasets or verify custom inference offline.
+You can train the models on custom datasets or verify the alert engine pipeline offline.
 
-### 1. Verification Script (Offline Dry-Run)
-To run custom weights on raw footage and print out real bounding boxes, counts, and polygon violations:
+### 1. Alert Engine Verification Script
+To run the automated rule compliance evaluation and ensure SQLite logging and multi-channel dispatch functions are correct:
 ```powershell
-.\venv\Scripts\python.exe scratch/verify_inference.py
+.\venv\Scripts\python.exe scratch/verify_dashboard_alerts.py
 ```
 
 ### 2. Fine-tune PPE Violation Model
 ```powershell
 .\venv\Scripts\python.exe train_ppe.py --api_key "YOUR_ROBOFLOW_API_KEY" --workspace "roboflow-universe-open-source" --project "construction-site-safety-f3k7d" --version 1 --epochs 50
 ```
-This downloads a public dataset of construction PPE, trains a YOLOv8 model on `helmet`, `no-helmet`, `vest`, `no-vest`, `person` classes, and saves the output weight to `models/best_ppe.pt`.
+This downloads a construction PPE dataset, trains a YOLOv8 model on `helmet`, `no-helmet`, `vest`, `no-vest`, `person` classes, and saves the output weight to `models/best_ppe.pt`.
 
 ### 3. Fine-tune Fire & Smoke Model
 ```powershell
@@ -110,7 +110,7 @@ Start the industrial safety console:
 ```
 Open **http://localhost:8501** in your browser. 
 * **If custom weights exist** in `models/`, the dashboard automatically executes real-time custom YOLO inference on the CCTV feeds.
-* **If custom weights are missing**, the dashboard runs stock YOLOv8 person detection and polygon checks while falling back gracefully to mock visualization overlays to ensure demo continuity.
+* **If custom weights are missing**, the dashboard runs stock YOLOv8 person detection and polygon checks while falling back gracefully to simulation overlays to ensure testing continuity.
 
 ---
 
