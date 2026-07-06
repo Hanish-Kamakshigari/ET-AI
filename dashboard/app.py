@@ -16,6 +16,24 @@ if sys.platform == 'win32':
     except ImportError:
         pass
     
+    try:
+        import asyncio.proactor_events
+        orig_connection_lost = asyncio.proactor_events._ProactorBasePipeTransport._call_connection_lost
+        
+        def patched_connection_lost(self, exc=None):
+            try:
+                orig_connection_lost(self, exc)
+            except (ConnectionResetError, ConnectionAbortedError):
+                pass
+            except OSError as e:
+                if e.errno in (10054, 10038, 9, 10053):
+                    pass
+                else:
+                    raise
+        asyncio.proactor_events._ProactorBasePipeTransport._call_connection_lost = patched_connection_lost
+    except Exception:
+        pass
+    
     import select
     if hasattr(select, 'select'):
         _orig_select = select.select
