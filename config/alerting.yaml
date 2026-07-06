@@ -1,0 +1,68 @@
+# SurakshaAI Alerting System Configuration
+
+zones:
+  Zone_A:
+    label: "Battery-4"
+    emergency_teams: ["Alpha Team", "Beta Team"]
+  Zone_B:
+    label: "Battery-5"
+    emergency_teams: ["Gamma Team", "Delta Team"]
+  Zone_C:
+    label: "Battery-6"
+    emergency_teams: ["Epsilon Team", "Zeta Team"]
+  Reactor_Area:
+    label: "Reactor Block"
+    emergency_teams: ["Theta Team", "Iota Team"]
+  Storage_Area:
+    label: "Storage Area"
+    emergency_teams: ["Kappa Team", "Lambda Team"]
+  Control_Room:
+    label: "Control Room"
+    emergency_teams: ["Emergency Response Team"]
+
+rules:
+  gas_ppm:
+    normal: [0, 20]
+    elevated: [20, 35]
+    high: [35, 55]
+    critical: [55, 100]
+  temperature_c:
+    normal: [60, 88]
+    elevated: [88, 95]
+    high: [95, 105]
+    critical: [105, 120]
+  pressure_bar:
+    normal: [3.5, 5.8]
+    elevated: [5.8, 6.5]
+    high: [6.5, 7.2]
+    critical: [7.2, 8.0]
+  worker_count:
+    normal: [0, 5]
+    elevated: [5, 8]
+    high: [8, 10]
+    critical: [10, 12]
+
+persistence:
+  threshold_frames: 15
+
+escalation_matrix:
+  CRITICAL:
+    channels: ["DASHBOARD", "SMS", "PHONE", "SIREN", "EMAIL", "TELEGRAM"]
+    response_time: 60  # seconds
+    required_ack: true
+  HIGH:
+    channels: ["DASHBOARD", "SMS", "EMAIL", "TELEGRAM"]
+    response_time: 300  # seconds
+    required_ack: true
+  MEDIUM:
+    channels: ["DASHBOARD", "EMAIL"]
+    response_time: 900  # seconds
+    required_ack: false
+  LOW:
+    channels: ["DASHBOARD"]
+    response_time: 1800  # seconds
+    required_ack: false
+
+database:
+  db_path: "data/alerts_v2.db"
+  timeout_seconds: 10

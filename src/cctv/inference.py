@@ -224,56 +224,10 @@ def get_yolo_model(model_type: str, zone: str = None):
         return None
         
     cache_key = model_type
-    if model_type == "ppe":
-        cache_key = "ppe_zone_a" if zone == "Zone_A" else "ppe_default"
-        
     if _models.get(cache_key) is not None:
         return _models[cache_key]
         
-    if model_type == "ppe":
-        paths = []
-        if zone == "Zone_A":
-            paths = ["models/best_ppe_zone_a.pt", "runs/detect/yolov8n_ppe/weights/best.pt"]
-        else:
-            paths = ["models/yolov8s-hard-hat-detection.pt", "models/best_ppe.pt"]
-            p_s = "models/yolov8s-hard-hat-detection.pt"
-            if not os.path.exists(p_s):
-                try:
-                    import urllib.request
-                    print(f"[INFO] Downloading pre-trained yolov8s hard-hat model to {p_s}...")
-                    os.makedirs("models", exist_ok=True)
-                    urllib.request.urlretrieve(
-                        "https://huggingface.co/keremberke/yolov8s-hard-hat-detection/resolve/main/best.pt",
-                        p_s
-                    )
-                    print("[SUCCESS] Downloaded yolov8s hard-hat model successfully.")
-                except Exception as ex:
-                    print(f"[ERROR] Failed to download yolov8s model: {ex}")
-            
-        for p in paths:
-            if os.path.exists(p):
-                try:
-                    _models[cache_key] = YOLO(p)
-                    print(f"[SUCCESS] Loaded custom PPE YOLOv8 model for {zone or 'default'} from {p}")
-                    return _models[cache_key]
-                except Exception as e:
-                    print(f"[ERROR] Failed to load custom PPE model {p} for {zone}: {e}")
-                    
-        # Option B fallback: download stock YOLOv8n if all else fails
-        try:
-            import urllib.request
-            print("[INFO] Downloading stock yolov8n.pt as fallback...")
-            urllib.request.urlretrieve(
-                "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt",
-                "yolov8n.pt"
-            )
-            _models[cache_key] = YOLO("yolov8n.pt")
-            print("[SUCCESS] Loaded stock YOLOv8 model as fallback")
-            return _models[cache_key]
-        except Exception as ex:
-            print(f"[ERROR] Fallback download failed: {ex}")
-                    
-    elif model_type == "fire_smoke":
+    if model_type == "fire_smoke":
         paths = ["models/best_fire_smoke.pt", "best_fire_smoke.pt"]
         for p in paths:
             if os.path.exists(p):
@@ -294,6 +248,29 @@ def get_yolo_model(model_type: str, zone: str = None):
                     return _models["stock"]
                 except Exception as e:
                     print(f"[ERROR] Failed to load stock YOLOv8 model {p}: {e}")
+        
+        # Download stock YOLO model if missing
+        p_s = "models/yolov8n.pt"
+        if not os.path.exists(p_s):
+            try:
+                import urllib.request
+                print(f"[INFO] Downloading pre-trained stock YOLOv8n model to {p_s}...")
+                os.makedirs("models", exist_ok=True)
+                urllib.request.urlretrieve(
+                    "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt",
+                    p_s
+                )
+                print("[SUCCESS] Downloaded stock YOLOv8n model successfully.")
+            except Exception as ex:
+                print(f"[WARNING] Stock YOLO model could not be loaded/downloaded: {ex}. System will use simulation fallback.")
+
+        if os.path.exists(p_s):
+            try:
+                _models["stock"] = YOLO(p_s)
+                print(f"[SUCCESS] Loaded stock YOLOv8 model from {p_s}")
+                return _models["stock"]
+            except Exception as e:
+                print(f"[WARNING] Stock YOLO model could not be loaded: {e}. System will use simulation fallback.")
                     
     return None
 
@@ -326,108 +303,14 @@ def run_inference(
     # If stock model is not present, use the simulation fallback
     if stock_model is None:
         if draw_fallback_fn is not None:
-            # Run simulation fallback
+            # Simulation fallback runs standalone when stock_model is unavailable.
             pil_img, w_count, viol_count, active_dets = draw_fallback_fn(
                 frame_np, 
                 selected_zone, 
                 latest_telemetry, 
                 current_frame=current_frame
             )
-            
-            # --- OVERLAY REAL-TIME STOCK INTRUSION DETECTION ON TOP OF SIMULATION ---
-            # Even before training the custom PPE model, we can run stock YOLO person detection
-            # and check for restricted zone intrusions dynamically!
-            if stock_model is not None:
-                # Convert BGR to RGB for PIL drawing
-                rgb = cv2.cvtColor(frame_np, cv2.COLOR_BGR2RGB)
-                img = Image.fromarray(rgb)
-                draw = ImageDraw.Draw(img)
-                try:
-                    font = ImageFont.load_default()
-                except Exception:
-                    font = None
-                    
-                # Run stock YOLO for person detection (class 0 is person)
-                results = stock_model(frame_np, conf=0.35, iou=0.4, verbose=False)
-                if len(results) > 0:
-                    boxes = results[0].boxes
-                    person_detections = []
-                    
-                    # Extract people
-                    for box in boxes:
-                        cls_id = int(box.cls[0])
-                        if cls_id == 0: # person
-                            conf = float(box.conf[0])
-                            xyxy = box.xyxy[0].tolist()
-                            px1, py1, px2, py2 = map(int, xyxy)
-                            pw, ph = px2 - px1, py2 - py1
-                            person_detections.append((px1, py1, px2, py2, conf))
-                            
-                    # Load restricted polygons for current zone
-                    zone_info = _zones_config.get(selected_zone, {})
-                    restricted_polygons = zone_info.get("restricted_polygons", [])
-                    polygon_violation = False
-                    
-                    # Check each person for intrusion
-                    for px1, py1, px2, py2, conf in person_detections:
-                        cx, cy = (px1 + px2) // 2, (py1 + py2) // 2
-                        
-                        is_intruder = False
-                        for poly in restricted_polygons:
-                            # Convert normalized/reference points to actual pixel space
-                            poly_scaled = []
-                            for pt in poly:
-                                poly_scaled.append([int(pt[0] * scale_x), int(pt[1] * scale_y)])
-                            poly_np = np.array(poly_scaled, dtype=np.int32)
-                            
-                            dist = cv2.pointPolygonTest(poly_np, (cx, cy), False)
-                            if dist >= 0:
-                                is_intruder = True
-                                polygon_violation = True
-                                break
-                                
-                        if is_intruder:
-                            viol_count += 1
-                            # Draw restricted intruder box
-                            draw.rectangle([px1, py1, px2, py2], outline="#ef4444", width=3)
-                            label_txt = f"⚠ INTRUDER ({int(conf*100)}%)"
-                            lbl_tbox = draw.textbbox((0, 0), label_txt, font=font)
-                            lbl_w = lbl_tbox[2] - lbl_tbox[0]
-                            lbl_h = lbl_tbox[3] - lbl_tbox[1]
-                            draw.rectangle([px1-2, py1-lbl_h-6, px1+lbl_w+4, py1], fill="#0d1220")
-                            draw.text((px1, py1-lbl_h-4), label_txt, fill="#ef4444", font=font)
-                            det = Detection(
-                                label="person", 
-                                confidence=conf, 
-                                bbox=(px1, py1, px2-px1, py2-py1)
-                            )
-                            setattr(det, 'zone_violation', True)
-                            active_dets.append(det)
-                            
-                    # Draw restricted zone outlines
-                    for poly in restricted_polygons:
-                        poly_scaled = []
-                        for pt in poly:
-                            poly_scaled.append([int(pt[0] * scale_x), int(pt[1] * scale_y)])
-                        poly_np = np.array(poly_scaled, dtype=np.int32)
-                        
-                        # Draw outline: red if violation is active in the zone, yellow/cyan otherwise
-                        color = (239, 68, 68) if polygon_violation else (0, 212, 255) # BGR
-                        color_hex = "#ef4444" if polygon_violation else "#00d4ff"
-                        
-                        # Draw polygon on PIL image
-                        poly_flat = [item for sublist in poly_scaled for item in sublist]
-                        draw.polygon(poly_flat, outline=color_hex, width=2)
-                        
-                        # Label the restricted area
-                        rx, ry = poly_scaled[0]
-                        draw.text((rx + 5, ry + 5), "🚫 RESTRICTED AREA", fill=color_hex, font=font)
-                        
-                    # Return composite image
-                    return img, w_count, viol_count, active_dets
-            
             return pil_img, w_count, viol_count, active_dets
-            
         else:
             # Fallback if no simulation drawing function was passed
             rgb = cv2.cvtColor(frame_np, cv2.COLOR_BGR2RGB)

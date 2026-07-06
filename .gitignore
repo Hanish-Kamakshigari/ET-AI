@@ -33,4 +33,7 @@ scratch/
 # Local databases & run data
 data/alerts.db
 data/actions.json
+data/*.db*
+*.db*
+
 
