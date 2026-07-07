@@ -9,6 +9,15 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 import streamlit as st
 
+ZONE_LABELS_MAP = {
+    'Zone_A': 'Battery-4',
+    'Zone_B': 'Battery-5',
+    'Zone_C': 'Battery-6',
+    'Reactor_Area': 'Reactor Block',
+    'Storage_Area': 'Storage Area',
+    'Control_Room': 'Control Room'
+}
+
 def clean_html(html: str) -> str:
     """Helper to strip leading/trailing whitespace and collapse HTML into a single continuous line to prevent markdown parser code-block formatting"""
     return "".join(line.strip() for line in html.strip().split("\n"))
@@ -727,6 +736,70 @@ section.main > div:first-child,
 .block-container {{
   padding-top: 62px !important;
 }}
+
+/* AI Explainability Redesign Animations */
+@keyframes slideInStep {{
+  from {{ opacity: 0; transform: translateY(6px); }}
+  to {{ opacity: 1; transform: translateY(0); }}
+}}
+.timeline-step {{
+  animation: slideInStep 0.4s ease-out forwards;
+}}
+
+@keyframes rulePassFlash {{
+  0% {{ background-color: rgba(34, 197, 94, 0.15); }}
+  100% {{ background-color: rgba(34, 197, 94, 0.02); }}
+}}
+.rule-pass-row {{
+  animation: rulePassFlash 1s ease-out forwards;
+}}
+
+@keyframes ruleFailPulse {{
+  0%, 100% {{ border-color: rgba(239, 68, 68, 0.15); box-shadow: inset 0 0 3px rgba(239, 68, 68, 0.05); }}
+  50% {{ border-color: rgba(239, 68, 68, 0.4); box-shadow: inset 0 0 8px rgba(239, 68, 68, 0.15); }}
+}}
+.rule-fail-row {{
+  animation: ruleFailPulse 1.8s infinite ease-in-out;
+  background-color: rgba(239, 68, 68, 0.03) !important;
+}}
+
+@keyframes scoreGrow {{
+  from {{ width: 0%; }}
+  to {{ width: 100%; }}
+}}
+.score-bar-fill {{
+  animation: scoreGrow 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}}
+
+@keyframes notifCheck {{
+  from {{ transform: scale(0.6); opacity: 0; }}
+  to {{ transform: scale(1); opacity: 1; }}
+}}
+.notif-checked {{
+  display: inline-block;
+  animation: notifCheck 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}}
+
+.detections-feed-container {{
+  max-height: 110px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  background: rgba(10, 22, 40, 0.5) !important;
+  padding: 6px 10px;
+}}
+.detection-entry {{
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}}
+.detection-entry:last-child {{
+  border-bottom: none;
+}}
 </style>
 """
 
@@ -738,12 +811,8 @@ def inject_global_css():
 
 def render_navbar(risk_level: str = "LOW", active_tab: str = "dashboard") -> None:
     """
-    Render the SurakshaAI fixed glassmorphism top navbar.
-
-    Args:
-        risk_level: Current system risk level string ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL').
-                    Controls the animated status pill colour and dot.
-        active_tab: Which nav link to highlight as active ('dashboard', 'analytics', 'settings').
+    Render the SurakshaAI glassmorphism top navbar using responsive columns & native buttons
+    to support seamless, refresh-free page state transitions.
     """
     rl = (risk_level or "LOW").upper()
     if rl == "CRITICAL":
@@ -761,56 +830,100 @@ def render_navbar(risk_level: str = "LOW", active_tab: str = "dashboard") -> Non
 
     now_str = datetime.now().strftime("%H:%M:%S")
 
-    links = [
-        ("dashboard",  "🖥  Live Monitor"),
-        ("analytics",  "📊 Analytics"),
-        ("zones",      "🗺  Zone Map"),
-        ("settings",   "⚙  Settings"),
-    ]
+    # Inject navbar overrides for buttons
+    st.markdown("""
+    <style>
+    /* Styling Streamlit buttons to blend into glassmorphic navbar style */
+    div.stButton > button {
+        background: transparent !important;
+        border: none !important;
+        color: #6b7d94 !important;
+        font-family: 'Outfit', sans-serif !important;
+        font-size: 11.5px !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        padding: 6px 12px !important;
+        transition: all 0.2s ease !important;
+    }
+    div.stButton > button:hover {
+        color: #00d4ff !important;
+        background: rgba(0, 212, 255, 0.08) !important;
+        border-radius: 6px !important;
+    }
+    div.stButton > button[kind="primary"], div.stButton > button[class*="primary"] {
+        color: #fff !important;
+        background: rgba(0, 212, 255, 0.15) !important;
+        border: 1px solid rgba(0, 212, 255, 0.3) !important;
+        border-radius: 6px !important;
+        box-shadow: 0 0 10px rgba(0, 212, 255, 0.1) !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    links_html = ""
-    for key, label in links:
-        cls = "suraksha-navbar-link active" if key == active_tab else "suraksha-navbar-link"
-        links_html += f'<span class="{cls}">{label}</span>'
-
-    html = (
-        f'<nav class="suraksha-navbar">'
-        # ── LEFT: Brand ──────────────────────────────────────────────
-        f'<div class="suraksha-navbar-brand">'
-        f'  <div class="suraksha-navbar-logo">🛡️</div>'
-        f'  <div>'
-        f'    <div class="suraksha-navbar-title">SurakshaAI</div>'
-        f'    <div class="suraksha-navbar-subtitle">Industrial Safety Platform</div>'
-        f'  </div>'
-        f'</div>'
-        # ── CENTRE: Nav links ─────────────────────────────────────────
-        f'<div class="suraksha-navbar-links">{links_html}</div>'
-        # ── RIGHT: Status + clock ─────────────────────────────────────
-        f'<div class="suraksha-navbar-status">'
-        f'  <span class="suraksha-navbar-time" id="suraksha-clock">{now_str}</span>'
-        f'  <div class="suraksha-navbar-divider"></div>'
-        f'  <div class="suraksha-status-pill {pill_cls}">'
-        f'    <div class="suraksha-status-dot {pill_cls}"></div>'
-        f'    {pill_label}'
-        f'  </div>'
-        f'</div>'
-        f'</nav>'
-        # Live-updating clock via lightweight JS
-        f'<script>'
-        f'(function(){{'
-        f'  function tick(){{'
-        f'    var el=document.getElementById("suraksha-clock");'
-        f'    if(el){{var n=new Date();'
-        f'      el.textContent=[n.getHours(),n.getMinutes(),n.getSeconds()]'
-        f'        .map(function(v){{return String(v).padStart(2,"0");}}).join(":");'
-        f'    }}'
-        f'    setTimeout(tick,1000);'
-        f'  }}'
-        f'  tick();'
-        f'}})();'
-        f'</script>'
-    )
-    st.markdown(html, unsafe_allow_html=True)
+    col_brand, col_nav, col_status = st.columns([1.6, 3.8, 2.6])
+    
+    with col_brand:
+        st.markdown(f"""
+        <div class="suraksha-navbar-brand" style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+          <div class="suraksha-navbar-logo" style="font-size:22px;">🛡️</div>
+          <div>
+            <div class="suraksha-navbar-title" style="font-weight:bold; font-size:14px; color:#fff; font-family:'Outfit',sans-serif; line-height:1.2;">SurakshaAI</div>
+            <div class="suraksha-navbar-subtitle" style="font-size:9.5px; color:#6b7d94; font-family:'Outfit',sans-serif; line-height:1.0;">Industrial Safety Platform</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col_nav:
+        col_t1, col_t2, col_t3, col_t4 = st.columns(4)
+        if col_t1.button("🖥  Live Monitor", key="nav_dashboard", width='stretch', type="primary" if active_tab == "dashboard" else "secondary"):
+            st.session_state.active_tab = "dashboard"
+            st.query_params["tab"] = "dashboard"
+            st.rerun()
+        if col_t2.button("📊 Analytics", key="nav_analytics", width='stretch', type="primary" if active_tab == "analytics" else "secondary"):
+            st.session_state.active_tab = "analytics"
+            st.query_params["tab"] = "analytics"
+            st.rerun()
+        if col_t3.button("🗺  Zone Map", key="nav_zones", width='stretch', type="primary" if active_tab == "zones" else "secondary"):
+            st.session_state.active_tab = "zones"
+            st.query_params["tab"] = "zones"
+            st.rerun()
+        if col_t4.button("⚙  Settings", key="nav_settings", width='stretch', type="primary" if active_tab == "settings" else "secondary"):
+            st.session_state.active_tab = "settings"
+            st.query_params["tab"] = "settings"
+            st.rerun()
+            
+    with col_status:
+        st.markdown(f"""
+        <div class="suraksha-navbar-status" style="display:flex; align-items:center; gap:10px; justify-content:flex-end; width:100%; margin-top:4px; font-family:'Outfit',sans-serif;">
+          <a href="?show_modal=1" target="_top" style="text-decoration:none;">
+            <span style="background:rgba(0,212,255,0.12); border:1px solid rgba(0,212,255,0.3); border-radius:6px; color:#00d4ff; padding:5px 12px; font-size:10px; font-weight:bold; cursor:pointer;">🧠 AI Console</span>
+          </a>
+          <span class="suraksha-navbar-time" id="suraksha-clock" style="color:#6b7d94; font-family:monospace; font-size:11.5px; margin-top:2px;">{now_str}</span>
+          <div class="suraksha-navbar-divider" style="width:1px; height:12px; background:rgba(255,255,255,0.1); margin:0 2px;"></div>
+          <div class="suraksha-status-pill {pill_cls}" style="margin:0;">
+            <div class="suraksha-status-dot {pill_cls}"></div>
+            {pill_label}
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Lightweight client-side clock script
+        st.markdown("""
+        <script>
+        (function(){
+          function tick(){
+            var el=document.getElementById("suraksha-clock");
+            if(el){var n=new Date();
+              el.textContent=[n.getHours(),n.getMinutes(),n.getSeconds()]
+                .map(function(v){return String(v).padStart(2,"0");}).join(":");
+            }
+            setTimeout(tick,1000);
+          }
+          tick();
+        })();
+        </script>
+        """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -885,15 +998,6 @@ def render_alert_card(
     elif isinstance(alert, dict) and "zone" in alert:
         zone = alert["zone"]
 
-    # Zone labels mapping
-    ZONE_LABELS_MAP = {
-        'Zone_A': 'Battery-4',
-        'Zone_B': 'Battery-5',
-        'Zone_C': 'Battery-6',
-        'Reactor_Area': 'Reactor Block',
-        'Storage_Area': 'Storage Area',
-        'Control_Room': 'Control Room'
-    }
     zone_lbl = ZONE_LABELS_MAP.get(zone, zone)
 
     # 3. Extract message
@@ -989,7 +1093,7 @@ def render_alert_card(
     html = f"""
     <div class="{card_class}" style="background: {bg}; border-left: 4px solid {color}; border-top: 1px solid {border_color}; border-right: 1px solid {border_color}; border-bottom: 1px solid {border_color}; border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; font-family: var(--font-primary);">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <span style="display: flex; align-items: center; gap: 4px; font-weight: 800; color: {color}; font-size: {Typography.SIZE_BASE}; letter-spacing: 0.5px; text-transform: uppercase;">
+        <span style="display: flex; align-items: center; gap: 4px; font-weight: 800; color: {color}; font-size: {Typography.SIZE_BASE}; letter-spacing: 0.5px; text-transform: uppercase; {'animation: dotPulse 1.2s ease infinite alternate;' if severity_name == 'CRITICAL' else ''}">
           {icon} {severity_name}
         </span>
         <span style="background: {status_bg}; color: {status_color}; border: 1px solid {status_border}; border-radius: 4px; padding: 1px 6px; font-size: {Typography.SIZE_XS}; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
