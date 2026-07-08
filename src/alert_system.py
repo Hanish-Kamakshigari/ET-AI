@@ -4,10 +4,15 @@ Provides AlertManager, AlertSystem, evaluate_alert_conditions, and dispatch_aler
 """
 
 import logging
+import threading
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
+from collections import defaultdict
+
+# Import zone labels from shared config (single source of truth)
+from src.config.ui_constants import ZONE_LABELS_MAP
 
 # Import the new architecture
 from src.alert_coordinator import (
@@ -16,6 +21,7 @@ from src.alert_coordinator import (
     AlertSeverity as CoordinatorSeverity
 )
 
+# Local backward-compatibility enums used throughout this module.
 class AlertStatus(Enum):
     TRIGGERED = "Triggered"
     NEW = "New"
@@ -296,15 +302,6 @@ def render_improved_alerts(placeholder, alert_manager: AlertManager):
     cards_html = []
     visible_alerts = sorted_alerts[:3]
     extra_count = len(sorted_alerts) - 3
-    
-    ZONE_LABELS_MAP = {
-        'Zone_A': 'Battery-4',
-        'Zone_B': 'Battery-5',
-        'Zone_C': 'Battery-6',
-        'Reactor_Area': 'Reactor Block',
-        'Storage_Area': 'Storage Area',
-        'Control_Room': 'Control Room'
-    }
 
     for alert in visible_alerts:
         color = alert.severity.value[1]

@@ -9,14 +9,8 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 import streamlit as st
 
-ZONE_LABELS_MAP = {
-    'Zone_A': 'Battery-4',
-    'Zone_B': 'Battery-5',
-    'Zone_C': 'Battery-6',
-    'Reactor_Area': 'Reactor Block',
-    'Storage_Area': 'Storage Area',
-    'Control_Room': 'Control Room'
-}
+# Import zone labels from shared config (single source of truth)
+from src.config.ui_constants import ZONE_LABELS_MAP
 
 def clean_html(html: str) -> str:
     """Helper to strip leading/trailing whitespace and collapse HTML into a single continuous line to prevent markdown parser code-block formatting"""
@@ -238,6 +232,52 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div[data-test
   border-right: 1px solid var(--border2) !important;
 }}
 [data-testid="stSidebar"] .block-container {{ padding: 12px !important; }}
+
+/* 3-Column Layout CSS overrides */
+div[data-testid="column"]:has(.suraksha-sidebar-content) {{
+  width: var(--sidebar-width, 340px) !important;
+  min-width: var(--sidebar-width, 340px) !important;
+  max-width: var(--sidebar-width, 340px) !important;
+  flex: 0 0 var(--sidebar-width, 340px) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border-right: 1px solid var(--border2) !important;
+  background: linear-gradient(180deg, var(--bg2) 0%, #0A1220 100%) !important;
+  padding: 12px !important;
+  box-sizing: border-box !important;
+}}
+
+div[data-testid="column"]:has(.suraksha-main-content-flag) {{
+  flex: 1 1 auto !important;
+  width: auto !important;
+  max-width: none !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  padding: 0 16px !important;
+  box-sizing: border-box !important;
+}}
+
+div[data-testid="column"]:has(.suraksha-center-panel-flag) {{
+  flex: 1 1 auto !important;
+  width: auto !important;
+  max-width: none !important;
+  box-sizing: border-box !important;
+}}
+
+div[data-testid="column"]:has(.suraksha-right-panel-flag) {{
+  width: 420px !important;
+  min-width: 420px !important;
+  max-width: 420px !important;
+  flex: 0 0 420px !important;
+  box-sizing: border-box !important;
+}}
+
+/* Collapsed Responsive Layout Utilities */
+.suraksha-sidebar-collapsed .hide-collapsed {{
+  display: none !important;
+}}
+
+.suraksha-sidebar-expanded .show-collapsed {{
+  display: none !important;
+}}
 
 /* GLASS CARD BASE */
 .glass-card {{

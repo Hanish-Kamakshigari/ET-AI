@@ -37,7 +37,7 @@ from datetime import datetime
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Load ui helpers and modules
-from src.ui_components import inject_global_css, render_navbar
+from src.ui_components import inject_global_css, render_navbar, render_section_header
 from src.alert_system import get_alert_system, AlertManager
 from src.cctv.inference import reset_ppe_buffer
 
@@ -64,10 +64,6 @@ import dashboard.components
 importlib.reload(dashboard.components)
 from dashboard.components import (
     render_kpi_grid,
-    render_zone_status_panel,
-    render_failsafes_panel,
-    render_db_logs_panel,
-    render_scada_panel,
     render_notifications_panel,
     render_alerts_panel,
     render_risk_analysis_row,
@@ -89,24 +85,6 @@ st.set_page_config(
 # Initialize Session State
 init_state_defaults()
 
-def flush_alert_queue():
-    """Flushes background alert stream queue into the session state queue list"""
-    if getattr(st.session_state, "live_queue", None) is not None:
-        try:
-            while not st.session_state.live_queue.empty():
-                inc = st.session_state.live_queue.get_nowait()
-                # Deduplicate or update elements in session alert queue
-                exists = False
-                for i, item in enumerate(st.session_state.alert_queue):
-                    if item["incident_id"] == inc["incident_id"]:
-                        st.session_state.alert_queue[i] = inc
-                        exists = True
-                        break
-                if not exists:
-                    st.session_state.alert_queue.append(inc)
-        except Exception:
-            pass
-
 # Load plant database csv
 df = load_data()
 
@@ -115,10 +93,6 @@ engine = init_engine()
 alert_system = init_alerts(engine, df)
 frame_processor = get_frame_processor()
 am = AlertManager()
-
-# Set live stream queue references
-st.session_state.live_queue = alert_system.live_stream.queue
-flush_alert_queue()
 
 # Handle URL parameters/Operator Action Acknowledges
 handle_url_actions(alert_system, am)
@@ -159,23 +133,12 @@ if st.session_state.get('sim_stage') == 'injecting':
     </div>
     """, unsafe_allow_html=True)
 
-# Create layout and retrieve placeholders & selectbox choice
 (
     auto_banner_placeholder,
     sim_banner_placeholder,
-    kpi_cols,
-    placeholders,
-    selected_zone
-) = create_layout(active_tab)
-
-# Reset CCTV frame loop when selected camera feed changes
-if 'prev_selected_zone' not in st.session_state:
-    st.session_state.prev_selected_zone = selected_zone
-    
-if st.session_state.prev_selected_zone != selected_zone:
-    st.session_state.cctv_frame_index = 0
-    st.session_state.prev_selected_zone = selected_zone
-    reset_ppe_buffer()
+    sidebar_placeholder,
+    col_main
+) = create_layout()
 
 # Calculate telemetry metrics across all zones
 data_dict = calculate_telemetry(df, engine, alert_system)
@@ -183,31 +146,135 @@ data_dict = calculate_telemetry(df, engine, alert_system)
 # Persist risk level so navbar status pill updates each rerun cycle
 st.session_state['last_risk_level'] = data_dict.get('STATUS', {}).get('level', 'LOW')
 
-# Render Sidebar Console
-render_sidebar(data_dict, engine, am, alert_system)
+# Initialize placeholders dict for sidebar panels
+placeholders = {}
+render_sidebar(sidebar_placeholder, placeholders, data_dict, engine, am, alert_system)
 
-# ════════════════════════════════════════════════════════════════════════════════
-# 3. RENDER DASHBOARD KPI & GRIDS
-# ════════════════════════════════════════════════════════════════════════════════
+with col_main:
+    # Top KPI Metric Cards (Only shown on operational dashboards: Live Monitor & Analytics)
+    if active_tab in ('dashboard', 'analytics'):
+        col1, col2, col3, col4 = st.columns(4)
+        kpi_cols = {
+            'm1': col1.empty(),
+            'm2': col2.empty(),
+            'm3': col3.empty(),
+            'm4': col4.empty()
+        }
+        render_kpi_grid(kpi_cols, data_dict)
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+    else:
+        kpi_cols = None
 
-# Top KPI Metric Cards
-render_kpi_grid(kpi_cols, data_dict)
+    # Conditionally render page body contents depending on selected navbar tab
+    if active_tab == 'dashboard':
+        # Balanced 2-column layout to eliminate empty whitespaces and group elements
+        col_left, col_right = st.columns([3.5, 2.0])
 
-# Conditionally render page body contents depending on selected navbar tab
-if active_tab == 'dashboard':
-    # Left Panels
-    render_zone_status_panel(placeholders['zone_status'], data_dict)
-    render_failsafes_panel(placeholders['failsafes'], data_dict)
-    render_db_logs_panel(placeholders['db_logs'], data_dict)
-    render_scada_panel(placeholders['scada'])
+        with col_left:
+            st.markdown("<div class='suraksha-center-panel-flag'></div>", unsafe_allow_html=True)
+            from src.config.ui_constants import SENSOR_ZONES, ZONE_LABELS
+            selected_zone = st.selectbox(
+                "Select CCTV Camera Feed:",
+                options=SENSOR_ZONES,
+                format_func=lambda z: f"📹 {ZONE_LABELS.get(z, z)} Camera Feed",
+                key="cctv_zone_selector"
+            )
 
-    # Right Notification and Alert panels
-    render_notifications_panel(placeholders['notifications'], data_dict, selected_zone)
-    render_alerts_panel(placeholders['alerts'], am)
+            # Reset CCTV frame loop when selected camera feed changes
+            if 'prev_selected_zone' not in st.session_state:
+                st.session_state.prev_selected_zone = selected_zone
 
-    # ════════════════════════════════════════════════════════════════════════════════
-    # 4. CCTV VIDEO FEED FRAGMENT & TELEMETRY CHARTS
-    # ════════════════════════════════════════════════════════════════════════════════
+            if st.session_state.prev_selected_zone != selected_zone:
+                st.session_state.cctv_frame_index = 0
+                st.session_state.prev_selected_zone = selected_zone
+                reset_ppe_buffer()
+
+            cctv_header_placeholder = st.empty()
+            cctv_frame_placeholder = st.empty()
+            cctv_status_placeholder = st.empty()
+
+            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+            col_r1_1, col_r1_2 = st.columns([1.0, 1.0])
+            timeline_placeholder = col_r1_1.empty()
+            risk_engine_placeholder = col_r1_2.empty()
+
+            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+            col_r2_1, col_r2_2, col_r2_3 = st.columns([1.0, 1.0, 1.0])
+            ai_decision_placeholder = col_r2_1.empty()
+            telemetry_trends_placeholder = col_r2_2.empty()
+            zone_response_placeholder = col_r2_3.empty()
+
+        with col_right:
+            st.markdown("<div class='suraksha-right-panel-flag'></div>", unsafe_allow_html=True)
+            st.markdown(render_section_header("⚠️ ACTIVE COMPLIANCE WARNINGS"), unsafe_allow_html=True)
+            warnings_placeholder = st.empty()
+
+            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+            st.markdown(render_section_header("📢 NOTIFICATION CHANNELS"), unsafe_allow_html=True)
+            notifications_placeholder = st.empty()
+
+            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+            st.markdown(render_section_header("🔔 LIVE ALERTS"), unsafe_allow_html=True)
+            alerts_placeholder = st.empty()
+
+        dashboard_placeholders = {
+            'cctv_header': cctv_header_placeholder,
+            'cctv_frame': cctv_frame_placeholder,
+            'cctv_status': cctv_status_placeholder,
+            'timeline': timeline_placeholder,
+            'risk_engine': risk_engine_placeholder,
+            'ai_decision': ai_decision_placeholder,
+            'telemetry_trends': telemetry_trends_placeholder,
+            'zone_response': zone_response_placeholder,
+            'warnings': warnings_placeholder,
+            'notifications': notifications_placeholder,
+            'alerts': alerts_placeholder,
+            'zone_status': placeholders.get('zone_status'),
+            'failsafes': placeholders.get('failsafes'),
+            'db_logs': placeholders.get('db_logs'),
+            'kpi_cols': kpi_cols,
+        }
+
+        # CCTV Video Streaming inside non-blocking st.fragment callback
+        FOOTAGE_FILES = {
+            'Zone_A': 'Battery_4.mp4',
+            'Zone_B': 'Battery_5.mp4',
+            'Zone_C': 'Battery_6.mp4',
+            'Reactor_Area': 'Reactor_Block.mp4',
+            'Storage_Area': 'Storage_Block.mp4'
+        }
+        footage_filename = FOOTAGE_FILES.get(selected_zone)
+        PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        video_path = os.path.join(PROJECT_ROOT, "footage", footage_filename) if footage_filename else None
+
+        stream_cctv_feed(dashboard_placeholders, selected_zone, video_path, data_dict['latest'], alert_system, am, data_dict=data_dict)
+
+        current_detections = st.session_state.get('current_detections', [])
+        render_risk_analysis_row(dashboard_placeholders, data_dict, selected_zone, current_detections)
+        render_decision_telemetry_row(dashboard_placeholders, data_dict, selected_zone, current_detections)
+        render_notifications_panel(dashboard_placeholders['notifications'], data_dict, selected_zone)
+        render_alerts_panel(dashboard_placeholders['alerts'], am)
+
+    elif active_tab == 'analytics':
+        from dashboard.components import render_analytics_tab
+        render_analytics_tab(placeholders, data_dict, engine, alert_system)
+
+    elif active_tab == 'zones':
+        from dashboard.components import render_zones_tab
+        render_zones_tab(placeholders, data_dict, engine, alert_system)
+
+    elif active_tab == 'settings':
+        from dashboard.components import render_settings_tab
+        render_settings_tab(placeholders, data_dict, engine, alert_system)
+
+# Run background headless CCTV streaming loop on Analytics and Settings pages
+# so telemetry, YOLO inference, and alerts keep updating continuously.
+if active_tab in ('analytics', 'settings'):
+    bg_zone = st.session_state.get('cctv_zone_selector')
+    if not bg_zone:
+        from src.config.ui_constants import SENSOR_ZONES
+        bg_zone = SENSOR_ZONES[0]
+
     FOOTAGE_FILES = {
         'Zone_A': 'Battery_4.mp4',
         'Zone_B': 'Battery_5.mp4',
@@ -215,35 +282,32 @@ if active_tab == 'dashboard':
         'Reactor_Area': 'Reactor_Block.mp4',
         'Storage_Area': 'Storage_Block.mp4'
     }
-    footage_filename = FOOTAGE_FILES.get(selected_zone)
+    bg_footage_filename = FOOTAGE_FILES.get(bg_zone)
     PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    video_path = os.path.join(PROJECT_ROOT, "footage", footage_filename) if footage_filename else None
+    bg_video_path = os.path.join(PROJECT_ROOT, "footage", bg_footage_filename) if bg_footage_filename else None
 
-    placeholders['kpi_cols'] = kpi_cols
+    bg_placeholders = {
+        'cctv_header': st.empty(),
+        'cctv_frame': st.empty(),
+        'cctv_status': st.empty(),
+        'warnings': st.empty(),
+        'alerts': placeholders.get('alerts', st.empty()),
+        'notifications': placeholders.get('notifications', st.empty()),
+        'zone_status': placeholders.get('zone_status', st.empty()),
+        'failsafes': placeholders.get('failsafes', st.empty()),
+        'db_logs': placeholders.get('db_logs', st.empty()),
+        'kpi_cols': None,
+    }
 
-    # CCTV Video Streaming inside non-blocking st.fragment callback
-    stream_cctv_feed(placeholders, selected_zone, video_path, data_dict['latest'], alert_system, am, data_dict=data_dict)
-
-    # Retrieve current detection list to update charts
-    current_detections = st.session_state.get('current_detections', [])
-
-    # Render Live Timeline & Rule matched list
-    render_risk_analysis_row(placeholders, data_dict, selected_zone, current_detections)
-
-    # Render AI Decision recommendations and live gauges
-    render_decision_telemetry_row(placeholders, data_dict, selected_zone, current_detections)
-
-elif active_tab == 'analytics':
-    from dashboard.components import render_analytics_tab
-    render_analytics_tab(placeholders, data_dict, engine, alert_system)
-
-elif active_tab == 'zones':
-    from dashboard.components import render_zones_tab
-    render_zones_tab(placeholders, data_dict, engine, alert_system)
-
-elif active_tab == 'settings':
-    from dashboard.components import render_settings_tab
-    render_settings_tab(placeholders, data_dict, engine, alert_system)
+    stream_cctv_feed(
+        bg_placeholders,
+        bg_zone,
+        bg_video_path,
+        data_dict['latest'],
+        alert_system,
+        am,
+        data_dict=data_dict
+    )
 
 # Render floating AI Explainability Console Modal overlay if toggled active
 if st.session_state.get('show_explainability_modal', False):

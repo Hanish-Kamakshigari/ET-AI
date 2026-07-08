@@ -936,39 +936,44 @@ def stream_cctv_feed(placeholders: Dict[str, Any], selected_zone: str, video_pat
             latest[f"{selected_zone}_worker_count"] = w_count
             
             # 1. Render CCTV Header, Frame, and Status Bar first
-            selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
-            header_placeholder.markdown(f"""
-            <div class='cctv-header'>
-                <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
-                <span class='live-badge'>● LIVE</span>
-            </div>
-            """, unsafe_allow_html=True)
+            if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
+                selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
+                header_placeholder.markdown(f"""
+                <div class='cctv-header'>
+                    <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
+                    <span class='live-badge'>● LIVE</span>
+                </div>
+                """, unsafe_allow_html=True)
 
-            # Draw the frame
-            frame_placeholder.image(pil_img, use_container_width=True)
+                # Draw the frame
+                frame_placeholder.image(pil_img, use_container_width=True)
 
-            # Render Live telemetry stats at the bottom of the feed
-            fps_val = 25.0 if play_active else 0.0
-            p_count = w_count
-            h_count = viol_count
-            
-            # Count safe zones
-            safe_zones_count = 6
-            active_alerts_dict = am.active_alerts if hasattr(am, 'active_alerts') else {}
-            active_alert_zones = {a.zone for a in active_alerts_dict.values()}
-            safe_zones_count = 6 - len(active_alert_zones)
+                # Render Live telemetry stats at the bottom of the feed
+                fps_val = 25.0 if play_active else 0.0
+                p_count = w_count
+                h_count = viol_count
+                
+                # Count safe zones
+                safe_zones_count = 6
+                active_alerts_dict = am.active_alerts if hasattr(am, 'active_alerts') else {}
+                active_alert_zones = {a.zone for a in active_alerts_dict.values()}
+                safe_zones_count = 6 - len(active_alert_zones)
 
-            status_bar_placeholder.markdown(f"""
-            <div style='background:#0a1628; border:1px solid #1e3a5f; border-top:none;
-                        border-radius:0 0 8px 8px; padding:8px 16px;
-                        display:flex; justify-content:space-around; align-items:center;
-                        font-family:"Outfit",sans-serif; font-size:12px;'>
-                <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">{fps_val:.1f}</b></span>
-                <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">{p_count}</b></span>
-                <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">{h_count}</b></span>
-                <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">{safe_zones_count}</b></span>
-            </div>
-            """, unsafe_allow_html=True)
+                status_bar_placeholder.markdown(f"""
+                <div style='background:#0a1628; border:1px solid #1e3a5f; border-top:none;
+                            border-radius:0 0 8px 8px; padding:8px 16px;
+                            display:flex; justify-content:space-around; align-items:center;
+                            font-family:"Outfit",sans-serif; font-size:12px;'>
+                    <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">{fps_val:.1f}</b></span>
+                    <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">{p_count}</b></span>
+                    <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">{h_count}</b></span>
+                    <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">{safe_zones_count}</b></span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                header_placeholder.empty()
+                frame_placeholder.empty()
+                status_bar_placeholder.empty()
 
             # 2. Evaluate alert conditions and handle transitions
             alert_conditions = evaluate_alert_conditions(
@@ -1178,13 +1183,16 @@ def stream_cctv_feed(placeholders: Dict[str, Any], selected_zone: str, video_pat
                 
             am.update(active_dets, selected_zone)
             
-            if alerts_list:
-                warnings_placeholder.markdown("\n".join(alerts_list), unsafe_allow_html=True)
+            if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
+                if alerts_list:
+                    warnings_placeholder.markdown("\n".join(alerts_list), unsafe_allow_html=True)
+                else:
+                    warnings_placeholder.markdown(render_nominal_card(
+                        title="Zone Secure", 
+                        message=f"All telemetry and compliance factors in {selected_zone_name} are nominal."
+                    ), unsafe_allow_html=True)
             else:
-                warnings_placeholder.markdown(render_nominal_card(
-                    title="Zone Secure", 
-                    message=f"All telemetry and compliance factors in {selected_zone_name} are nominal."
-                ), unsafe_allow_html=True)
+                warnings_placeholder.empty()
 
             if play_active:
                 time.sleep(0.04)

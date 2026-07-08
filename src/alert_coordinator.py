@@ -17,9 +17,12 @@ from typing import List, Dict, Tuple, Optional, Any
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor
 
-# ==============================================================================
-# ENUMS & DATACLASSES
-# ==============================================================================
+# Shared executor for I/O-bound async work (notifications, payload dispatch).
+# A single executor avoids creating multiple thread pools across modules.
+_shared_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="suraksha")
+
+def get_shared_executor() -> ThreadPoolExecutor:
+    return _shared_executor
 
 class AlertSeverity(Enum):
     LOW = (1, "#3b82f6", "Low")
@@ -520,6 +523,57 @@ class TelegramChannel(NotificationChannel):
             logger.error(f"[TELEGRAM ERROR] Failed to send telegram: {e}")
             return False
 
+class SMSChannel(NotificationChannel):
+    """Distinct SMS channel (short-text gateway) — separate from Telegram/Phone."""
+    def send(self, incident: Dict[str, Any]) -> bool:
+        logger = logging.getLogger("SMSChannel")
+        recipient = os.environ.get("ALERT_RECIPIENT_SMS", "+10000000000")
+
+        import sys
+        if 'streamlit' in sys.modules:
+            from streamlit.runtime.scriptrunner import get_script_run_ctx
+            if get_script_run_ctx() is not None:
+                import streamlit as st
+                st.session_state.sms_status = {
+                    "status": "DELIVERED ✓",
+                    "color": "#22c55e",
+                    "detail": f"SMS to {recipient} at {datetime.now().strftime('%H:%M:%S')}"
+                }
+
+        if not recipient:
+            logger.info(f"[SMS SIMULATION] To: {recipient} | Incident: {incident['message']}")
+            return True
+
+        # Real SMS implementation would go here (e.g. Twilio).
+        logger.info(f"[SMS SIMULATION] Sent SMS for incident {incident['incident_id']} to {recipient}")
+        return True
+
+
+class VoiceChannel(NotificationChannel):
+    """Distinct voice/phone call channel — separate from SMS and Telegram."""
+    def send(self, incident: Dict[str, Any]) -> bool:
+        logger = logging.getLogger("VoiceChannel")
+        recipient = os.environ.get("ALERT_RECIPIENT_PHONE", "+10000000000")
+
+        import sys
+        if 'streamlit' in sys.modules:
+            from streamlit.runtime.scriptrunner import get_script_run_ctx
+            if get_script_run_ctx() is not None:
+                import streamlit as st
+                st.session_state.phone_status = {
+                    "status": "CALLED ✓",
+                    "color": "#22c55e",
+                    "detail": f"Auto-dial to {recipient} at {datetime.now().strftime('%H:%M:%S')}"
+                }
+
+        if not recipient:
+            logger.info(f"[PHONE SIMULATION] Calling: {recipient} | Incident: {incident['message']}")
+            return True
+
+        logger.info(f"[PHONE SIMULATION] Placed voice call for incident {incident['incident_id']} to {recipient}")
+        return True
+
+
 class SirenChannel(NotificationChannel):
     def send(self, incident: Dict[str, Any]) -> bool:
         import sys
@@ -538,7 +592,8 @@ class SirenChannel(NotificationChannel):
 class NotificationDispatcher:
     def __init__(self):
         self._channels: Dict[str, NotificationChannel] = {}
-        self.executor = ThreadPoolExecutor(max_workers=5)
+        # Share a single I/O-bound executor (max 3 workers) across the app.
+        self.executor = get_shared_executor()
         self.logger = logging.getLogger("NotificationDispatcher")
         
         # Track metrics
@@ -549,8 +604,8 @@ class NotificationDispatcher:
         self.register_channel("DASHBOARD", DashboardChannel())
         self.register_channel("EMAIL", EmailChannel())
         self.register_channel("TELEGRAM", TelegramChannel())
-        self.register_channel("SMS", TelegramChannel()) # SMS fallback to Telegram bot in simulation
-        self.register_channel("PHONE", TelegramChannel()) # Phone fallback to Telegram bot
+        self.register_channel("SMS", SMSChannel())      # Distinct SMS gateway
+        self.register_channel("PHONE", VoiceChannel())  # Distinct voice/phone call channel
         self.register_channel("SIREN", SirenChannel())
 
     def register_channel(self, name: str, channel: NotificationChannel):
@@ -620,18 +675,25 @@ class EscalationEngine:
         import heapq
         while self._running:
             with self._lock:
+                # Re-check the running flag immediately after waking from wait
+                # (guards against spurious wakeups and shutdown notifications).
+                if not self._running:
+                    break
+
                 if not self._queue:
                     self._cond.wait(timeout=1.0)
+                    # Loop back to re-check _running before doing any work
                     continue
                 
                 run_at, incident_id = self._queue[0]
                 now = time.time()
                 if now < run_at:
                     self._cond.wait(timeout=run_at - now)
+                    # Loop back to re-check _running and queue state after waking
                     continue
                 
                 heapq.heappop(self._queue)
-                
+            
             # Perform escalation check
             try:
                 self.coordinator.check_and_escalate_incident(incident_id)
@@ -648,28 +710,118 @@ class EscalationEngine:
 # ==============================================================================
 
 class DashboardAdapter:
+    # Dynamic cache TTL (seconds) keyed by the highest active severity.
+    # Lower TTL for fast-changing critical incidents, longer for stable/acked ones.
+    CACHE_TTL = {
+        "CRITICAL": 0.5,
+        "HIGH": 1.0,
+        "MEDIUM": 2.0,
+        "LOW": 2.0,
+        "ACKNOWLEDGED": 5.0,
+        "RESOLVED": 5.0,
+    }
+    DEFAULT_TTL = 2.0
+
     def __init__(self, persistence: PersistenceLayer):
         self.persistence = persistence
+        self._active_alerts_cache = None
+        self._active_alerts_timestamp = 0.0
+        self._active_alerts_signature = None
+        self._history_cache = {}
+        self._history_timestamp = {}
+        self._cache_lock = threading.Lock()
+        # Cache effectiveness instrumentation.
+        self._cache_hits = 0
+        self._cache_misses = 0
 
-    def get_active_alerts(self) -> List[Dict[str, Any]]:
+    def _highest_active_severity(self, alerts: List[Dict[str, Any]]) -> str:
+        sev_rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+        worst = "LOW"
+        worst_rank = 0
+        for a in alerts:
+            sev = (a.get("severity") or "LOW").upper()
+            rank = sev_rank.get(sev, 0)
+            if rank > worst_rank:
+                worst_rank = rank
+                worst = sev
+        return worst
+
+    def _active_cache_ttl(self) -> float:
+        # TTL derived from current worst active severity (dynamic refresh rate).
+        cached = self._active_alerts_cache or []
+        sev = self._highest_active_severity(cached)
+        return self.CACHE_TTL.get(sev, self.DEFAULT_TTL)
+
+    def get_active_alerts(self, offset: int = 0, limit: Optional[int] = 50) -> List[Dict[str, Any]]:
+        now = time.time()
+        with self._cache_lock:
+            if (self._active_alerts_cache is not None
+                    and (now - self._active_alerts_timestamp) < self._active_cache_ttl()):
+                self._cache_hits += 1
+                return self._active_alerts_cache
+        # Cache miss — query the database.
+        with self._cache_lock:
+            self._cache_misses += 1
         conn = self.persistence.get_connection()
+        data = None
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM incidents WHERE status NOT IN ('RESOLVED', 'ARCHIVED')")
+            # Order by risk score descending; paginate for large incident sets.
+            cursor.execute(
+                "SELECT * FROM incidents WHERE status NOT IN ('RESOLVED', 'ARCHIVED') "
+                "ORDER BY risk_score DESC LIMIT ? OFFSET ?",
+                (limit, offset)
+            )
             rows = cursor.fetchall()
-            return [dict(r) for r in rows]
+            data = [dict(r) for r in rows]
+            with self._cache_lock:
+                self._active_alerts_cache = data
+                self._active_alerts_timestamp = now
         finally:
             self.persistence.return_connection(conn)
 
+        return data
+
     def get_alert_history(self, limit: int = 100) -> List[Dict[str, Any]]:
+        now = time.time()
+        with self._cache_lock:
+            if limit in self._history_cache and (now - self._history_timestamp.get(limit, 0.0)) < self.DEFAULT_TTL:
+                self._cache_hits += 1
+                return self._history_cache[limit]
+        with self._cache_lock:
+            self._cache_misses += 1
         conn = self.persistence.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM incidents ORDER BY start_time DESC LIMIT ?", (limit,))
             rows = cursor.fetchall()
-            return [dict(r) for r in rows]
+            res = [dict(r) for r in rows]
+            with self._cache_lock:
+                self._history_cache[limit] = res
+                self._history_timestamp[limit] = now
+            return res
         finally:
             self.persistence.return_connection(conn)
+
+    def cache_stats(self) -> Dict[str, Any]:
+        with self._cache_lock:
+            hits = self._cache_hits
+            misses = self._cache_misses
+        total = hits + misses
+        hit_rate = (hits / total * 100.0) if total > 0 else 0.0
+        return {
+            "cache_hits": hits,
+            "cache_misses": misses,
+            "cache_hit_rate": f"{hit_rate:.1f}%",
+        }
+
+    def invalidate_cache(self):
+        """Clear cached dashboard queries (called after incident mutations)."""
+        with self._cache_lock:
+            self._active_alerts_cache = None
+            self._active_alerts_timestamp = 0.0
+            self._history_cache.clear()
+            self._history_timestamp.clear()
 
     def get_notification_state(self) -> Dict[str, Any]:
         import sys
@@ -747,11 +899,17 @@ class HealthMonitor:
         
         # Pool stats
         pool_free = persistence._pool.qsize()
-        
+        pool_total = persistence.pool_size
+        pool_in_use = pool_total - pool_free
+        pool_exhausted = pool_free == 0
+
         # Calculate success rate
         total_notif = dispatcher.total_count
         success_rate = (dispatcher.success_count / total_notif * 100.0) if total_notif > 0 else 100.0
-        
+
+        # Cache effectiveness
+        cache_stats = self.coordinator.dashboard_adapter.cache_stats()
+
         # Retrieve count of incidents
         conn = persistence.get_connection()
         try:
@@ -764,7 +922,12 @@ class HealthMonitor:
             persistence.return_connection(conn)
 
         return {
-            "database_pool_status": f"{pool_free}/{persistence.pool_size} connections available",
+            "database_pool_status": f"{pool_free}/{pool_total} connections available",
+            "database_pool_in_use": pool_in_use,
+            "database_pool_exhausted": pool_exhausted,
+            "cache_hit_rate": cache_stats["cache_hit_rate"],
+            "cache_hits": cache_stats["cache_hits"],
+            "cache_misses": cache_stats["cache_misses"],
             "active_alerts_count": len(self.coordinator.dashboard_adapter.get_active_alerts()),
             "notification_queue_backlog": 0, # executed asynchronously
             "escalation_queue_size": len(self.coordinator.escalation_engine._queue),

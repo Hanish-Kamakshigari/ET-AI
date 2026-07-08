@@ -7,6 +7,7 @@ SENSOR_ZONES = ['Zone_A', 'Zone_B', 'Zone_C', 'Reactor_Area', 'Storage_Area']
 STATIC_ZONES = ['Control_Room']
 ALL_ZONES = STATIC_ZONES + SENSOR_ZONES
 
+# Single source of truth for zone labels - no duplicate definitions elsewhere
 ZONE_LABELS = {
     'Zone_A': 'Battery-4',
     'Zone_B': 'Battery-5',
@@ -15,6 +16,9 @@ ZONE_LABELS = {
     'Control_Room': 'Control Room',
     'Storage_Area': 'Storage Area',
 }
+
+# Legacy alias for backward compatibility
+ZONE_LABELS_MAP = ZONE_LABELS
 
 ZONE_STATUS_ORDER = [
     ('Zone_A', 'Battery-4'),
