@@ -6,6 +6,7 @@ import random
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 from PIL import Image, ImageDraw, ImageFont
+import streamlit as st
 
 # Import standard Detection class from object_detector
 if __name__ == "__main__" or __package__ is None:
@@ -212,6 +213,7 @@ def load_zones_config():
         }
     }
 
+@st.cache_resource
 def get_yolo_model(model_type: str, zone: str = None):
     """Load or retrieve YOLO model from cache"""
     global _models
@@ -276,6 +278,7 @@ def get_yolo_model(model_type: str, zone: str = None):
 
 # Load zones config on initialization
 load_zones_config()
+_detections_cache = {}
 
 def run_inference(
     frame_np: np.ndarray, 
@@ -332,58 +335,73 @@ def run_inference(
     
     # Lists to hold raw detections
     people = []
+    fire_items = []
+    
+    # Check cache for YOLO outputs (people, fire_items) to bypass heavy model execution
+    global _detections_cache
+    use_cache = False
+    cache_key = selected_zone
+    if cache_key in _detections_cache:
+        last_frame_idx, cached_people, cached_fire_items = _detections_cache[cache_key]
+        if abs(current_frame - last_frame_idx) < 3:
+            use_cache = True
+            people = cached_people
+            fire_items = cached_fire_items
 
-    # 1b. Use stock YOLO (yolov8n.pt) for reliable person detection (class 0)
-    if stock_model is not None:
-        stock_results = stock_model(frame_np, conf=0.35, iou=0.4, verbose=False)
-        if len(stock_results) > 0:
-            for box in stock_results[0].boxes:
-                if int(box.cls[0]) == 0:  # class 0 = person
+    if not use_cache:
+        # 1b. Use stock YOLO (yolov8n.pt) for reliable person detection (class 0)
+        if stock_model is not None:
+            stock_results = stock_model(frame_np, conf=0.35, iou=0.4, verbose=False)
+            if len(stock_results) > 0:
+                for box in stock_results[0].boxes:
+                    if int(box.cls[0]) == 0:  # class 0 = person
+                        conf = float(box.conf[0])
+                        xyxy = box.xyxy[0].tolist()
+                        x1, y1, x2, y2 = map(int, xyxy)
+                        people.append((x1, y1, x2, y2, conf))
+                        
+        # 1c. For Zone_A (Battery-4): filter out any ghost person detections (smoke plume).
+        # Real workers are only detected in two specific regions:
+        # - Standing supervisor (right): starts at x1 >= 650
+        # - Kneeling technician (left): starts at x1 < 500 and y1 >= 200
+        if selected_zone == 'Zone_A':
+            people = [
+                (x1, y1, x2, y2, c) for x1, y1, x2, y2, c in people
+                if (650 <= x1 < 1000) or (x1 < 500 and y1 >= 200)
+            ]
+            
+        if selected_zone == 'Zone_B':
+            # Filter out tiny duplicate crop boxes
+            people = [
+                (x1, y1, x2, y2, c) for x1, y1, x2, y2, c in people
+                if (y2 - y1) >= 130
+            ]
+            
+        if selected_zone == 'Zone_C':
+            # Filter out ghost detections of the pipe valve on the right-hand side (x1 > 600)
+            people = [
+                (x1, y1, x2, y2, c) for x1, y1, x2, y2, c in people
+                if x1 <= 600
+            ]
+                    
+        # 2. Run Fire/Smoke model if available
+        if fire_model is not None:
+            fire_results = fire_model(frame_np, conf=0.35, verbose=False)
+            if len(fire_results) > 0:
+                boxes = fire_results[0].boxes
+                names = fire_results[0].names
+                for box in boxes:
+                    cls_id = int(box.cls[0])
                     conf = float(box.conf[0])
+                    raw_label = names[cls_id].lower()
+                    label = CLASS_MAPPING.get(raw_label, raw_label)
+                    
                     xyxy = box.xyxy[0].tolist()
                     x1, y1, x2, y2 = map(int, xyxy)
-                    people.append((x1, y1, x2, y2, conf))
+                    fire_items.append((x1, y1, x2, y2, label, conf))
                     
-    # 1c. For Zone_A (Battery-4): filter out any ghost person detections (smoke plume).
-    # Real workers are only detected in two specific regions:
-    # - Standing supervisor (right): starts at x1 >= 650
-    # - Kneeling technician (left): starts at x1 < 500 and y1 >= 200
-    if selected_zone == 'Zone_A':
-        people = [
-            (x1, y1, x2, y2, c) for x1, y1, x2, y2, c in people
-            if (650 <= x1 < 1000) or (x1 < 500 and y1 >= 200)
-        ]
-        
-    if selected_zone == 'Zone_B':
-        # Filter out tiny duplicate crop boxes
-        people = [
-            (x1, y1, x2, y2, c) for x1, y1, x2, y2, c in people
-            if (y2 - y1) >= 130
-        ]
-        
-    if selected_zone == 'Zone_C':
-        # Filter out ghost detections of the pipe valve on the right-hand side (x1 > 600)
-        people = [
-            (x1, y1, x2, y2, c) for x1, y1, x2, y2, c in people
-            if x1 <= 600
-        ]
-                
-    # 2. Run Fire/Smoke model if available
-    fire_items = []
-    if fire_model is not None:
-        fire_results = fire_model(frame_np, conf=0.35, verbose=False)
-        if len(fire_results) > 0:
-            boxes = fire_results[0].boxes
-            names = fire_results[0].names
-            for box in boxes:
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
-                raw_label = names[cls_id].lower()
-                label = CLASS_MAPPING.get(raw_label, raw_label)
-                
-                xyxy = box.xyxy[0].tolist()
-                x1, y1, x2, y2 = map(int, xyxy)
-                fire_items.append((x1, y1, x2, y2, label, conf))
+        # Save results to cache
+        _detections_cache[cache_key] = (current_frame, people, fire_items)
                 
     # 3. Load restricted zones and check for intrusion
     zone_info = _zones_config.get(selected_zone, {})

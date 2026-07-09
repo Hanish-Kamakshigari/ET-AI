@@ -197,18 +197,19 @@ with col_center:
         if not selected_zone:
             selected_zone = SENSOR_ZONES[0]
 
+        def on_zone_change():
+            st.session_state.cctv_frame_index = 0
+            from src.cctv.inference import reset_ppe_buffer
+            reset_ppe_buffer()
+
         zone_sel = st.selectbox(
             "Select CCTV Camera Feed:",
             options=SENSOR_ZONES,
             format_func=lambda z: f"📹 {ZONE_LABELS.get(z, z)} Camera Feed",
-            key="cctv_zone_selector"
+            key="cctv_zone_selector",
+            on_change=on_zone_change
         )
-        if zone_sel != selected_zone:
-            selected_zone = zone_sel
-            st.session_state.cctv_frame_index = 0
-            from src.cctv.inference import reset_ppe_buffer
-            reset_ppe_buffer()
-            st.rerun()
+        selected_zone = zone_sel
 
         selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
@@ -221,12 +222,8 @@ with col_center:
 
         with st.container():
             st.markdown("<div class='cctv-buffer-anchor'></div>", unsafe_allow_html=True)
-            if 'cctv_frame_placeholder_1' not in st.session_state:
-                st.session_state.cctv_frame_placeholder_1 = st.empty()
-            if 'cctv_frame_placeholder_2' not in st.session_state:
-                st.session_state.cctv_frame_placeholder_2 = st.empty()
-            cctv_frame_placeholder_1 = st.session_state.cctv_frame_placeholder_1
-            cctv_frame_placeholder_2 = st.session_state.cctv_frame_placeholder_2
+            cctv_frame_placeholder_1 = st.empty()
+            cctv_frame_placeholder_2 = st.empty()
             
         cctv_status_placeholder = st.empty()
 

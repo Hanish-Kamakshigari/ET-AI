@@ -182,12 +182,8 @@ def render_zones_tab(placeholders, data_dict, engine=None, alert_system=None):
 
             with st.container():
                 st.markdown("<div class='cctv-buffer-anchor'></div>", unsafe_allow_html=True)
-                if 'zone_cctv_frame_placeholder_1' not in st.session_state:
-                    st.session_state.zone_cctv_frame_placeholder_1 = st.empty()
-                if 'zone_cctv_frame_placeholder_2' not in st.session_state:
-                    st.session_state.zone_cctv_frame_placeholder_2 = st.empty()
-                cctv_frame_placeholder_1 = st.session_state.zone_cctv_frame_placeholder_1
-                cctv_frame_placeholder_2 = st.session_state.zone_cctv_frame_placeholder_2
+                cctv_frame_placeholder_1 = st.empty()
+                cctv_frame_placeholder_2 = st.empty()
 
             cctv_status_placeholder = st.empty()
             warnings_placeholder = st.empty()

@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor
+import streamlit as st
 
 # Shared executor for I/O-bound async work (notifications, payload dispatch).
 # A single executor avoids creating multiple thread pools across modules.
@@ -54,6 +55,7 @@ class AlertStatus(Enum):
 # CONFIGURATION LOADER
 # ==============================================================================
 
+@st.cache_data
 def load_config() -> Dict[str, Any]:
     """Loads configuration from alerting.yaml, falling back to defaults if not found"""
     config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "alerting.yaml"))
@@ -300,7 +302,7 @@ class RiskEvaluator:
 
         # 6. Telemetry pressure checks (specifically for Zone_C / Battery-6)
         if zone == "Zone_C":
-            pressure = telemetry.get(f"{zone}_pressure_bar", telemetry.get("pressure", 0.0))
+            pressure = telemetry.get(f"{zone}_pressure_bar", telemetry.get("pressure_bar", telemetry.get("pressure", 0.0)))
             if pressure > 80:
                 rule_id = "OVERPRESSURE"
                 matched_rules.append({
@@ -942,11 +944,12 @@ class HealthMonitor:
 # ==============================================================================
 
 class IncidentManager:
-    def __init__(self, config: Dict[str, Any], persistence: PersistenceLayer, dispatcher: NotificationDispatcher, escalation: EscalationEngine):
+    def __init__(self, config: Dict[str, Any], persistence: PersistenceLayer, dispatcher: NotificationDispatcher, escalation: EscalationEngine, dashboard_adapter: DashboardAdapter = None):
         self.config = config
         self.persistence = persistence
         self.dispatcher = dispatcher
         self.escalation = escalation
+        self.dashboard_adapter = dashboard_adapter
         self.persistence_threshold = config.get("persistence", {}).get("threshold_frames", 15)
         self.logger = logging.getLogger("IncidentManager")
 
@@ -968,6 +971,27 @@ class IncidentManager:
                 row = cursor.fetchone()
                 
                 if row is None:
+                    # Check cooldown for repeated alerts of the same key
+                    cursor.execute(
+                        "SELECT * FROM incidents WHERE incident_key = ? AND status = 'RESOLVED' "
+                        "ORDER BY end_time DESC LIMIT 1",
+                        (incident_key,)
+                    )
+                    last_resolved = cursor.fetchone()
+                    if last_resolved is not None:
+                        try:
+                            resolved_time = datetime.fromisoformat(last_resolved["end_time"])
+                            elapsed_seconds = (datetime.now() - resolved_time).total_seconds()
+                            severity = rule_info["severity"].name
+                            cooldown_cfg = self.config.get("cooldowns", {})
+                            cooldown_time = cooldown_cfg.get(severity, 30.0) # default 30s
+                            
+                            if elapsed_seconds < cooldown_time:
+                                self.logger.info(f"Suppressing new incident {incident_key} due to cooldown ({elapsed_seconds:.1f}s < {cooldown_time}s)")
+                                continue
+                        except Exception as ex:
+                            self.logger.error(f"Error checking cooldown for {incident_key}: {ex}")
+
                     # Create NEW incident
                     incident_id = str(uuid.uuid4())
                     severity = rule_info["severity"].name
@@ -1053,25 +1077,36 @@ class IncidentManager:
                     absent_count = row["consecutive_absent_frames"] + 1
                     incident_id = row["incident_id"]
                     
-                    if absent_count >= 10:
-                        # Hysteresis threshold hit, resolve incident
+                    is_active_yet = row["status"] in (AlertStatus.ACTIVE.value, AlertStatus.ACKNOWLEDGED.value, AlertStatus.ESCALATED.value)
+                    if not is_active_yet:
+                        # Non-consecutive frame check: reset frame_count to 0 if absent before activation
                         cursor.execute("""
                         UPDATE incidents 
-                        SET status = ?, end_time = ?, consecutive_absent_frames = ?
-                        WHERE incident_id = ?
-                        """, (AlertStatus.RESOLVED.value, now_str, absent_count, incident_id))
-                        
-                        # Clear visual banner/sirens in dashboard
-                        self._clear_dashboard_visuals(zone)
-                        self.logger.info(f"Resolved incident {incident_id} ({inc_key}) after 10 safe frames")
-                    else:
-                        cursor.execute("""
-                        UPDATE incidents 
-                        SET consecutive_absent_frames = ?
+                        SET frame_count = 0, consecutive_absent_frames = ?
                         WHERE incident_id = ?
                         """, (absent_count, incident_id))
-                        
+                    else:
+                        if absent_count >= 10:
+                            # Hysteresis threshold hit, resolve incident
+                            cursor.execute("""
+                            UPDATE incidents 
+                            SET status = ?, end_time = ?, consecutive_absent_frames = ?
+                            WHERE incident_id = ?
+                            """, (AlertStatus.RESOLVED.value, now_str, absent_count, incident_id))
+                            
+                            # Clear visual banner/sirens in dashboard
+                            self._clear_dashboard_visuals(zone)
+                            self.logger.info(f"Resolved incident {incident_id} ({inc_key}) after 10 safe frames")
+                        else:
+                            cursor.execute("""
+                            UPDATE incidents 
+                            SET consecutive_absent_frames = ?
+                            WHERE incident_id = ?
+                            """, (absent_count, incident_id))
+            
             conn.commit()
+            if self.dashboard_adapter is not None:
+                self.dashboard_adapter.invalidate_cache()
         except Exception as e:
             self.logger.error(f"Error updating incidents: {e}")
             conn.rollback()
@@ -1105,9 +1140,9 @@ class AlertCoordinator:
         self.risk_evaluator = RiskEvaluator(self.config)
         self.detection_processor = DetectionProcessor(self.config)
         self.notification_dispatcher = NotificationDispatcher()
-        self.escalation_engine = EscalationEngine(self)
-        self.incident_manager = IncidentManager(self.config, self.persistence, self.notification_dispatcher, self.escalation_engine)
         self.dashboard_adapter = DashboardAdapter(self.persistence)
+        self.escalation_engine = EscalationEngine(self)
+        self.incident_manager = IncidentManager(self.config, self.persistence, self.notification_dispatcher, self.escalation_engine, self.dashboard_adapter)
         self.health_monitor = HealthMonitor(self)
 
     def process_frame(self, detections: List[Any], zone: str, telemetry: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1133,9 +1168,16 @@ class AlertCoordinator:
             zone=zone
         )
         
-        # 2. Map rules to stable incident keys and update manager
+        # 2. Map rules to stable incident keys and update manager (sorted by priority/severity)
+        severity_rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+        sorted_rules = sorted(
+            evaluation["matched_rules"],
+            key=lambda r: severity_rank.get(r.get("severity", AlertSeverity.LOW).name, 0),
+            reverse=True
+        )
+        
         active_keys = []
-        for rule in evaluation["matched_rules"]:
+        for rule in sorted_rules:
             inc_key = self.detection_processor.generate_incident_key(zone, rule["rule_id"])
             active_keys.append((inc_key, rule["rule_id"], rule))
             
@@ -1265,6 +1307,7 @@ class AlertCoordinator:
                 WHERE incident_id = ?
                 """, (now_str, incident_id))
                 conn.commit()
+                self.dashboard_adapter.invalidate_cache()
         except Exception as e:
             self.logger.error(f"Error dispatching payload alert: {e}")
             conn.rollback()
@@ -1286,6 +1329,7 @@ class AlertCoordinator:
             conn.commit()
             if changed:
                 self.logger.info(f"Incident {incident_id} acknowledged by {operator_name}")
+                self.dashboard_adapter.invalidate_cache()
             return changed
         except Exception as e:
             self.logger.error(f"Failed to acknowledge incident {incident_id}: {e}")
@@ -1315,6 +1359,7 @@ class AlertCoordinator:
             if changed:
                 self.incident_manager._clear_dashboard_visuals(row["zone"])
                 self.logger.info(f"Incident {incident_id} resolved explicitly")
+                self.dashboard_adapter.invalidate_cache()
             return changed
         except Exception as e:
             self.logger.error(f"Failed to resolve incident {incident_id}: {e}")
@@ -1337,6 +1382,7 @@ class AlertCoordinator:
             conn.commit()
             self.incident_manager._clear_dashboard_visuals(zone)
             self.logger.info(f"Cleared all active alerts in zone {zone} via compatibility layer")
+            self.dashboard_adapter.invalidate_cache()
         except Exception as e:
             self.logger.error(f"Failed to clear active alerts in zone {zone}: {e}")
             conn.rollback()

@@ -34,6 +34,14 @@ scratch/
 data/alerts.db
 data/actions.json
 data/*.db*
+data/*.log
+data/*.lock
 *.db*
+
+# Lint and Type Checking Caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
 
 

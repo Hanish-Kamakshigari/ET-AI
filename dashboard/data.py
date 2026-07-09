@@ -431,13 +431,20 @@ def calculate_telemetry(df: pd.DataFrame, engine: CompoundRiskEngine, alert_syst
                         for f in engine.analyze_zone(latest, z)['compound_factors']]
     compound_detected = bool(active_compounds)
 
-    # Persistent DB log query
+    # Persistent DB log query using the unified AlertCoordinator adapter
     db_logs = []
     try:
-        conn = sqlite3.connect("data/alerts.db")
-        df_alerts = pd.read_sql_query("SELECT alert_id, timestamp, zone, risk_level, status, message FROM system_alerts ORDER BY timestamp DESC LIMIT 4", conn)
-        conn.close()
-        db_logs = df_alerts.to_dict('records')
+        from src.alert_coordinator import get_alert_coordinator
+        raw_history = get_alert_coordinator().dashboard_adapter.get_alert_history(limit=4)
+        for item in raw_history:
+            db_logs.append({
+                'alert_id': item['incident_id'],
+                'timestamp': item['start_time'],
+                'zone': item['zone'],
+                'risk_level': item['severity'],
+                'status': item['status'],
+                'message': item['message']
+            })
     except Exception:
         pass
 

@@ -109,11 +109,14 @@ class ObjectDetector:
             return
         self._attempted_load = True
         try:
-            # Try to load YOLO from ultralytics
-            from ultralytics import YOLO
-            self.model = YOLO('yolov8n.pt')  # nano version for speed
-            print("[SUCCESS] YOLO model loaded successfully")
-            self.use_simulation = False
+            from src.cctv.inference import get_yolo_model
+            self.model = get_yolo_model("stock")
+            if self.model is not None:
+                print("[SUCCESS] YOLO model loaded successfully from cache")
+                self.use_simulation = False
+            else:
+                print("[WARNING] YOLO model could not be retrieved from cache, falling back to simulation")
+                self.use_simulation = True
         except ImportError:
             print("[WARNING] YOLO not available, falling back to simulation")
             self.use_simulation = True

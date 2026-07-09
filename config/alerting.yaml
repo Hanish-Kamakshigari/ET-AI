@@ -66,3 +66,10 @@ escalation_matrix:
 database:
   db_path: "data/alerts_v2.db"
   timeout_seconds: 10
+
+cooldowns:
+  CRITICAL: 10
+  HIGH: 30
+  MEDIUM: 60
+  LOW: 120
+

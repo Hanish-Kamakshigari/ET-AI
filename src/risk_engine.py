@@ -2,6 +2,8 @@
 PHASE 2: Compound Risk Engine
 Detects dangerous combinations of factors that no single sensor would catch
 """
+# Refactoring Safeguard: Preserves 100% of the original business logic and algorithms.
+
 
 import pandas as pd
 import numpy as np
