@@ -187,7 +187,7 @@ with col_center:
             'm4': col4.empty()
         }
         render_kpi_grid(kpi_cols, data_dict)
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
     else:
         kpi_cols = None
 
@@ -211,6 +211,7 @@ with col_center:
             st.rerun()
 
         selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
         st.markdown(f"""
         <div class='cctv-header'>
             <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
@@ -229,23 +230,23 @@ with col_center:
             
         cctv_status_placeholder = st.empty()
 
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-        col_l1, col_r1 = st.columns([1.3, 0.7])
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+        col_l1, col_r1 = st.columns([1.2, 0.8])
         timeline_placeholder = col_l1.empty()
         risk_engine_placeholder = col_r1.empty()
 
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
         col_l2, col_r2 = st.columns([1.0, 1.0])
         ai_decision_placeholder = col_l2.empty()
         telemetry_trends_placeholder = col_r2.empty()
 
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
         col_l3, col_r3 = st.columns([1.0, 1.0])
         zone_response_placeholder = col_l3.empty()
         incident_summary_placeholder = col_r3.empty()
 
         # Operational Overview SCADA status row (6 columns)
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
         col_scada1, col_scada2, col_scada3, col_scada4, col_scada5, col_scada6 = st.columns(6)
         scada_placeholders = {
             'plant_health': col_scada1.empty(),

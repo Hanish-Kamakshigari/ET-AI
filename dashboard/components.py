@@ -623,13 +623,23 @@ def render_notifications_panel(placeholder: Any, data_dict: Dict[str, Any], sele
     _email_detail = f"Email sent to safety@***.com {_notif_time}" if compound_risk_score > 0 else "Sent to: N/A"
     _siren_detail = f"Zone: {highest_risk_zone} | Status: SOUNDING | Duration: active" if compound_risk_score > 0 else "Zone: All clear"
 
-    channels_html = (
-        '<div style="display:flex;flex-direction:column;gap:4px;">'
-        + render_notification_channel("SMS CHANNEL", sms_status[0], sms_status[1], _sms_detail, active=(compound_risk_score > 0), progress_pct=sms_progress)
-        + render_notification_channel("EMAIL CHANNEL", email_status[0], email_status[1], _email_detail, active=(compound_risk_score > 0), progress_pct=email_progress)
-        + render_notification_channel("SIREN CHANNEL", siren_status[0], siren_status[1], _siren_detail, active=(compound_risk_score > 0), progress_pct=siren_progress)
-        + '</div>'
+    channels = [
+        ("SMS", sms_status[0], sms_status[1], _sms_detail),
+        ("EMAIL", email_status[0], email_status[1], _email_detail),
+        ("SIREN", siren_status[0], siren_status[1], _siren_detail),
+    ]
+    cards = ''.join(
+        f'<div style="flex:1; background:rgba(17,24,39,0.5); border:1px solid rgba(255,255,255,0.06); '
+        f'border-left:3px solid {color}; border-radius:8px; padding:6px 8px;">'
+        f'<div style="display:flex; justify-content:space-between; align-items:center;">'
+        f'<span style="font-size:8.5px; font-weight:700; color:#94a3b8; letter-spacing:0.5px;">{name}</span>'
+        f'<span style="font-size:8px; font-weight:800; color:{color};">{status}</span>'
+        f'</div>'
+        f'<div style="font-size:9px; color:#64748b; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{detail}</div>'
+        f'</div>'
+        for name, status, color, detail in channels
     )
+    channels_html = f'<div style="display:flex; gap:6px;">{cards}</div>'
 
     escalated_toast = ""
     if compound_risk_score > 0:
@@ -726,7 +736,7 @@ def render_compact_alert_card_html(alert: Any) -> str:
 
     # Flex row restructuring (Severity, Zone, Time, Status, ACK on top row; Message on bottom row)
     html = f"""
-    <div class="{card_class}" style="background: {bg}; border-left: 4px solid {color}; border-top: 1px solid {border_color}; border-right: 1px solid {border_color}; border-bottom: 1px solid {border_color}; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-family: Outfit, sans-serif;">
+    <div class="{card_class}" style="background: {bg}; border-left: 4px solid {color}; border-top: 1px solid {border_color}; border-right: 1px solid {border_color}; border-bottom: 1px solid {border_color}; border-radius: 6px; padding: 6px 10px; margin-bottom: 4px; font-family: Outfit, sans-serif;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px; flex-wrap: nowrap;">
         <div style="display: flex; align-items: center; gap: 6px;">
           <span style="font-weight: 800; color: {color}; font-size: 9.5px; letter-spacing: 0.5px; text-transform: uppercase; display: flex; align-items: center; gap: 3px; {'animation: dotPulse 1.2s ease infinite alternate;' if severity_name == 'CRITICAL' else ''}">
@@ -844,9 +854,9 @@ def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, 
         )
 
     timeline_html = (
-        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 16px; padding: 10px 12px; min-height: 200px; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif;">'
+        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 12px; padding: 10px 12px; min-height: 170px; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif;">'
         f'<div style="font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px;">LIVE INCIDENT TIMELINE</div>'
-        f'<div style="max-height: 145px; overflow-y: auto; font-size: 9.5px; line-height: 1.35;">'
+        f'<div style="max-height: 140px; overflow-y: auto; font-size: 9.5px; line-height: 1.35;">'
         f'{"".join(events_html)}'
         f'</div></div>'
     )
@@ -886,9 +896,9 @@ def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, 
         )
 
     risk_engine_html = (
-        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 16px; padding: 10px 12px; min-height: 200px; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif;">'
+        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 12px; padding: 10px 12px; min-height: 170px; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif;">'
         f'<div style="font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px;">COMPOUND RISK ENGINE</div>'
-        f'<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; max-height: 145px; overflow-y: auto;">'
+        f'<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; max-height: 140px; overflow-y: auto;">'
         f'{"".join(badges)}'
         f'</div></div>'
     )
@@ -965,7 +975,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         recommendation = "Continue standard plant surveillance."
 
     ai_decision_html = (
-        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:8px 12px; min-height:200px; font-family:Outfit,sans-serif;">'
+        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:10px 12px; min-height:200px; font-family:Outfit,sans-serif;">'
         f'<div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">AI DECISION ENGINE</div>'
         f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">'
         f'<div><span style="font-size:9px; color:#64748b; text-transform:uppercase; font-weight:600;">Risk Level</span><div style="font-size:15px; font-weight:800; color:{risk_color}; display:flex; align-items:center; gap:4px;">{risk_icon} {risk_level}</div></div>'
@@ -990,7 +1000,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
     gas_spark_svg = render_sparkline_svg(st.session_state.telemetry_history_gas, stroke_color="#ff9f43")
 
     telemetry_html = f"""
-    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:8px 12px; min-height:200px; font-family:Outfit,sans-serif;">
+    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:10px 12px; min-height:200px; font-family:Outfit,sans-serif;">
         <div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">LIVE TELEMETRY</div>
         <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
             <div style="flex:1; background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.03); border-radius:8px; padding:4px 2px;">
@@ -1054,7 +1064,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         """
 
     zone_response_html = (
-        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:8px 12px; min-height:200px; font-family:Outfit,sans-serif;">'
+        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:10px 12px; min-height:200px; font-family:Outfit,sans-serif;">'
         f'<div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">ZONE RESPONSE & ACTIONS</div>'
         f'<div style="display:flex; flex-direction:column; gap:4px; font-size:10.5px; line-height:1.2;">'
         f'<div><span style="color:#64748b; font-weight:600;">Affected Zone:</span> <span style="color:#fff; font-weight:700;">{ZONE_LABELS.get(selected_zone, selected_zone)}</span></div>'
@@ -1337,7 +1347,7 @@ def render_right_panel_diagnostics(placeholders_dict: dict, data_dict: dict, am:
 def render_incident_summary_html(open_incidents: int, closed_incidents: int, today_incidents: int) -> str:
     """Renders a beautiful industrial SCADA incident summary card"""
     html = f"""
-    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:8px 12px; min-height:200px; font-family:Outfit,sans-serif;">
+    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:10px 12px; min-height:200px; font-family:Outfit,sans-serif;">
         <div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">INCIDENT SUMMARY</div>
         <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
             <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.15); border-radius:8px;">

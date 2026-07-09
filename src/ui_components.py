@@ -220,8 +220,8 @@ section[data-testid="stSidebar"] > div {{ padding-top: 0 !important; }}
 }}
 .block-container {{ padding-top: 0 !important; padding-bottom: 0 !important; margin-top: 0 !important; }}
 section.main > div:first-child {{ padding-top: 0 !important; }}
-div[data-testid="stVerticalBlock"] > div {{ margin-top: 0px !important; gap: 0.35rem !important; }}
-div[data-testid="stHorizontalBlock"] {{ gap: 0.5rem !important; align-items: stretch !important; }}
+div[data-testid="stVerticalBlock"] > div {{ margin-top: 0px !important; gap: 12px !important; }}
+div[data-testid="stHorizontalBlock"] {{ gap: 12px !important; align-items: stretch !important; }}
 
 /* Global transition for interactive elements and containers */
 button, select, div[role="button"], .stButton>button, [data-testid="stExpander"] {{
@@ -233,7 +233,7 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) {{
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
-  align-items: stretch !important;
+  align-items: flex-start !important;
   gap: 16px !important;
   width: 100% !important;
   max-width: 100% !important;
@@ -252,11 +252,16 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   background: linear-gradient(180deg, var(--bg2) 0%, #0A1220 100%) !important;
   padding: 12px !important;
   box-sizing: border-box !important;
-  overflow-y: auto !important;
-  height: calc(100vh - 52px) !important;
-  position: sticky !important;
-  top: 52px !important;
 }}
+
+/* Optimize sidebar widget spacing and expanders padding */
+div[data-testid="column"]:first-child [data-testid="stExpander"] {{
+    margin-bottom: 6px !important;
+}}
+div[data-testid="column"]:first-child [data-testid="stExpander"] details summary {{
+    padding: 6px 10px !important;
+}}
+
 
 /* Center column (2nd child of layout block) - responsive, fills all remaining space */
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:nth-child(2) {{
@@ -304,18 +309,36 @@ div[data-testid="column"]:has(div[data-testid="stImage"]) {{
 
 /* Right column (3rd child of layout block) */
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:last-child {{
-  width: 420px !important;
-  min-width: 420px !important;
-  max-width: 420px !important;
-  flex: 0 0 420px !important;
+  width: 360px !important;
+  min-width: 360px !important;
+  max-width: 360px !important;
+  flex: 0 0 360px !important;
   box-sizing: border-box !important;
   padding: 12px !important;
   background: rgba(10, 22, 40, 0.2) !important;
   border-left: 1px solid var(--border2) !important;
-  height: calc(100vh - 52px) !important;
-  overflow-y: auto !important;
+}}
+
+/* Pin the left console and right diagnostics panel, scroll independently */
+.st-key-left_console_panel,
+.st-key-right_diag_panel {{
   position: sticky !important;
-  top: 52px !important;
+  top: 64px !important;
+  max-height: calc(100vh - 64px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  width: 100% !important;
+}}
+
+/* Slim, unobtrusive scrollbar for the side panels */
+.st-key-left_console_panel::-webkit-scrollbar,
+.st-key-right_diag_panel::-webkit-scrollbar {{
+    width: 5px !important;
+}}
+.st-key-left_console_panel::-webkit-scrollbar-thumb,
+.st-key-right_diag_panel::-webkit-scrollbar-thumb {{
+    background: rgba(255,255,255,0.15) !important;
+    border-radius: 4px !important;
 }}
 
 /* Collapsed Responsive Layout Utilities */
@@ -988,9 +1011,7 @@ def render_navbar(risk_level: str = "LOW", active_tab: str = "dashboard") -> Non
     with col_status:
         st.markdown(f"""
         <div class="suraksha-navbar-status" style="display:flex; align-items:center; gap:10px; justify-content:flex-end; width:100%; margin-top:4px; font-family:'Outfit',sans-serif;">
-          <a href="?show_modal=1" target="_top" style="text-decoration:none;">
-            <span style="background:rgba(0,212,255,0.12); border:1px solid rgba(0,212,255,0.3); border-radius:6px; color:#00d4ff; padding:5px 12px; font-size:10px; font-weight:bold; cursor:pointer;">🧠 AI Console</span>
-          </a>
+          <span style="background:rgba(0,212,255,0.12); border:1px solid rgba(0,212,255,0.3); border-radius:6px; color:#00d4ff; padding:5px 12px; font-size:10px; font-weight:bold; cursor:default;">🧠 AI Console</span>
           <span class="suraksha-navbar-time" id="suraksha-clock" style="color:#6b7d94; font-family:monospace; font-size:11.5px; margin-top:2px;">{now_str}</span>
           <div class="suraksha-navbar-divider" style="width:1px; height:12px; background:rgba(255,255,255,0.1); margin:0 2px;"></div>
           <div class="suraksha-status-pill {pill_cls}" style="margin:0;">
@@ -1210,7 +1231,7 @@ def render_nominal_card(
 ) -> str:
     """Render a clean nominal/safe state card"""
     return clean_html(f"""
-    <div class="glass-card" style="background: rgba(34, 197, 94, 0.04); border-color: rgba(34, 197, 94, 0.2); padding: 12px 14px; text-align: center;">
+    <div class="glass-card" style="background: rgba(34, 197, 94, 0.04); border-color: rgba(34, 197, 94, 0.2); padding: 8px 10px; text-align: center;">
       <div style="font-size: {Typography.SIZE_3XL}; margin-bottom: 4px;">🟢</div>
       <div style="color: {Colors.GREEN}; font-size: {Typography.SIZE_LG}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">{title}</div>
       <div style="color: var(--muted); font-size: {Typography.SIZE_BASE}; margin-top: 3px; line-height: 1.4;">{message}</div>
@@ -1270,7 +1291,7 @@ def render_notification_channel(
     card_bg = 'rgba(20,83,45,0.35)' if active else 'rgba(255,255,255,0.015)'
     chk_mark = "✓ " if active else ""
     return clean_html(f"""
-    <div style="background:{card_bg}; border:1px solid {status_color}; border-radius:8px; padding:11px 13px; margin-bottom:8px; font-family:var(--font-primary);">
+    <div style="background:{card_bg}; border:1px solid {status_color}; border-radius:8px; padding:8px 10px; margin-bottom:4px; font-family:var(--font-primary);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
             <span style="font-size:11px; font-weight:700; color:#fff;">{name}</span>
             <span style="color:{status_color}; font-size:10px; font-weight:800; text-transform:uppercase;">{chk_mark}{status}</span>
