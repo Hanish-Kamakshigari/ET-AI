@@ -48,15 +48,17 @@ def create_layout() -> Tuple[
     st.delta_generator.DeltaGenerator,
     st.delta_generator.DeltaGenerator,
     st.delta_generator.DeltaGenerator,
+    st.delta_generator.DeltaGenerator,
     st.delta_generator.DeltaGenerator
 ]:
-    """Creates the structural layout with permanent left sidebar and main content area.
+    """Creates the structural layout with permanent left sidebar, center monitoring area, and right alert panel.
 
     Returns:
         auto_banner_placeholder: Top auto-detect alert banner
         sim_banner_placeholder: Simulation injection alert banner
         sidebar_placeholder: Placeholder for the permanent SurakshaAI Console sidebar
-        col_main: Main content column container
+        col_center: Center column container (Main monitoring area)
+        col_right: Right column container (Notification & Live Alerts)
     """
     # CCTV auto-detect alert banner placeholder
     auto_banner_placeholder = st.empty()
@@ -104,18 +106,21 @@ def create_layout() -> Tuple[
         st.session_state.sidebar_expanded = True
 
     is_expanded = st.session_state.sidebar_expanded
-    width_px = "340px" if is_expanded else "80px"
+    sidebar_width = "300px" if is_expanded else "70px"
+    right_width = "420px"
 
     # Inject dynamic css custom property for sidebar transition
     st.markdown(f"""
     <style>
     :root {{
-        --sidebar-width: {width_px} !important;
+        --sidebar-width: {sidebar_width} !important;
+        --right-width: {right_width} !important;
     }}
     </style>
     """, unsafe_allow_html=True)
 
-    col_sidebar, col_main = st.columns([1.0, 3.2])
+    # Always use constant columns ratios to prevent Streamlit from rebuilding columns container
+    col_sidebar, col_center, col_right = st.columns([1.8, 5.5, 2.7])
 
     with col_sidebar:
         sidebar_cls = "suraksha-sidebar-expanded" if is_expanded else "suraksha-sidebar-collapsed"
@@ -123,8 +128,11 @@ def create_layout() -> Tuple[
         sidebar_placeholder = st.empty()
         st.markdown("</div>", unsafe_allow_html=True)
 
-    with col_main:
-        st.markdown("<div class='suraksha-main-content-flag'></div>", unsafe_allow_html=True)
+    with col_center:
+        st.markdown("<div class='suraksha-center-panel-flag'></div>", unsafe_allow_html=True)
 
-    return auto_banner_placeholder, sim_banner_placeholder, sidebar_placeholder, col_main
+    with col_right:
+        st.markdown("<div class='suraksha-right-panel-flag'></div>", unsafe_allow_html=True)
+
+    return auto_banner_placeholder, sim_banner_placeholder, sidebar_placeholder, col_center, col_right
 

@@ -69,7 +69,9 @@ from dashboard.components import (
     render_risk_analysis_row,
     render_decision_telemetry_row
 )
-from dashboard.video import stream_cctv_feed
+import dashboard.video
+importlib.reload(dashboard.video)
+from dashboard.video import stream_cctv_feed_fragment
 
 # ════════════════════════════════════════════════════════════════════════════════
 # 1. APPLICATION INITIALIZATION
@@ -133,24 +135,48 @@ if st.session_state.get('sim_stage') == 'injecting':
     </div>
     """, unsafe_allow_html=True)
 
-(
-    auto_banner_placeholder,
-    sim_banner_placeholder,
-    sidebar_placeholder,
-    col_main
-) = create_layout()
-
 # Calculate telemetry metrics across all zones
 data_dict = calculate_telemetry(df, engine, alert_system)
 
 # Persist risk level so navbar status pill updates each rerun cycle
 st.session_state['last_risk_level'] = data_dict.get('STATUS', {}).get('level', 'LOW')
 
-# Initialize placeholders dict for sidebar panels
-placeholders = {}
+(
+    auto_banner_placeholder,
+    sim_banner_placeholder,
+    sidebar_placeholder,
+    col_center,
+    col_right
+) = create_layout()
+
+# Render permanent Right Panel (Notification Channels & Live Alerts & Diagnostics)
+with col_right:
+    st.markdown(render_section_header("⚠️ ACTIVE COMPLIANCE WARNINGS"), unsafe_allow_html=True)
+    warnings_placeholder = st.empty()
+
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown(render_section_header("📢 NOTIFICATION CHANNELS"), unsafe_allow_html=True)
+    notifications_placeholder = st.empty()
+
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown(render_section_header("🔔 LIVE ALERTS"), unsafe_allow_html=True)
+    alerts_placeholder = st.empty()
+
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown(render_section_header("🔌 SYSTEM DIAGNOSTICS & TELEMETRY"), unsafe_allow_html=True)
+
+    # Initialize placeholders dict for sidebar panels & right panel components
+    placeholders = {
+        'alerts': alerts_placeholder,
+        'notifications': notifications_placeholder,
+        'warnings': warnings_placeholder
+    }
+    from dashboard.components import render_right_panel_diagnostics
+    render_right_panel_diagnostics(placeholders, data_dict, am, init_mode=True)
+
 render_sidebar(sidebar_placeholder, placeholders, data_dict, engine, am, alert_system)
 
-with col_main:
+with col_center:
     # Top KPI Metric Cards (Only shown on operational dashboards: Live Monitor & Analytics)
     if active_tab in ('dashboard', 'analytics'):
         col1, col2, col3, col4 = st.columns(4)
@@ -165,95 +191,127 @@ with col_main:
     else:
         kpi_cols = None
 
-    # Conditionally render page body contents depending on selected navbar tab
     if active_tab == 'dashboard':
-        # Balanced 2-column layout to eliminate empty whitespaces and group elements
-        col_left, col_right = st.columns([3.5, 2.0])
+        from src.config.ui_constants import SENSOR_ZONES, ZONE_LABELS
+        selected_zone = st.session_state.get('cctv_zone_selector')
+        if not selected_zone:
+            selected_zone = SENSOR_ZONES[0]
 
-        with col_left:
-            st.markdown("<div class='suraksha-center-panel-flag'></div>", unsafe_allow_html=True)
-            from src.config.ui_constants import SENSOR_ZONES, ZONE_LABELS
-            selected_zone = st.selectbox(
-                "Select CCTV Camera Feed:",
-                options=SENSOR_ZONES,
-                format_func=lambda z: f"📹 {ZONE_LABELS.get(z, z)} Camera Feed",
-                key="cctv_zone_selector"
-            )
+        zone_sel = st.selectbox(
+            "Select CCTV Camera Feed:",
+            options=SENSOR_ZONES,
+            format_func=lambda z: f"📹 {ZONE_LABELS.get(z, z)} Camera Feed",
+            key="cctv_zone_selector"
+        )
+        if zone_sel != selected_zone:
+            selected_zone = zone_sel
+            st.session_state.cctv_frame_index = 0
+            from src.cctv.inference import reset_ppe_buffer
+            reset_ppe_buffer()
+            st.rerun()
 
-            # Reset CCTV frame loop when selected camera feed changes
-            if 'prev_selected_zone' not in st.session_state:
-                st.session_state.prev_selected_zone = selected_zone
+        selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
+        st.markdown(f"""
+        <div class='cctv-header'>
+            <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
+            <span class='live-badge'>● LIVE</span>
+        </div>
+        """, unsafe_allow_html=True)
 
-            if st.session_state.prev_selected_zone != selected_zone:
-                st.session_state.cctv_frame_index = 0
-                st.session_state.prev_selected_zone = selected_zone
-                reset_ppe_buffer()
+        with st.container():
+            st.markdown("<div class='cctv-buffer-anchor'></div>", unsafe_allow_html=True)
+            if 'cctv_frame_placeholder_1' not in st.session_state:
+                st.session_state.cctv_frame_placeholder_1 = st.empty()
+            if 'cctv_frame_placeholder_2' not in st.session_state:
+                st.session_state.cctv_frame_placeholder_2 = st.empty()
+            cctv_frame_placeholder_1 = st.session_state.cctv_frame_placeholder_1
+            cctv_frame_placeholder_2 = st.session_state.cctv_frame_placeholder_2
+            
+        cctv_status_placeholder = st.empty()
 
-            cctv_header_placeholder = st.empty()
-            cctv_frame_placeholder = st.empty()
-            cctv_status_placeholder = st.empty()
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        col_l1, col_r1 = st.columns([1.3, 0.7])
+        timeline_placeholder = col_l1.empty()
+        risk_engine_placeholder = col_r1.empty()
 
-            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-            col_r1_1, col_r1_2 = st.columns([1.0, 1.0])
-            timeline_placeholder = col_r1_1.empty()
-            risk_engine_placeholder = col_r1_2.empty()
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        col_l2, col_r2 = st.columns([1.0, 1.0])
+        ai_decision_placeholder = col_l2.empty()
+        telemetry_trends_placeholder = col_r2.empty()
 
-            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-            col_r2_1, col_r2_2, col_r2_3 = st.columns([1.0, 1.0, 1.0])
-            ai_decision_placeholder = col_r2_1.empty()
-            telemetry_trends_placeholder = col_r2_2.empty()
-            zone_response_placeholder = col_r2_3.empty()
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        col_l3, col_r3 = st.columns([1.0, 1.0])
+        zone_response_placeholder = col_l3.empty()
+        incident_summary_placeholder = col_r3.empty()
 
-        with col_right:
-            st.markdown("<div class='suraksha-right-panel-flag'></div>", unsafe_allow_html=True)
-            st.markdown(render_section_header("⚠️ ACTIVE COMPLIANCE WARNINGS"), unsafe_allow_html=True)
-            warnings_placeholder = st.empty()
-
-            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-            st.markdown(render_section_header("📢 NOTIFICATION CHANNELS"), unsafe_allow_html=True)
-            notifications_placeholder = st.empty()
-
-            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-            st.markdown(render_section_header("🔔 LIVE ALERTS"), unsafe_allow_html=True)
-            alerts_placeholder = st.empty()
+        # Operational Overview SCADA status row (6 columns)
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        col_scada1, col_scada2, col_scada3, col_scada4, col_scada5, col_scada6 = st.columns(6)
+        scada_placeholders = {
+            'plant_health': col_scada1.empty(),
+            'sensor_status': col_scada2.empty(),
+            'network_status': col_scada3.empty(),
+            'database_status': col_scada4.empty(),
+            'ai_model_status': col_scada5.empty(),
+            'sync_time': col_scada6.empty()
+        }
 
         dashboard_placeholders = {
-            'cctv_header': cctv_header_placeholder,
-            'cctv_frame': cctv_frame_placeholder,
+            'cctv_frame_1': cctv_frame_placeholder_1,
+            'cctv_frame_2': cctv_frame_placeholder_2,
+            'cctv_frame': None,
             'cctv_status': cctv_status_placeholder,
             'timeline': timeline_placeholder,
             'risk_engine': risk_engine_placeholder,
             'ai_decision': ai_decision_placeholder,
             'telemetry_trends': telemetry_trends_placeholder,
             'zone_response': zone_response_placeholder,
+            'incident_summary': incident_summary_placeholder,
             'warnings': warnings_placeholder,
             'notifications': notifications_placeholder,
             'alerts': alerts_placeholder,
             'zone_status': placeholders.get('zone_status'),
             'failsafes': placeholders.get('failsafes'),
             'db_logs': placeholders.get('db_logs'),
-            'kpi_cols': kpi_cols,
+            'kpi_cols': kpi_cols
         }
+        dashboard_placeholders.update(placeholders)
 
-        # CCTV Video Streaming inside non-blocking st.fragment callback
-        FOOTAGE_FILES = {
-            'Zone_A': 'Battery_4.mp4',
-            'Zone_B': 'Battery_5.mp4',
-            'Zone_C': 'Battery_6.mp4',
-            'Reactor_Area': 'Reactor_Block.mp4',
-            'Storage_Area': 'Storage_Block.mp4'
-        }
-        footage_filename = FOOTAGE_FILES.get(selected_zone)
-        PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        video_path = os.path.join(PROJECT_ROOT, "footage", footage_filename) if footage_filename else None
-
-        stream_cctv_feed(dashboard_placeholders, selected_zone, video_path, data_dict['latest'], alert_system, am, data_dict=data_dict)
-
+        # Initial static draws
+        from dashboard.components import (
+            render_risk_analysis_row,
+            render_decision_telemetry_row,
+            render_notifications_panel,
+            render_alerts_panel,
+            render_incident_summary_html,
+            render_operational_overview
+        )
         current_detections = st.session_state.get('current_detections', [])
         render_risk_analysis_row(dashboard_placeholders, data_dict, selected_zone, current_detections)
         render_decision_telemetry_row(dashboard_placeholders, data_dict, selected_zone, current_detections)
-        render_notifications_panel(dashboard_placeholders['notifications'], data_dict, selected_zone)
-        render_alerts_panel(dashboard_placeholders['alerts'], am)
+        render_notifications_panel(notifications_placeholder, data_dict, selected_zone)
+        render_alerts_panel(alerts_placeholder, am)
+
+        open_incidents = len(am.active_alerts)
+        closed_incidents = len(am.history)
+        today_incidents = open_incidents + closed_incidents
+        incident_summary_placeholder.markdown(
+            render_incident_summary_html(open_incidents, closed_incidents, today_incidents),
+            unsafe_allow_html=True
+        )
+        
+        # Render bottom SCADA operational overview row
+        render_operational_overview(scada_placeholders, data_dict)
+
+        from dashboard.video import stream_cctv_feed_fragment
+        stream_cctv_feed_fragment(
+            placeholders=dashboard_placeholders,
+            data_dict=data_dict,
+            selected_zone=selected_zone,
+            engine=engine,
+            am=am,
+            alert_system=alert_system
+        )
 
     elif active_tab == 'analytics':
         from dashboard.components import render_analytics_tab
@@ -267,47 +325,34 @@ with col_main:
         from dashboard.components import render_settings_tab
         render_settings_tab(placeholders, data_dict, engine, alert_system)
 
-# Run background headless CCTV streaming loop on Analytics and Settings pages
-# so telemetry, YOLO inference, and alerts keep updating continuously.
-if active_tab in ('analytics', 'settings'):
-    bg_zone = st.session_state.get('cctv_zone_selector')
-    if not bg_zone:
-        from src.config.ui_constants import SENSOR_ZONES
-        bg_zone = SENSOR_ZONES[0]
+    # Run background headless CCTV streaming loop on Analytics and Settings pages
+    # so telemetry, YOLO inference, and alerts keep updating continuously.
+    if active_tab in ('analytics', 'settings'):
+        bg_zone = st.session_state.get('cctv_zone_selector')
+        if not bg_zone:
+            from src.config.ui_constants import SENSOR_ZONES
+            bg_zone = SENSOR_ZONES[0]
 
-    FOOTAGE_FILES = {
-        'Zone_A': 'Battery_4.mp4',
-        'Zone_B': 'Battery_5.mp4',
-        'Zone_C': 'Battery_6.mp4',
-        'Reactor_Area': 'Reactor_Block.mp4',
-        'Storage_Area': 'Storage_Block.mp4'
-    }
-    bg_footage_filename = FOOTAGE_FILES.get(bg_zone)
-    PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    bg_video_path = os.path.join(PROJECT_ROOT, "footage", bg_footage_filename) if bg_footage_filename else None
+        FOOTAGE_FILES = {
+            'Zone_A': 'Battery_4.mp4',
+            'Zone_B': 'Battery_5.mp4',
+            'Zone_C': 'Battery_6.mp4',
+            'Reactor_Area': 'Reactor_Block.mp4',
+            'Storage_Area': 'Storage_Block.mp4'
+        }
+        bg_footage_filename = FOOTAGE_FILES.get(bg_zone)
+        PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        bg_video_path = os.path.join(PROJECT_ROOT, "footage", bg_footage_filename) if bg_footage_filename else None
 
-    bg_placeholders = {
-        'cctv_header': st.empty(),
-        'cctv_frame': st.empty(),
-        'cctv_status': st.empty(),
-        'warnings': st.empty(),
-        'alerts': placeholders.get('alerts', st.empty()),
-        'notifications': placeholders.get('notifications', st.empty()),
-        'zone_status': placeholders.get('zone_status', st.empty()),
-        'failsafes': placeholders.get('failsafes', st.empty()),
-        'db_logs': placeholders.get('db_logs', st.empty()),
-        'kpi_cols': None,
-    }
-
-    stream_cctv_feed(
-        bg_placeholders,
-        bg_zone,
-        bg_video_path,
-        data_dict['latest'],
-        alert_system,
-        am,
-        data_dict=data_dict
-    )
+        from dashboard.video import stream_cctv_feed_headless
+        stream_cctv_feed_headless(
+            placeholders,
+            bg_zone,
+            bg_video_path,
+            data_dict,
+            alert_system,
+            am
+        )
 
 # Render floating AI Explainability Console Modal overlay if toggled active
 if st.session_state.get('show_explainability_modal', False):
@@ -329,3 +374,41 @@ if st.session_state.get('auto_refresh', False):
 
 # Close wrapper tags
 st.markdown("</div>", unsafe_allow_html=True)
+
+# Append SCADA Status Footer
+from datetime import datetime
+current_time_str = datetime.now().strftime("%H:%M:%S")
+st.markdown(f"""
+<div style="
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    background: #060c14;
+    border-top: 1px solid #1e3a5f;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 16px;
+    font-family: monospace;
+    font-size: 10px;
+    color: #94a3b8;
+    z-index: 999999;
+">
+    <div>🛡️ SURAKSHAAI CONSOLE — v3.0.4</div>
+    <div style="display: flex; gap: 16px;">
+        <span>👤 USER: <b>OPERATOR #08</b></span>
+        <span>📡 MQTT: <b style="color: #22c55e;">CONNECTED</b></span>
+        <span>🗄️ DB: <b style="color: #22c55e;">SQLITE OK</b></span>
+        <span>🧠 MODEL: <b style="color: #60a5fa;">YOLOv8n-PPE</b></span>
+        <span>⏱️ SYNC: <b style="color: #f59e0b;">{current_time_str}</b></span>
+    </div>
+</div>
+<style>
+/* Add extra bottom padding to main layout content wrapper to prevent overlap with fixed footer */
+.main-content {{
+    padding-bottom: 140px !important;
+}}
+</style>
+""", unsafe_allow_html=True)

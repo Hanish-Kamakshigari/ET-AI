@@ -18,6 +18,8 @@ from src.config.ui_constants import ZONE_LABELS
 from src.ui_components import Colors, render_nominal_card
 from src.alert_system import evaluate_alert_conditions, dispatch_alerts, clear_alert_if_safe
 
+_TRANSPARENT_IMAGE = Image.new("RGBA", (16, 9), (0, 0, 0, 0))
+
 # ════════════════════════════════════════════════════════════════════════════════
 # KEYFRAME SIMULATION DATA CONSTANTS
 # ════════════════════════════════════════════════════════════════════════════════
@@ -878,16 +880,67 @@ def get_cached_video_frames(video_path: str) -> List[Any]:
 # NON-BLOCKING CCTV FEED STREAMING FRAGMENT
 # ════════════════════════════════════════════════════════════════════════════════
 
+def _zone_video_path(zone: str) -> str | None:
+    footage_files = {
+        "Zone_A": "Battery_4.mp4",
+        "Zone_B": "Battery_5.mp4",
+        "Zone_C": "Battery_6.mp4",
+        "Reactor_Area": "Reactor_Block.mp4",
+        "Storage_Area": "Storage_Block.mp4",
+    }
+    filename = footage_files.get(zone)
+    if not filename:
+        return None
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    candidate = os.path.join(project_root, "footage", filename)
+    return candidate if os.path.exists(candidate) else None
+
+
 @st.fragment
-def stream_cctv_feed(placeholders: Dict[str, Any], selected_zone: str, video_path: str, latest: Dict[str, Any], alert_system: Any, am: Any, data_dict: Dict[str, Any] = None):
+def stream_cctv_feed_fragment(placeholders: Dict[str, Any], data_dict: Dict[str, Any], selected_zone: str, engine: Any, am: Any, alert_system: Any):
     """
     Renders live CCTV streaming panel inside a non-blocking st.fragment.
+    """
+    video_path = _zone_video_path(selected_zone)
+    stream_cctv_feed_raw(
+        placeholders=placeholders,
+        selected_zone=selected_zone,
+        video_path=video_path,
+        latest=data_dict['latest'] if data_dict else {},
+        alert_system=alert_system,
+        am=am,
+        data_dict=data_dict
+    )
+
+
+def stream_cctv_feed_headless(placeholders: Dict[str, Any], selected_zone: str, video_path: str, data_dict: Dict[str, Any], alert_system: Any, am: Any):
+    """
+    Runs the CCTV streaming and inference loop headlessly (without rendering elements)
+    to keep alerts, notifications, and databases synchronized.
+    """
+    stream_cctv_feed_raw(
+        placeholders=placeholders,
+        selected_zone=selected_zone,
+        video_path=video_path,
+        latest=data_dict['latest'] if data_dict else {},
+        alert_system=alert_system,
+        am=am,
+        data_dict=data_dict
+    )
+
+
+def stream_cctv_feed_raw(placeholders: Dict[str, Any], selected_zone: str, video_path: str, latest: Dict[str, Any], alert_system: Any, am: Any, data_dict: Dict[str, Any] = None):
+    """
+    Renders live CCTV streaming panel.
     Updates telemetry counts and dispatches alerts dynamically using a sequential loop.
     """
-    header_placeholder = placeholders['cctv_header']
-    frame_placeholder = placeholders['cctv_frame']
+    header_placeholder = placeholders.get('cctv_header')
+    frame_placeholder_1 = placeholders.get('cctv_frame_1')
+    frame_placeholder_2 = placeholders.get('cctv_frame_2')
+    frame_placeholder = placeholders.get('cctv_frame')
     status_bar_placeholder = placeholders['cctv_status']
     warnings_placeholder = placeholders['warnings']
+    selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
 
     tracker = get_frame_tracker()
 
@@ -935,18 +988,18 @@ def stream_cctv_feed(placeholders: Dict[str, Any], selected_zone: str, video_pat
             st.session_state.yolo_worker_counts[selected_zone] = w_count
             latest[f"{selected_zone}_worker_count"] = w_count
             
-            # 1. Render CCTV Header, Frame, and Status Bar first
+            # 1. Render CCTV Frame and Status Bar first
             if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
-                selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
-                header_placeholder.markdown(f"""
-                <div class='cctv-header'>
-                    <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
-                    <span class='live-badge'>● LIVE</span>
-                </div>
-                """, unsafe_allow_html=True)
-
-                # Draw the frame
-                frame_placeholder.image(pil_img, use_container_width=True)
+                # Draw the frame using double buffering if available
+                if frame_placeholder_1 and frame_placeholder_2:
+                    if frame_idx % 2 == 0:
+                        frame_placeholder_1.image(pil_img, width='stretch')
+                        frame_placeholder_2.image(_TRANSPARENT_IMAGE, width='stretch')
+                    else:
+                        frame_placeholder_2.image(pil_img, width='stretch')
+                        frame_placeholder_1.image(_TRANSPARENT_IMAGE, width='stretch')
+                elif frame_placeholder:
+                    frame_placeholder.image(pil_img, width='stretch')
 
                 # Render Live telemetry stats at the bottom of the feed
                 fps_val = 25.0 if play_active else 0.0
@@ -971,8 +1024,12 @@ def stream_cctv_feed(placeholders: Dict[str, Any], selected_zone: str, video_pat
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                header_placeholder.empty()
-                frame_placeholder.empty()
+                if frame_placeholder_1:
+                    frame_placeholder_1.empty()
+                if frame_placeholder_2:
+                    frame_placeholder_2.empty()
+                if frame_placeholder:
+                    frame_placeholder.empty()
                 status_bar_placeholder.empty()
 
             # 2. Evaluate alert conditions and handle transitions

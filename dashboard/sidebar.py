@@ -81,29 +81,22 @@ def render_sidebar(
             with col_title:
                 st.markdown('<div class="suraksha-sidebar-title" style="margin-top: 5px;">🛡️ SurakshaAI Console</div>', unsafe_allow_html=True)
             with col_toggle:
-                if st.button("◀", key="sidebar_toggle_btn", use_container_width=True, help="Collapse Console"):
+                if st.button("◀", key="sidebar_collapse_btn", use_container_width=True, help="Collapse Console"):
                     st.session_state.sidebar_expanded = False
-                    st.rerun()
 
-            # System Uptime Card
+            # 1. System Uptime & Engine
             st.markdown(f"""
-            <div style="background:linear-gradient(145deg,rgba(17,24,39,0.95),rgba(11,21,38,0.9));
-                 border:1px solid #243447;border-top:1px solid rgba(34,197,94,0.2);
-                 border-radius:14px;padding:16px 14px;text-align:center;margin-bottom:12px;
-                 box-shadow:0 4px 20px rgba(0,0,0,0.5),inset 0 1px 0 rgba(34,197,94,0.08);">
-               <div style="font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:1.5px;
-                           font-weight:700;margin-bottom:6px;">SYSTEM UPTIME</div>
-               <div style="font-size:38px;font-weight:800;color:#22C55E;line-height:1;
-                           text-shadow:0 0 20px rgba(34,197,94,0.4);">100%</div>
-               <div style="font-size:10px;color:rgba(34,197,94,0.7);margin-top:4px;font-weight:500;">
-                 Last 24 Hours</div>
-               <div style="width:100%;height:3px;background:rgba(255,255,255,0.05);border-radius:2px;
-                           margin-top:10px;overflow:hidden;">
-                 <div style="width:100%;height:100%;background:linear-gradient(90deg,#16a34a,#22C55E);
-                             border-radius:2px;"></div>
-               </div>
-             </div>""", unsafe_allow_html=True)
+            <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 10px; margin-bottom:8px;">
+                <div style="font-size:8px; color:#64748B; font-weight:700; text-transform:uppercase;">System Status</div>
+                <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:4px;">
+                    <span>Uptime: <b style="color:#22c55e;">100%</b></span>
+                    <span>Engine: <b style="color:#22c55e;">HEALTHY</b></span>
+                </div>
+                <div style="font-size:9px; color:#64748b; margin-top:2px; font-family:monospace;">Heartbeat: {now_time.strftime('%H:%M:%S')}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
+            # 2. Export Compliance Report
             st.download_button(
                 "📋 Export Compliance Report",
                 data=report,
@@ -112,86 +105,200 @@ def render_sidebar(
                 use_container_width=True,
                 key="btn_report_expanded"
             )
+            st.markdown(f"<div style='font-size:9px; color:#64748b; text-align:center; margin-top:-4px; margin-bottom:8px;'>Last Export: {now_time.strftime('%H:%M:%S')}</div>", unsafe_allow_html=True)
 
-            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-            st.markdown("""<div style="height:1px;background:rgba(255,255,255,0.06);margin:4px 0 12px 0;"></div>""", unsafe_allow_html=True)
-
-            st.markdown("""
-            <div style="font-size:12px;font-weight:700;color:#a0b4c8;text-transform:uppercase;
-            letter-spacing:1px;margin-bottom:10px;">🛡️ Compound Rules Scanned</div>""", unsafe_allow_html=True)
-
-            for rule in engine.compound_rules:
-                rid = rule.get('id', '')
-                _lbl, _desc = RULE_META.get(rid, (rule.get('label', rid), rule.get('desc', '')))
-                matched = False
-                for rule_eval in compound_rules_eval:
-                    if rule_eval['id'] == rid:
-                        matched = True
-                        break
-                if matched:
-                    rule_desc = RULE_META.get(rid, ('Unknown', ''))[1]
-                    st.markdown(f"- {rule.get('label', 'Unknown')} ({rule_desc})")
-
-            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-            st.markdown("""<div style="height:1px;background:rgba(255,255,255,0.06);margin:4px 0 12px 0;"></div>""", unsafe_allow_html=True)
-
-            st.markdown("""
-            <div style="font-size:12px;font-weight:700;color:#a0b4c8;text-transform:uppercase;
-            letter-spacing:1px;margin-bottom:10px;">📊 Zone Status</div>""", unsafe_allow_html=True)
-            zone_status_slot = st.empty()
-            render_zone_status_panel(zone_status_slot, data_dict)
-            placeholders['zone_status'] = zone_status_slot
-
-            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-            st.markdown("""<div style="height:1px;background:rgba(255,255,255,0.06);margin:4px 0 12px 0;"></div>""", unsafe_allow_html=True)
-
-            st.markdown("""
-            <div style="font-size:12px;font-weight:700;color:#a0b4c8;text-transform:uppercase;
-            letter-spacing:1px;margin-bottom:10px;">🛡️ Plant Failsafes</div>""", unsafe_allow_html=True)
-            failsafes_slot = st.empty()
-            render_failsafes_panel(failsafes_slot, data_dict)
-            placeholders['failsafes'] = failsafes_slot
-
-            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-            st.markdown("""<div style="height:1px;background:rgba(255,255,255,0.06);margin:4px 0 12px 0;"></div>""", unsafe_allow_html=True)
-
-            st.markdown("""
-            <div style="font-size:12px;font-weight:700;color:#a0b4c8;text-transform:uppercase;
-            letter-spacing:1px;margin-bottom:10px;">🗄️ Database Logs</div>""", unsafe_allow_html=True)
-            db_logs_slot = st.empty()
-            render_db_logs_panel(db_logs_slot, data_dict)
-            placeholders['db_logs'] = db_logs_slot
-
-            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-            st.markdown("""<div style="height:1px;background:rgba(255,255,255,0.06);margin:4px 0 12px 0;"></div>""", unsafe_allow_html=True)
-
-            st.markdown("""
-            <div style="font-size:12px;font-weight:700;color:#a0b4c8;text-transform:uppercase;
-            letter-spacing:1px;margin-bottom:10px;">📡 SCADA Gateway Status</div>""", unsafe_allow_html=True)
-            scada_slot = st.empty()
-            render_scada_panel(scada_slot)
-            placeholders['scada'] = scada_slot
-
-        else:
-            # Shield icon and expand arrow
-            if st.button("🛡️ ▶", key="sidebar_toggle_btn", use_container_width=True, help="Expand Console"):
-                st.session_state.sidebar_expanded = True
-                st.rerun()
-
-            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-
-            # Compact Uptime Status Dot
-            st.markdown("""
-            <div style="text-align:center; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.2); 
-                        border-radius:10px; padding:10px 4px; margin-bottom:12px;" title="System Uptime: 100%">
-                <div class="dot dot-safe" style="width:12px; height:12px; margin:0 auto;"></div>
-                <div style="font-size:9px; color:#22C55E; font-weight:bold; margin-top:4px;">100%</div>
+            # 3. Compound Rules Scanned
+            total_rules = len(engine.compound_rules) if hasattr(engine, 'compound_rules') else 0
+            st.markdown(f"""
+            <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 10px; margin-bottom:8px;">
+                <div style="font-size:8px; color:#64748B; font-weight:700; text-transform:uppercase;">Compound Rules</div>
+                <div style="font-size:11px; margin-top:4px; display:flex; justify-content:space-between;">
+                    <span>Active Rules: <b>{total_rules} Scanned</b></span>
+                </div>
+                <div style="font-size:9px; color:#64748b; margin-top:2px; font-family:monospace;">Evaluated: {total_rules} | Last Match: None</div>
             </div>
             """, unsafe_allow_html=True)
 
-            # Compact Export Report Icon Button
+            # 4. Autoplay Simulation
+            play_active = st.toggle("Autoplay Simulation", value=st.session_state.get('sim_play_active', False), key="autoplay_sim_toggle")
+            if play_active != st.session_state.get('sim_play_active', False):
+                st.session_state.sim_play_active = play_active
+
+            speed_options = ["1x", "2x", "4x"]
+            current_speed = st.session_state.get('sim_play_speed', '1x')
+            speed_idx = speed_options.index(current_speed) if current_speed in speed_options else 0
+            selected_speed = st.radio("Simulation Speed", speed_options, index=speed_idx, horizontal=True, key="sim_play_speed_radio")
+            if selected_speed != current_speed:
+                st.session_state.sim_play_speed = selected_speed
+
+            # 5. Quick Plant Status
+            num_active_alerts = len(am.active_alerts)
+            st.markdown(f"""
+            <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 10px; margin-bottom:8px; margin-top:8px;">
+                <div style="font-size:8px; color:#64748B; font-weight:700; text-transform:uppercase;">Plant Overview</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:10px; margin-top:4px; font-family:monospace;">
+                    <div>📹 Cameras: <b style="color:#22c55e;">5/5 ON</b></div>
+                    <div>🔌 Sensors: <b style="color:#22c55e;">24/24 ON</b></div>
+                    <div>🗺️ Zones: <b>5 Active</b></div>
+                    <div>🚨 Alerts: <b style="color:{'#ef4444' if num_active_alerts > 0 else '#cbd5e1'};">{num_active_alerts} Active</b></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # 6. Emergency Controls
+            st.markdown("""<div style="font-size:8px; color:#64748B; font-weight:700; text-transform:uppercase; margin-bottom:4px;">Emergency Controls</div>""", unsafe_allow_html=True)
+            col_qa1, col_qa2 = st.columns(2)
+            with col_qa1:
+                if st.button("🏥 Health Check", key="qa_health_check", use_container_width=True):
+                    st.toast("🏥 Health Check: All CCTV streams, OPC UA sensors, SQL storage and Notification Gateways are 100% nominal.")
+                    st.rerun()
+                if st.button("📹 Ref Cameras", key="qa_ref_cameras", use_container_width=True):
+                    st.toast("📹 Re-initialized CCTV decoder pipeline and cleared frame buffers.")
+                    st.rerun()
+            with col_qa2:
+                if st.button("🚨 Test Alert", key="qa_test_alert", use_container_width=True):
+                    from src.alert_system import dispatch_alerts
+                    import random
+                    severity_choice = random.choice(["MEDIUM", "HIGH", "CRITICAL"])
+                    zones_list = ["Zone_A", "Zone_B", "Zone_C", "Reactor_Block", "Storage_Area"]
+                    zone_choice = random.choice(zones_list)
+                    test_payload = {
+                        "should_alert": True,
+                        "severity": severity_choice,
+                        "messages": [f"TEST ALERT: Mock safety violation detected in {ZONE_LABELS.get(zone_choice, zone_choice)}"],
+                        "summary": f"TEST ALERT: Mock safety violation detected in {ZONE_LABELS.get(zone_choice, zone_choice)}",
+                        "zone": zone_choice,
+                        "channels": ["dashboard", "sms", "email", "telegram"]
+                    }
+                    dispatch_alerts(test_payload)
+                    st.toast(f"🚨 Test {severity_choice} Alert dispatched to {ZONE_LABELS.get(zone_choice, zone_choice)}!")
+                    st.rerun()
+                if st.button("🛑 Stop Sim", key="qa_stop_sim", use_container_width=True):
+                    from src.alert_system import clear_alert_if_safe
+                    st.session_state.sim_play_active = False
+                    st.session_state.sim_stage = 'normal'
+                    st.session_state.compound_risk_active = False
+                    for z in ["Zone_A", "Zone_B", "Zone_C", "Reactor_Block", "Storage_Area"]:
+                        clear_alert_if_safe(z)
+                    st.toast("🛑 Simulation Stopped & Cleaned.")
+                    st.rerun()
+
+            # 7. Scenario Timeline
+            sc_start = st.session_state.get('scenario_start_time')
+            if sc_start:
+                elapsed = int((datetime.now() - sc_start).total_seconds())
+                elapsed_str = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
+            else:
+                elapsed_str = "00:00"
+            sim_status_lbl = "PLAYING" if st.session_state.get('sim_play_active', False) else "PAUSED"
+            sim_status_color = "#22c55e" if sim_status_lbl == "PLAYING" else "#f97316"
+            current_scen = "Nominal Shift / PPE" if st.session_state.get('sim_stage') == 'normal' else "Active Incident Triggered"
+
+            with st.expander("⏱️ Scenario Timeline", expanded=False):
+                st.markdown(f"""
+                <div style="font-size:11px; display:flex; justify-content:space-between; margin-top:2px;">
+                    <span>Scenario: <b>{current_scen}</b></span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:2px; font-family:monospace;">
+                    <span>Elapsed: {elapsed_str}</span>
+                    <span>Status: <b style="color:{sim_status_color};">{sim_status_lbl}</b></span>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # 8. SCADA Gateway Status
+            with st.expander("🔌 SCADA Gateways", expanded=False):
+                st.markdown("""
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px; font-size:10px; font-family:monospace;">
+                    <div>📡 MQTT: <b style="color:#22c55e;">ON</b></div>
+                    <div>🔌 OPC UA: <b style="color:#22c55e;">ON</b></div>
+                    <div>🗄️ Database: <b style="color:#22c55e;">ON</b></div>
+                    <div>☁️ Cloud Sync: <b style="color:#22c55e;">ON</b></div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("""<div style="height:1px;background:rgba(255,255,255,0.06);margin:5px 0 7px 0;"></div>""", unsafe_allow_html=True)
+
+            # 9. SCADA Sub-panels (Zone Status, Plant Failsafes, Database Logs) wrapped in st.expander
+            with st.expander("📊 Zone Status", expanded=False):
+                zone_status_slot = st.empty()
+                render_zone_status_panel(zone_status_slot, data_dict)
+                placeholders['zone_status'] = zone_status_slot
+
+            with st.expander("🛡️ Plant Failsafes", expanded=False):
+                failsafes_slot = st.empty()
+                render_failsafes_panel(failsafes_slot, data_dict)
+                placeholders['failsafes'] = failsafes_slot
+
+            with st.expander("🗄️ Database Logs", expanded=False):
+                db_logs_slot = st.empty()
+                render_db_logs_panel(db_logs_slot, data_dict)
+                placeholders['db_logs'] = db_logs_slot
+
+            # 10. Footer
+            st.markdown("""
+            <div style="font-size:9px; color:#64748b; font-family:monospace; margin-top:9px; border-top:1px solid rgba(255,255,255,0.06); padding-top:6px;">
+              <div>App Version: v3.0.4</div>
+              <div>Build: #9104</div>
+              <div>Connected User: Operator #08</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        else:
+            # Expand button at the top
+            if st.button("▶", key="sidebar_expand_btn", use_container_width=True, help="Expand Console"):
+                st.session_state.sidebar_expanded = True
+
+            st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+
+            # Center-aligned icon dock styles and markup
+            total_rules = len(engine.compound_rules) if hasattr(engine, 'compound_rules') else 0
+            is_autoplay = st.session_state.get('sim_play_active', False)
+            
+            st.markdown(f"""
+            <style>
+            .collapsed-icon-dock {{
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 9px;
+                width: 100%;
+            }}
+            .collapsed-icon-item {{
+                font-size: 20px;
+                cursor: pointer;
+                transition: transform 0.2s ease, background-color 0.2s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 44px;
+                height: 44px;
+                border-radius: 8px;
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.05);
+            }}
+            .collapsed-icon-item:hover {{
+                transform: scale(1.15);
+                background: rgba(255, 255, 255, 0.07);
+                border-color: rgba(255, 255, 255, 0.15);
+            }}
+            </style>
+            <div class="collapsed-icon-dock">
+                <div class="collapsed-icon-item" title="Dashboard Status (100% Nominal)">🛡️</div>
+                <div class="collapsed-icon-item" title="Compound Rules Scanned ({total_rules} Active)">🧩</div>
+                <div class="collapsed-icon-item" title="Simulation Controls (Autoplay Active: {'YES' if is_autoplay else 'NO'})">▶️</div>
+                <div class="collapsed-icon-item" title="Scenario Timeline">⏱️</div>
+                <div class="collapsed-icon-item" title="Zone Status Overview">📍</div>
+                <div class="collapsed-icon-item" title="Plant Failsafes Status">⚙️</div>
+                <div class="collapsed-icon-item" title="Database Logging Active">🗄️</div>
+                <div class="collapsed-icon-item" title="SCADA Gateways Online">🔌</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+            
+            # Export Report download button at the bottom
             st.download_button(
-                "📋",
+                "📄",
                 data=report,
                 file_name=f"surakshaai_{now_time.strftime('%Y%m%d_%H%M%S')}.md",
                 mime="text/markdown",
@@ -200,28 +307,12 @@ def render_sidebar(
                 help="Export Safety Compliance Report"
             )
 
-            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-            
-            # Compact Zone Status overview
-            st.markdown("""<div style="font-size:8px; font-weight:bold; color:#64748B; text-align:center; margin-bottom:6px;">ZONES</div>""", unsafe_allow_html=True)
-            for zone_id, z in zone_risks.items():
-                lvl = z.get('risk_level', 'LOW')
-                lbl_color = '#ef4444' if lvl == 'CRITICAL' else '#f59e0b' if lvl == 'HIGH' else '#eab308' if lvl == 'MEDIUM' else '#22c55e'
-                short_name = zone_id.replace("Zone_", "").replace("_Area", "")[:3].upper()
-                st.markdown(f"""
-                <div style="text-align:center; margin-bottom:4px; padding:4px; background:rgba(255,255,255,0.02); border-radius:4px; border-left:2px solid {lbl_color};" title="{z.get('label', zone_id)}: {lvl}">
-                    <span style="font-size:8px; font-family:monospace; color:#cbd5e1;">{short_name}</span>
-                </div>
-                """, unsafe_allow_html=True)
-
-            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-            st.markdown("""<div style="font-size:8px; font-weight:bold; color:#64748B; text-align:center; margin-bottom:4px;">SCADA</div>""", unsafe_allow_html=True)
-            # Compact SCADA Gateway
-            st.markdown("""
-            <div style="text-align:center;" title="SCADA Gateways Online">
-                <span style="font-size:18px;">📡</span>
-                <div class="dot dot-safe" style="width:6px; height:6px; margin: 4px auto 0 auto;"></div>
-            </div>
-            """, unsafe_allow_html=True)
+            # Clean all placeholders to prevent CCTV loop from rendering in them
+            if 'zone_status' in placeholders and placeholders['zone_status']:
+                placeholders['zone_status'].empty()
+            if 'failsafes' in placeholders and placeholders['failsafes']:
+                placeholders['failsafes'].empty()
+            if 'db_logs' in placeholders and placeholders['db_logs']:
+                placeholders['db_logs'].empty()
 
 

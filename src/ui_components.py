@@ -222,52 +222,100 @@ section[data-testid="stSidebar"] > div {{ padding-top: 0 !important; }}
 section.main > div:first-child {{ padding-top: 0 !important; }}
 div[data-testid="stVerticalBlock"] > div {{ margin-top: 0px !important; gap: 0.35rem !important; }}
 div[data-testid="stHorizontalBlock"] {{ gap: 0.5rem !important; align-items: stretch !important; }}
-div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{ display: flex !important; flex-direction: column !important; }}
-div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div[data-testid="stVerticalBlock"] {{ display: flex !important; flex-direction: column !important; flex: 1 1 auto !important; }}
-.element-container {{ margin-bottom: 0.2rem !important; }}
 
-/* SIDEBAR */
-[data-testid="stSidebar"] {{
-  background: linear-gradient(180deg, var(--bg2) 0%, #0A1220 100%) !important;
-  border-right: 1px solid var(--border2) !important;
+/* Global transition for interactive elements and containers */
+button, select, div[role="button"], .stButton>button, [data-testid="stExpander"] {{
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }}
-[data-testid="stSidebar"] .block-container {{ padding: 12px !important; }}
 
 /* 3-Column Layout CSS overrides */
-div[data-testid="column"]:has(.suraksha-sidebar-content) {{
-  width: var(--sidebar-width, 340px) !important;
-  min-width: var(--sidebar-width, 340px) !important;
-  max-width: var(--sidebar-width, 340px) !important;
-  flex: 0 0 var(--sidebar-width, 340px) !important;
+div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) {{
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  gap: 16px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 16px 0 0 !important;
+}}
+
+/* Sidebar column (1st child of layout block) */
+div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:first-child {{
+  width: var(--sidebar-width, 300px) !important;
+  min-width: var(--sidebar-width, 300px) !important;
+  max-width: var(--sidebar-width, 300px) !important;
+  flex: 0 0 var(--sidebar-width, 300px) !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
   border-right: 1px solid var(--border2) !important;
   background: linear-gradient(180deg, var(--bg2) 0%, #0A1220 100%) !important;
   padding: 12px !important;
   box-sizing: border-box !important;
+  overflow-y: auto !important;
+  height: calc(100vh - 52px) !important;
+  position: sticky !important;
+  top: 52px !important;
 }}
 
-div[data-testid="column"]:has(.suraksha-main-content-flag) {{
+/* Center column (2nd child of layout block) - responsive, fills all remaining space */
+div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:nth-child(2) {{
   flex: 1 1 auto !important;
-  width: auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
   max-width: none !important;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  padding: 0 16px !important;
+  padding: 0 12px !important;
   box-sizing: border-box !important;
+  margin-left: 0 !important;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }}
 
-div[data-testid="column"]:has(.suraksha-center-panel-flag) {{
-  flex: 1 1 auto !important;
-  width: auto !important;
-  max-width: none !important;
-  box-sizing: border-box !important;
+/* Force full-width fill at every level of the CCTV image's Streamlit DOM chain */
+div[data-testid="stImage"],
+div[data-testid="stImage"] > div,
+div[data-testid="stImage"] figure {{
+    width: 100% !important;
+    max-width: 100% !important;
+    line-height: 0 !important;
+}}
+div[data-testid="stImage"] img {{
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    object-fit: cover !important;
+    display: block !important;
+    border-radius: var(--radius-lg) !important;
+}}
+/* Kill any inherited max-width constraint on the column/container holding the feed */
+div[data-testid="column"]:has(div[data-testid="stImage"]) {{
+    width: 100% !important;
+}}
+.cctv-buffer-anchor {{
+    position: relative;
+    width: 100%;
+}}
+.cctv-buffer-anchor + div [data-testid="stImage"],
+.cctv-buffer-anchor + div + div [data-testid="stImage"] {{
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
 }}
 
-div[data-testid="column"]:has(.suraksha-right-panel-flag) {{
+/* Right column (3rd child of layout block) */
+div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:last-child {{
   width: 420px !important;
   min-width: 420px !important;
   max-width: 420px !important;
   flex: 0 0 420px !important;
   box-sizing: border-box !important;
+  padding: 12px !important;
+  background: rgba(10, 22, 40, 0.2) !important;
+  border-left: 1px solid var(--border2) !important;
+  height: calc(100vh - 52px) !important;
+  overflow-y: auto !important;
+  position: sticky !important;
+  top: 52px !important;
 }}
 
 /* Collapsed Responsive Layout Utilities */
@@ -553,21 +601,6 @@ iframe {{
   background: var(--bg3) !important;
 }}
 
-/* IMAGE (CCTV) */
-div[data-testid="stImage"] {{
-  margin: 0 !important;
-  padding: 0 !important;
-  line-height: 0 !important;
-}}
-div[data-testid="stImage"] img {{
-  border: none !important;
-  border-left: 1px solid #1e3a5f !important;
-  border-right: 1px solid #1e3a5f !important;
-  border-radius: 0 !important;
-  display: block !important;
-  width: 100% !important;
-  margin: 0 !important;
-}}
 
 /* VIDEO (disabled controls) */
 video::-webkit-media-controls {{ display: none !important; }}
@@ -587,33 +620,52 @@ div[data-testid="stToast"] {{
 }}
 
 /* ── SURAKSHA NAVBAR ── */
-.suraksha-navbar {{
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  z-index: {ZIndex.NAVBAR};
-  height: 52px;
+div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) {{
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 999 !important;
+  height: 52px !important;
   background: linear-gradient(90deg,
     rgba(5,11,22,0.97) 0%,
     rgba(11,21,38,0.96) 50%,
-    rgba(5,11,22,0.97) 100%);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid rgba(59,130,246,0.18);
-  box-shadow: 0 2px 24px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04) inset;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  font-family: var(--font-primary);
+    rgba(5,11,22,0.97) 100%) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border-bottom: 1px solid rgba(59,130,246,0.18) !important;
+  box-shadow: 0 2px 24px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04) inset !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 0 24px !important;
+  margin: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
 }}
-.suraksha-navbar::after {{
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg,
-    transparent 0%, rgba(59,130,246,0.5) 30%,
-    rgba(99,102,241,0.4) 70%, transparent 100%);
+
+div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="column"] {{
+  display: flex !important;
+  align-items: center !important;
+  width: auto !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  flex: unset !important;
+}}
+
+div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="column"]:first-child {{
+  justify-content: flex-start !important;
+  flex: 1 1 0% !important;
+}}
+
+div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="column"]:nth-child(2) {{
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+}}
+
+div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="column"]:last-child {{
+  justify-content: flex-end !important;
+  flex: 1 1 0% !important;
 }}
 
 /* Brand section */
@@ -1091,11 +1143,11 @@ def render_alert_card(
 
     # Acknowledge button html
     if is_ack:
-        ack_btn = f"""<span style="background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; text-transform: uppercase;">✔ ACKNOWLEDGED</span>"""
+        ack_btn = f"""<span style="background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); border-radius: 4px; padding: 1.5px 6px; font-size: 8.5px; font-weight: 800; text-transform: uppercase;">✔ ACKED</span>"""
     elif alert_id:
-        ack_btn = f"""<a href="?ack_alert={alert_id}" target="_self" style="text-decoration: none;"><span style="background: {color}; color: #fff; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase;">ACKNOWLEDGE</span></a>"""
+        ack_btn = f"""<a href="?ack_alert={alert_id}" target="_self" style="text-decoration: none;"><span style="background: {color}; color: #fff; border-radius: 4px; padding: 1.5px 6px; font-size: 8.5px; font-weight: 800; cursor: pointer; text-transform: uppercase;">ACK</span></a>"""
     else:
-        ack_btn = f"""<span style="background: rgba(255,255,255,0.08); color: #64748b; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 2px 8px; font-size: 10px;">Acknowledge</span>"""
+        ack_btn = f"""<span style="background: rgba(255,255,255,0.08); color: #64748b; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 1.5px 6px; font-size: 8.5px;">ACK</span>"""
 
     # Extra details (sensor data, score etc.) if available
     extra_details = []
@@ -1131,19 +1183,21 @@ def render_alert_card(
     card_class = "glass-card glass-card-critical" if severity_name == "CRITICAL" else "glass-card"
 
     html = f"""
-    <div class="{card_class}" style="background: {bg}; border-left: 4px solid {color}; border-top: 1px solid {border_color}; border-right: 1px solid {border_color}; border-bottom: 1px solid {border_color}; border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; font-family: var(--font-primary);">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <span style="display: flex; align-items: center; gap: 4px; font-weight: 800; color: {color}; font-size: {Typography.SIZE_BASE}; letter-spacing: 0.5px; text-transform: uppercase; {'animation: dotPulse 1.2s ease infinite alternate;' if severity_name == 'CRITICAL' else ''}">
+    <div class="{card_class}" style="background: {bg}; border-left: 4px solid {color}; border-top: 1px solid {border_color}; border-right: 1px solid {border_color}; border-bottom: 1px solid {border_color}; border-radius: 6px; padding: 6px 10px; margin-bottom: 4px; font-family: var(--font-primary);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <span style="display: flex; align-items: center; gap: 4px; font-weight: 800; color: {color}; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; {'animation: dotPulse 1.2s ease infinite alternate;' if severity_name == 'CRITICAL' else ''}">
           {icon} {severity_name}
         </span>
-        <span style="background: {status_bg}; color: {status_color}; border: 1px solid {status_border}; border-radius: 4px; padding: 1px 6px; font-size: {Typography.SIZE_XS}; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
-          {status_label}
-        </span>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="background: {status_bg}; color: {status_color}; border: 1px solid {status_border}; border-radius: 4px; padding: 1px 4px; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
+            {status_label}
+          </span>
+          {ack_btn}
+        </div>
       </div>
-      <div style="color: var(--text); font-size: {Typography.SIZE_LG}; font-weight: 700; margin-bottom: 2px;">{message}</div>
-      <div style="display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: {Typography.SIZE_BASE}; margin-top: 6px;">
+      <div style="color: var(--text); font-size: 12px; font-weight: 700; line-height: 1.2; margin-bottom: 2px;">{message}</div>
+      <div style="color: var(--muted); font-size: 9px; display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
         <span>Zone: <b style="color: var(--text2);">{zone_lbl}</b>{f' | {time_str}' if time_str else ''}{f' | {extra_str}' if extra_str else ''}</span>
-        {ack_btn}
       </div>
     </div>
     """
