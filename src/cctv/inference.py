@@ -133,6 +133,10 @@ CLASS_MAPPING = {
     "smoke": "smoke"
 }
 
+# Global tracking dictionary for consecutive fallen frames per person centroid
+_fall_tracker_history = {}
+
+
 # Gas leak plume keyframes for Zone_A (Battery-4)
 # Box sits on the smoke rising from the pipe valve, positioned exactly in the gap
 # between Worker-2 (kneeling technician left) and Worker-1 (standing supervisor right).
@@ -320,6 +324,7 @@ def run_inference(
             return Image.fromarray(rgb), 0, 0, []
 
     # --- REAL YOLO INFERENCE PIPELINE ---
+    new_active_centroids = set()
     # Convert BGR to RGB
     rgb = cv2.cvtColor(frame_np, cv2.COLOR_BGR2RGB)
     img = Image.fromarray(rgb)
@@ -432,8 +437,27 @@ def run_inference(
                     polygon_violation = True
                     break
                 
-        # Heuristic fall detection: if width of bounding box is greater than 1.2x height
-        is_fallen = pw > 1.2 * ph
+        # Centroid-based temporal fall detection: must persist for N consecutive frames to ignore brief crouching/bending
+        is_fall_candidate = pw > 1.2 * ph
+        
+        matched_key = None
+        for key in list(_fall_tracker_history.keys()):
+            kx, ky = key
+            if ((cx - kx) ** 2 + (cy - ky) ** 2) ** 0.5 < 60:
+                matched_key = key
+                break
+                
+        if matched_key is not None:
+            consecutive = _fall_tracker_history[matched_key] + 1 if is_fall_candidate else 0
+            del _fall_tracker_history[matched_key]
+        else:
+            consecutive = 1 if is_fall_candidate else 0
+            
+        _fall_tracker_history[(cx, cy)] = consecutive
+        new_active_centroids.add((cx, cy))
+        
+        # Require aspect ratio breach to persist for >= 8 consecutive frames (~300ms) to trigger alert
+        is_fallen = (consecutive >= 8)
         
         # Instead of PPE model overlap checks, use color detection:
         has_helmet = detect_helmet_color(frame_np, (px1, py1, px2, py2), selected_zone)
@@ -606,4 +630,9 @@ def run_inference(
     # 8. Apply watermark blackout (all streams)
     draw.rectangle([1085 * scale_x, 50 * scale_y, 1210 * scale_x, 80 * scale_y], fill="#000000")
     
+    # Clean up stale track history keys that weren't present in this frame
+    for key in list(_fall_tracker_history.keys()):
+        if key not in new_active_centroids:
+            del _fall_tracker_history[key]
+            
     return img, visible_workers_count, violations_count, active_detections

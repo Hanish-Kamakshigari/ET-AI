@@ -44,6 +44,7 @@ rules:
 
 persistence:
   threshold_frames: 15
+  resolution_hysteresis_frames: 10
 
 escalation_matrix:
   CRITICAL:
@@ -73,3 +74,9 @@ cooldowns:
   MEDIUM: 60
   LOW: 120
 
+# Rule versioning — automatically computed from the rules section above.
+# Each incident is stamped with the rule version that generated it for audit trails.
+# The version hash is a SHA-256 of the rules config (first 12 chars).
+rule_versioning:
+  enabled: true
+  auto_stamp_incidents: true

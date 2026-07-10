@@ -40,6 +40,57 @@ class AlertSeverity(Enum):
     HIGH = (3, "#f97316", "High")
     CRITICAL = (4, "#ef4444", "Critical")
 
+# Constant styling, colors, and HTML templates for optimized UI rendering
+SEVERITY_ICONS = {
+    "Low": "ℹ️",
+    "Medium": "🟡",
+    "High": "🟠",
+    "Critical": "🚨"
+}
+
+NOMINAL_HTML_TEMPLATE = (
+    '<div style="background: rgba(34, 197, 94, 0.04); backdrop-filter: blur(12px); border: 1px solid rgba(34, 197, 94, 0.2); border-radius: 12px; padding: 12px 14px; text-align: center; font-family: \'Outfit\', sans-serif;">'
+    '<div style="font-size: 20px; margin-bottom: 4px;">🟢</div>'
+    '<div style="color: #22c55e; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">All Zones Nominal</div>'
+    '<div style="color: #94a3b8; font-size: 11px; margin-top: 3px; line-height: 1.4;">All monitored zones are operating normally.</div>'
+    '</div>'
+)
+
+STATUS_STYLING_MAP = {
+    AlertStatus.ACTIVE: ('rgba(239, 68, 68, 0.15)', '#ef4444', 'rgba(239, 68, 68, 0.3)'),
+    AlertStatus.TRIGGERED: ('rgba(239, 68, 68, 0.15)', '#ef4444', 'rgba(239, 68, 68, 0.3)'),
+    AlertStatus.NEW: ('rgba(239, 68, 68, 0.15)', '#ef4444', 'rgba(239, 68, 68, 0.3)'),
+    AlertStatus.PENDING: ('rgba(239, 68, 68, 0.15)', '#ef4444', 'rgba(239, 68, 68, 0.3)'),
+    AlertStatus.ESCALATED: ('rgba(239, 68, 68, 0.15)', '#ef4444', 'rgba(239, 68, 68, 0.3)'),
+    AlertStatus.ACKNOWLEDGED: ('rgba(245, 158, 11, 0.15)', '#f59e0b', 'rgba(245, 158, 11, 0.3)'),
+    AlertStatus.RESOLVED: ('rgba(34, 197, 94, 0.15)', '#22c55e', 'rgba(34, 197, 94, 0.3)'),
+    AlertStatus.ARCHIVED: ('rgba(34, 197, 94, 0.15)', '#22c55e', 'rgba(34, 197, 94, 0.3)')
+}
+
+ALERT_CARD_TEMPLATE = (
+    '<div style="background: rgba(17, 24, 39, 0.6); backdrop-filter: blur(12px); border: 1px solid {color}44; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; font-family: \'Outfit\', sans-serif;">'
+    '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">'
+    '<span style="display: flex; align-items: center; gap: 4px; font-weight: 800; color: {color}; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;">'
+    '{sev_icon} {severity_label}'
+    '</span>'
+    '<span style="background: {status_bg}; color: {status_color}; border: 1px solid {status_border}; border-radius: 4px; padding: 1px 6px; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">'
+    '{status_val}'
+    '</span>'
+    '</div>'
+    '<div style="color: #fff; font-size: 12px; font-weight: 700; margin-bottom: 2px;">{message}</div>'
+    '<div style="display: flex; justify-content: space-between; align-items: center; color: #64748b; font-size: 10px; margin-top: 6px;">'
+    '<span>Zone: <b style="color: #cbd5e1;">{zone_lbl}</b> | Duration: <b style="color: #cbd5e1;">{time_str}</b></span>'
+    '{ack_btn}'
+    '</div>'
+    '</div>'
+)
+
+EXTRA_ALERTS_TEMPLATE = (
+    '<div style="background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px; text-align: center; color: #94a3b8; font-size: 11px; font-family: \'Outfit\', sans-serif; margin-bottom: 8px;">'
+    '+ {extra_count} More Alerts'
+    '</div>'
+)
+
 @dataclass
 class SafetyAlert:
     alert_id: str
@@ -282,16 +333,8 @@ def clear_alert_if_safe(zone: str):
 
 
 def render_improved_alerts(placeholder, alert_manager: AlertManager):
-    import streamlit as st
     if not alert_manager.active_alerts:
-        nominal_html = (
-            '<div style="background: rgba(34, 197, 94, 0.04); backdrop-filter: blur(12px); border: 1px solid rgba(34, 197, 94, 0.2); border-radius: 12px; padding: 12px 14px; text-align: center; font-family: \'Outfit\', sans-serif;">'
-            '<div style="font-size: 20px; margin-bottom: 4px;">🟢</div>'
-            '<div style="color: #22c55e; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">All Zones Nominal</div>'
-            '<div style="color: #94a3b8; font-size: 11px; margin-top: 3px; line-height: 1.4;">All monitored zones are operating normally.</div>'
-            '</div>'
-        )
-        placeholder.markdown(nominal_html, unsafe_allow_html=True)
+        placeholder.markdown(NOMINAL_HTML_TEMPLATE, unsafe_allow_html=True)
         return
 
     # Sort by severity (Critical first)
@@ -308,63 +351,40 @@ def render_improved_alerts(placeholder, alert_manager: AlertManager):
     for alert in visible_alerts:
         color = alert.severity.value[1]
         severity_label = alert.severity.value[2]
-        
-        sev_icons = {
-            "Low": "ℹ️",
-            "Medium": "🟡",
-            "High": "🟠",
-            "Critical": "🚨"
-        }
-        sev_icon = sev_icons.get(severity_label, "⚠️")
+        sev_icon = SEVERITY_ICONS.get(severity_label, "⚠️")
         dur = int(alert.duration)
         time_str = f"{dur // 60:02d}:{dur % 60:02d}s"
 
-        # Status styling
-        if alert.status in (AlertStatus.ACTIVE, AlertStatus.TRIGGERED, AlertStatus.NEW, AlertStatus.PENDING, AlertStatus.ESCALATED):
-            status_bg = 'rgba(239, 68, 68, 0.15)'
-            status_color = '#ef4444'
-            status_border = 'rgba(239, 68, 68, 0.3)'
-        elif alert.status == AlertStatus.ACKNOWLEDGED:
-            status_bg = 'rgba(245, 158, 11, 0.15)'
-            status_color = '#f59e0b'
-            status_border = 'rgba(245, 158, 11, 0.3)'
-        else:
-            status_bg = 'rgba(34, 197, 94, 0.15)'
-            status_color = '#22c55e'
-            status_border = 'rgba(34, 197, 94, 0.3)'
+        # Lookup status styling from static mapping
+        status_bg, status_color, status_border = STATUS_STYLING_MAP.get(
+            alert.status, 
+            ('rgba(34, 197, 94, 0.15)', '#22c55e', 'rgba(34, 197, 94, 0.3)')
+        )
 
         if alert.status == AlertStatus.ACKNOWLEDGED:
-            ack_btn = f"""<span style="background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; text-transform: uppercase;">✔ ACKNOWLEDGED</span>"""
+            ack_btn = '<span style="background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; text-transform: uppercase;">✔ ACKNOWLEDGED</span>'
         else:
-            ack_btn = f"""<a href="?ack_alert={alert.alert_id}" target="_self" style="text-decoration: none;"><span style="background: {color}; color: #fff; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase;">ACKNOWLEDGE</span></a>"""
+            ack_btn = f'<a href="?ack_alert={alert.alert_id}" target="_self" style="text-decoration: none;"><span style="background: {color}; color: #fff; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase;">ACKNOWLEDGE</span></a>'
 
         zone_lbl = ZONE_LABELS_MAP.get(alert.zone, alert.zone)
 
-        card_html = (
-            f'<div style="background: rgba(17, 24, 39, 0.6); backdrop-filter: blur(12px); border: 1px solid {color}44; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; font-family: \'Outfit\', sans-serif;">'
-            f'<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">'
-            f'<span style="display: flex; align-items: center; gap: 4px; font-weight: 800; color: {color}; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;">'
-            f'{sev_icon} {severity_label}'
-            f'</span>'
-            f'<span style="background: {status_bg}; color: {status_color}; border: 1px solid {status_border}; border-radius: 4px; padding: 1px 6px; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">'
-            f'{alert.status.value}'
-            f'</span>'
-            f'</div>'
-            f'<div style="color: #fff; font-size: 12px; font-weight: 700; margin-bottom: 2px;">{alert.message}</div>'
-            f'<div style="display: flex; justify-content: space-between; align-items: center; color: #64748b; font-size: 10px; margin-top: 6px;">'
-            f'<span>Zone: <b style="color: #cbd5e1;">{zone_lbl}</b> | Duration: <b style="color: #cbd5e1;">{time_str}</b></span>'
-            f'{ack_btn}'
-            f'</div>'
-            f'</div>'
+        card_html = ALERT_CARD_TEMPLATE.format(
+            color=color,
+            sev_icon=sev_icon,
+            severity_label=severity_label,
+            status_bg=status_bg,
+            status_color=status_color,
+            status_border=status_border,
+            status_val=alert.status.value,
+            message=alert.message,
+            zone_lbl=zone_lbl,
+            time_str=time_str,
+            ack_btn=ack_btn
         )
         cards_html.append(card_html)
 
     if extra_count > 0:
-        extra_card = (
-            f'<div style="background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px; text-align: center; color: #94a3b8; font-size: 11px; font-family: \'Outfit\', sans-serif; margin-bottom: 8px;">'
-            f'+ {extra_count} More Alerts'
-            f'</div>'
-        )
+        extra_card = EXTRA_ALERTS_TEMPLATE.format(extra_count=extra_count)
         cards_html.append(extra_card)
 
     placeholder.markdown("\n".join(cards_html), unsafe_allow_html=True)

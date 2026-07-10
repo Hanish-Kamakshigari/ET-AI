@@ -938,8 +938,8 @@ def stream_cctv_feed_raw(placeholders: Dict[str, Any], selected_zone: str, video
     frame_placeholder_1 = placeholders.get('cctv_frame_1')
     frame_placeholder_2 = placeholders.get('cctv_frame_2')
     frame_placeholder = placeholders.get('cctv_frame')
-    status_bar_placeholder = placeholders['cctv_status']
-    warnings_placeholder = placeholders['warnings']
+    status_bar_placeholder = placeholders.get('cctv_status')
+    warnings_placeholder = placeholders.get('warnings')
     selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
 
     tracker = get_frame_tracker()
@@ -1012,17 +1012,18 @@ def stream_cctv_feed_raw(placeholders: Dict[str, Any], selected_zone: str, video
                 active_alert_zones = {a.zone for a in active_alerts_dict.values()}
                 safe_zones_count = 6 - len(active_alert_zones)
 
-                status_bar_placeholder.markdown(f"""
-                <div style='background:#0a1628; border:1px solid #1e3a5f; border-top:none;
-                            border-radius:0 0 8px 8px; padding:8px 16px;
-                            display:flex; justify-content:space-around; align-items:center;
-                            font-family:"Outfit",sans-serif; font-size:12px;'>
-                    <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">{fps_val:.1f}</b></span>
-                    <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">{p_count}</b></span>
-                    <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">{h_count}</b></span>
-                    <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">{safe_zones_count}</b></span>
-                </div>
-                """, unsafe_allow_html=True)
+                if status_bar_placeholder:
+                    status_bar_placeholder.markdown(f"""
+                    <div style='background:#0a1628; border:1px solid #1e3a5f; border-top:none;
+                                border-radius:0 0 8px 8px; padding:8px 16px;
+                                display:flex; justify-content:space-around; align-items:center;
+                                font-family:"Outfit",sans-serif; font-size:12px;'>
+                        <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">{fps_val:.1f}</b></span>
+                        <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">{p_count}</b></span>
+                        <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">{h_count}</b></span>
+                        <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">{safe_zones_count}</b></span>
+                    </div>
+                    """, unsafe_allow_html=True)
             else:
                 if frame_placeholder_1:
                     frame_placeholder_1.empty()
@@ -1030,7 +1031,8 @@ def stream_cctv_feed_raw(placeholders: Dict[str, Any], selected_zone: str, video
                     frame_placeholder_2.empty()
                 if frame_placeholder:
                     frame_placeholder.empty()
-                status_bar_placeholder.empty()
+                if status_bar_placeholder:
+                    status_bar_placeholder.empty()
 
             # 2. Evaluate alert conditions and handle transitions
             alert_conditions = evaluate_alert_conditions(
@@ -1240,16 +1242,17 @@ def stream_cctv_feed_raw(placeholders: Dict[str, Any], selected_zone: str, video
                 
             am.update(active_dets, selected_zone)
             
-            if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
-                if alerts_list:
-                    warnings_placeholder.markdown("\n".join(alerts_list), unsafe_allow_html=True)
+            if warnings_placeholder:
+                if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
+                    if alerts_list:
+                        warnings_placeholder.markdown("\n".join(alerts_list), unsafe_allow_html=True)
+                    else:
+                        warnings_placeholder.markdown(render_nominal_card(
+                            title="Zone Secure", 
+                            message=f"All telemetry and compliance factors in {selected_zone_name} are nominal."
+                        ), unsafe_allow_html=True)
                 else:
-                    warnings_placeholder.markdown(render_nominal_card(
-                        title="Zone Secure", 
-                        message=f"All telemetry and compliance factors in {selected_zone_name} are nominal."
-                    ), unsafe_allow_html=True)
-            else:
-                warnings_placeholder.empty()
+                    warnings_placeholder.empty()
 
             if play_active:
                 time.sleep(0.04)
@@ -1258,35 +1261,39 @@ def stream_cctv_feed_raw(placeholders: Dict[str, Any], selected_zone: str, video
         # Offline display
         st.session_state.current_detections = []
         selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper() if selected_zone else "STANDBY"
-        header_placeholder.markdown(f"""
-        <div class='cctv-header'>
-            <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
-            <span style='color:#6b7d94; font-weight:bold; font-size:11px;'>● OFFLINE</span>
-        </div>
-        """, unsafe_allow_html=True)
-
+        if header_placeholder:
+            header_placeholder.markdown(f"""
+            <div class='cctv-header'>
+                <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
+                <span style='color:#6b7d94; font-weight:bold; font-size:11px;'>● OFFLINE</span>
+            </div>
+            """, unsafe_allow_html=True)
+ 
         msg = "Enable the live stream switch above to start real-time AI surveillance."
         if video_path and not os.path.exists(video_path):
             msg = f"CCTV footage file not found: <b>{video_path}</b>"
-        frame_placeholder.markdown(f"""
-        <div style="background:#0a0e17; height:380px; display:flex; flex-direction:column; justify-content:center; align-items:center; border: 1px dashed rgba(255,255,255,0.1); border-radius:0;">
-            <span style="font-size:32px; margin-bottom:12px;">⚠️</span>
-            <span style="font-family:'Outfit',sans-serif; font-weight:700; color:#6b7d94; text-transform:uppercase; letter-spacing:1.5px; font-size:13px;">CCTV Stream Standby</span>
-            <span style="font-family:'Outfit',sans-serif; color:#4a5568; font-size:11px; margin-top:4px;">{msg}</span>
-        </div>
-        """, unsafe_allow_html=True)
+        if frame_placeholder:
+            frame_placeholder.markdown(f"""
+            <div style="background:#0a0e17; height:380px; display:flex; flex-direction:column; justify-content:center; align-items:center; border: 1px dashed rgba(255,255,255,0.1); border-radius:0;">
+                <span style="font-size:32px; margin-bottom:12px;">⚠️</span>
+                <span style="font-family:'Outfit',sans-serif; font-weight:700; color:#6b7d94; text-transform:uppercase; letter-spacing:1.5px; font-size:13px;">CCTV Stream Standby</span>
+                <span style="font-family:'Outfit',sans-serif; color:#4a5568; font-size:11px; margin-top:4px;">{msg}</span>
+            </div>
+            """, unsafe_allow_html=True)
         
-        status_bar_placeholder.markdown("""
-        <div style='background:#0a1628; border:1px solid #1e3a5f; border-top:none;
-                    border-radius:0 0 8px 8px; padding:8px 16px;
-                    display:flex; justify-content:space-around; align-items:center;
-                    font-family:"Outfit",sans-serif; font-size:12px;'>
-            <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">0.0</b></span>
-            <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">0</b></span>
-            <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">0</b></span>
-            <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">6</b></span>
-        </div>
-        """, unsafe_allow_html=True)
+        if status_bar_placeholder:
+            status_bar_placeholder.markdown("""
+            <div style='background:#0a1628; border:1px solid #1e3a5f; border-top:none;
+                        border-radius:0 0 8px 8px; padding:8px 16px;
+                        display:flex; justify-content:space-around; align-items:center;
+                        font-family:"Outfit",sans-serif; font-size:12px;'>
+                <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">0.0</b></span>
+                <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">0</b></span>
+                <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">0</b></span>
+                <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">6</b></span>
+            </div>
+            """, unsafe_allow_html=True)
         
-        warnings_placeholder.empty()
+        if warnings_placeholder:
+            warnings_placeholder.empty()
 

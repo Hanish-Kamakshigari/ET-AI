@@ -132,15 +132,15 @@ class Typography:
     FONT_MONO = "'JetBrains Mono', 'Fira Code', monospace"
     FONT_SYSTEM = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
 
-    SIZE_XS = "9px"
-    SIZE_SM = "10px"
-    SIZE_BASE = "11px"
-    SIZE_LG = "12px"
-    SIZE_XL = "13px"
-    SIZE_2XL = "15px"
-    SIZE_3XL = "20px"
-    SIZE_4XL = "34px"
-    SIZE_5XL = "38px"
+    SIZE_XS = "10px"
+    SIZE_SM = "11px"
+    SIZE_BASE = "12px"
+    SIZE_LG = "13px"
+    SIZE_XL = "14px"
+    SIZE_2XL = "16px"
+    SIZE_3XL = "22px"
+    SIZE_4XL = "36px"
+    SIZE_5XL = "42px"
 
 
 class ZIndex:
@@ -356,7 +356,7 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   border: 1px solid var(--border2);
   border-top: 1px solid rgba(255,255,255,0.08);
   border-radius: var(--radius-lg);
-  padding: 18px 20px;
+  padding: 12px 14px;
   box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.05);
   transition: all 0.25s ease;
   backdrop-filter: blur(12px);
@@ -1064,15 +1064,30 @@ def render_metric_card(
     clean_sparkline = clean_html(sparkline_svg) if sparkline_svg else ""
     clean_extra = clean_html(extra_html) if extra_html else ""
 
+    if height == "100px":
+        return clean_html(f"""
+        <div class="{card_class}" style="{border_style} height: {height}; padding: 10px 12px; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div class="metric-label" style="color:#94A3B8; font-size: 9.5px; margin-bottom: 0px; letter-spacing: 1px;">{icon_html}{label}</div>
+            {clean_sparkline}
+          </div>
+          <div class="metric-value" style="color:{value_color}; font-size: 20px; line-height: 1.1; margin: 3px 0; font-weight: 800;">{value}</div>
+          {f'<div style="font-size:9.5px;color:#F8FAFC;font-weight:600;margin-top:1px;">{subtext}</div>' if subtext else ''}
+          <div class="metric-sub" style="margin-top:2px; font-size: 9.5px; color:#64748b; line-height: 1.1;">{clean_extra if clean_extra else 'Overall plant safety state'}</div>
+        </div>
+        """)
+
     return clean_html(f"""
-    <div class="{card_class}" style="{border_style} height: {height};">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div class="metric-label" style="color:#94A3B8;">{icon_html}{label}</div>
-        {clean_sparkline}
+    <div class="{card_class}" style="{border_style} height: {height}; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div class="metric-label" style="color:#94A3B8; font-size: 10.5px;">{icon_html}{label}</div>
+          {clean_sparkline}
+        </div>
+        <div class="metric-value" style="color:{value_color}; font-size: 26px; line-height: 1.1; margin-top: 4px; margin-bottom: 2px;">{value}</div>
+        {f'<div style="font-size:11.5px;color:#F8FAFC;font-weight:700;margin-top:2px;">{subtext}</div>' if subtext else ''}
       </div>
-      <div class="metric-value" style="color:{value_color};">{value}</div>
-      {f'<div style="font-size:11px;color:#F8FAFC;font-weight:600;margin-top:2px;">{subtext}</div>' if subtext else ''}
-      <div class="metric-sub" style="margin-top:4px;">{clean_extra if clean_extra else 'Overall plant safety state'}</div>
+      <div class="metric-sub" style="margin-top: auto; font-size: 11px;">{clean_extra if clean_extra else 'Overall plant safety state'}</div>
     </div>
     """)
 
@@ -1330,7 +1345,7 @@ def render_gauge_svg(
         bar_color = Colors.ORANGE
         
     svg = f"""
-    <svg width="100%" height="60" viewBox="0 0 100 50" style="overflow:visible;">
+    <svg width="100%" height="74" viewBox="0 0 100 50" style="overflow:visible; display:block; margin:0 auto;">
         <path d="M 20 42 A 30 30 0 0 1 80 42" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7" stroke-linecap="round" />
         <path d="M 20 42 A 30 30 0 0 1 {50 + 30 * math.cos(angle)} {42 - 30 * math.sin(angle)}" fill="none" stroke="{bar_color}" stroke-width="7" stroke-linecap="round" />
         <line x1="50" y1="42" x2="{nx}" y2="{ny}" stroke="#fff" stroke-width="1.8" stroke-linecap="round" />

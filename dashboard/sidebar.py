@@ -160,13 +160,13 @@ def render_sidebar(
                     from src.alert_system import dispatch_alerts
                     import random
                     severity_choice = random.choice(["MEDIUM", "HIGH", "CRITICAL"])
-                    zones_list = ["Zone_A", "Zone_B", "Zone_C", "Reactor_Block", "Storage_Area"]
+                    zones_list = ["Zone_A", "Zone_B", "Zone_C", "Reactor_Area", "Storage_Area"]
                     zone_choice = random.choice(zones_list)
                     test_payload = {
                         "should_alert": True,
                         "severity": severity_choice,
                         "messages": [f"TEST ALERT: Mock safety violation detected in {ZONE_LABELS.get(zone_choice, zone_choice)}"],
-                        "summary": f"TEST ALERT: Mock safety violation detected in {ZONE_LABELS.get(zone_choice, zone_choice)}",
+                        "summary": f"TEST ALERT: Mock safety violation detected in {zone_choice}",
                         "zone": zone_choice,
                         "channels": ["dashboard", "sms", "email", "telegram"]
                     }
@@ -178,8 +178,10 @@ def render_sidebar(
                     st.session_state.sim_play_active = False
                     st.session_state.sim_stage = 'normal'
                     st.session_state.compound_risk_active = False
-                    for z in ["Zone_A", "Zone_B", "Zone_C", "Reactor_Block", "Storage_Area"]:
+                    for z in ["Zone_A", "Zone_B", "Zone_C", "Reactor_Area", "Storage_Area"]:
                         clear_alert_if_safe(z)
+                        st.session_state[f"alert_active_{z}"] = False
+                    st.session_state["_last_incident"] = None
                     st.toast("🛑 Simulation Stopped & Cleaned.")
                     st.rerun()
 

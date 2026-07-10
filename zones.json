@@ -8,22 +8,30 @@
   },
   "Zone_B": {
     "name": "Battery-5",
-    "restricted_polygons": [],
+    "restricted_polygons": [
+      [[150, 300], [450, 300], [450, 600], [150, 600]]
+    ],
     "color": [0, 212, 255]
   },
   "Zone_C": {
     "name": "Battery-6",
-    "restricted_polygons": [],
+    "restricted_polygons": [
+      [[300, 250], [600, 250], [600, 650], [300, 650]]
+    ],
     "color": [0, 212, 255]
   },
   "Reactor_Area": {
     "name": "Reactor Block",
-    "restricted_polygons": [],
+    "restricted_polygons": [
+      [[100, 400], [450, 400], [450, 700], [100, 700]]
+    ],
     "color": [245, 158, 11]
   },
   "Storage_Area": {
     "name": "Storage Area",
-    "restricted_polygons": [],
+    "restricted_polygons": [
+      [[250, 200], [600, 200], [600, 650], [250, 650]]
+    ],
     "color": [0, 212, 255]
   }
 }
