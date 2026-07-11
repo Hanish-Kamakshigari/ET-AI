@@ -1743,7 +1743,7 @@ class AlertCoordinator:
         finally:
             self.persistence.return_connection(conn)
 
-    def clear_alert_if_safe(self, zone: str):
+    def clear_alert_if_safe(self, zone: str, update_cooldown: bool = True):
         """Compatibility function to resolve all active incidents in a zone"""
         conn = self.persistence.get_connection()
         try:
@@ -1762,14 +1762,25 @@ class AlertCoordinator:
             self.logger.info(f"Cleared all active alerts in zone {zone} via compatibility layer")
             self.dashboard_adapter.invalidate_cache()
             
-            # Update in-memory cache for resolved keys
-            try:
-                resolved_dt = datetime.fromisoformat(now_str)
-                with self.incident_manager._cooldown_lock:
-                    for r in active_rows:
-                        self.incident_manager._cooldown_cache[r["incident_key"]] = resolved_dt
-            except Exception as ex:
-                self.logger.error(f"Failed to update cooldown cache in clear_alert_if_safe for zone {zone}: {ex}")
+            # Update in-memory cache for resolved keys if requested
+            if update_cooldown:
+                try:
+                    resolved_dt = datetime.fromisoformat(now_str)
+                    with self.incident_manager._cooldown_lock:
+                        for r in active_rows:
+                            self.inference_manager._cooldown_cache[r["incident_key"]] = resolved_dt
+                except Exception as ex:
+                    self.logger.error(f"Failed to update cooldown cache in clear_alert_if_safe for zone {zone}: {ex}")
+            else:
+                # When not updating cooldown, remove any existing cache entries to allow immediate re-alerting
+                try:
+                    with self.incident_manager._cooldown_lock:
+                        for r in active_rows:
+                            key = r["incident_key"]
+                            if key in self.inference_manager._cooldown_cache:
+                                del self.inference_manager._cooldown_cache[key]
+                except Exception as ex:
+                    self.logger.error(f"Failed to clear cooldown cache in clear_alert_if_safe for zone {zone}: {ex}")
         except Exception as e:
             self.logger.error(f"Failed to clear active alerts in zone {zone}: {e}")
             conn.rollback()

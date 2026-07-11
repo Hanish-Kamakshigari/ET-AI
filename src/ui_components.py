@@ -845,11 +845,11 @@ div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="
   border: 1px solid rgba(255,255,255,0.05);
 }}
 
-/* Push page content below navbar */
+/* Push page content below navbar — tightened to remove dead space above navbar */
 .main-content,
 section.main > div:first-child,
 .block-container {{
-  padding-top: 62px !important;
+  padding-top: 56px !important;
 }}
 
 /* AI Explainability Redesign Animations */

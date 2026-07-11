@@ -13,6 +13,168 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.ui_components import render_section_header
 
 
+SEVERITY_BANNER_STYLES = {
+    "CRITICAL": {
+        "bg": "linear-gradient(90deg, rgba(127,7,7,0.95) 0%, rgba(180,15,15,0.88) 100%)",
+        "border": "#ef4444",
+        "glow": "rgba(239,68,68,0.45)",
+        "icon": "🚨",
+        "text_color": "#fca5a5",
+        "label_color": "#fff",
+        "pill_bg": "#ef4444",
+        "pill_color": "#fff",
+        "ack_bg": "rgba(255,255,255,0.15)",
+    },
+    "HIGH": {
+        "bg": "linear-gradient(90deg, rgba(120,53,15,0.95) 0%, rgba(180,80,20,0.88) 100%)",
+        "border": "#f97316",
+        "glow": "rgba(249,115,22,0.35)",
+        "icon": "⚠️",
+        "text_color": "#fed7aa",
+        "label_color": "#fff",
+        "pill_bg": "#f97316",
+        "pill_color": "#fff",
+        "ack_bg": "rgba(255,255,255,0.12)",
+    },
+    "MEDIUM": {
+        "bg": "linear-gradient(90deg, rgba(120,100,10,0.95) 0%, rgba(160,130,20,0.88) 100%)",
+        "border": "#eab308",
+        "glow": "rgba(234,179,8,0.30)",
+        "icon": "⚡",
+        "text_color": "#fef08a",
+        "label_color": "#fff",
+        "pill_bg": "#eab308",
+        "pill_color": "#000",
+        "ack_bg": "rgba(255,255,255,0.10)",
+    },
+    "LOW": {
+        "bg": "linear-gradient(90deg, rgba(15,70,60,0.95) 0%, rgba(20,100,80,0.88) 100%)",
+        "border": "#22c55e",
+        "glow": "rgba(34,197,94,0.25)",
+        "icon": "ℹ️",
+        "text_color": "#bbf7d0",
+        "label_color": "#fff",
+        "pill_bg": "#22c55e",
+        "pill_color": "#000",
+        "ack_bg": "rgba(255,255,255,0.10)",
+    },
+}
+
+SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+
+
+def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: Any, selected_zone: str = None) -> None:
+    """Renders a dismissible top-of-page alert banner for the highest-severity active alert.
+
+    The banner only appears while Autoplay Simulation is active. When autoplay
+    is off it clears itself, so no stale database alerts bleed through on the
+    initial page load or after the simulation is stopped.
+
+    Only alerts belonging to ``selected_zone`` are considered, so the banner
+    always reflects the currently viewed camera zone.
+
+    Args:
+        placeholder: The ``st.empty()`` slot returned by ``create_layout()`` as
+            ``auto_banner_placeholder``.
+        am: The :class:`~src.alert_system.AlertManager` instance.
+        selected_zone: Zone key (e.g. ``'Zone_A'``, ``'Reactor_Area'``). When
+            provided, only alerts whose ``zone`` matches are shown.
+    """
+    # Gate: banner only visible while simulation is running
+    if not st.session_state.get('sim_play_active', False):
+        placeholder.empty()
+        return
+
+    all_active = getattr(am, "active_alerts", {})
+
+    # Filter to selected zone
+    if selected_zone and all_active:
+        active = {k: v for k, v in all_active.items() if getattr(v, "zone", None) == selected_zone}
+    else:
+        active = all_active
+
+    if not active:
+        placeholder.empty()
+        return
+
+    # Pick the highest-severity alert for this zone
+    severity_rank = {name: i for i, name in enumerate(SEVERITY_ORDER)}
+    top_alert = min(
+        active.values(),
+        key=lambda a: severity_rank.get(
+            getattr(a, "risk_level", getattr(getattr(a, "severity", None), "name", "LOW")).upper(),
+            99
+        )
+    )
+
+    # Resolve fields
+    severity_name = getattr(top_alert, "risk_level",
+                            getattr(getattr(top_alert, "severity", None), "name", "LOW")).upper()
+    message = getattr(top_alert, "message", "")
+    alert_id = getattr(top_alert, "alert_id", None)
+    zone = getattr(top_alert, "zone", "")
+    from src.config.ui_constants import ZONE_LABELS
+    zone_lbl = ZONE_LABELS.get(zone, zone).upper()
+
+    style = SEVERITY_BANNER_STYLES.get(severity_name, SEVERITY_BANNER_STYLES["HIGH"])
+    is_critical = severity_name == "CRITICAL"
+    animation = "animation: emergPulse 2.5s ease-in-out infinite;" if is_critical else ""
+
+    ack_href = f"?ack_alert={alert_id}" if alert_id else "?ack_auto_alert=1"
+
+    total = len(active)
+    extra_info = f"<span style='color:{style['text_color']};font-size:10px;margin-left:10px;'>+{total - 1} more alert(s)</span>" if total > 1 else ""
+
+    html = f"""
+    <div style="
+        background: {style['bg']};
+        border: 1px solid {style['border']};
+        border-radius: 10px;
+        padding: 10px 18px;
+        margin-bottom: 10px;
+        {animation}
+        box-shadow: 0 0 18px {style['glow']}, inset 0 1px 0 rgba(255,255,255,0.08);
+        font-family: 'Outfit', sans-serif;
+        position: relative;
+        overflow: hidden;
+    ">
+      <!-- Subtle left accent bar -->
+      <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:{style['border']};border-radius:10px 0 0 10px;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding-left:8px;">
+        <!-- Left: icon + severity + zone + message -->
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+          <span style="font-size:18px;flex-shrink:0;">{style['icon']}</span>
+          <div style="min-width:0;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="font-weight:800;color:{style['label_color']};font-size:11px;letter-spacing:1px;text-transform:uppercase;">{severity_name} ALERT</span>
+              <span style="background:rgba(255,255,255,0.12);color:{style['text_color']};border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;">{zone_lbl}</span>
+              {extra_info}
+            </div>
+            <div style="color:{style['text_color']};font-size:11.5px;margin-top:2px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:600px;">{message}</div>
+          </div>
+        </div>
+        <!-- Right: ACK button -->
+        <a href="{ack_href}" target="_self" style="text-decoration:none;flex-shrink:0;">
+          <span style="
+            background:{style['ack_bg']};
+            color:#fff;
+            border:1px solid rgba(255,255,255,0.3);
+            border-radius:6px;
+            padding:5px 14px;
+            font-size:10px;
+            font-weight:800;
+            cursor:pointer;
+            letter-spacing:0.5px;
+            text-transform:uppercase;
+            white-space:nowrap;
+          ">✓ ACKNOWLEDGE</span>
+        </a>
+      </div>
+    </div>
+    """
+    placeholder.markdown(html, unsafe_allow_html=True)
+
+
 def render_auto_banner(placeholder: st.delta_generator.DeltaGenerator, data_dict: Dict[str, Any]):
     """Renders the top alert banner dynamically based on system state"""
     banner_level = data_dict['banner_level']

@@ -327,9 +327,9 @@ def dispatch_alerts(alert_payload: dict):
     coordinator.dispatch_payload_alert(alert_payload)
 
 
-def clear_alert_if_safe(zone: str):
-    coordinator = get_alert_coordinator()
-    coordinator.clear_alert_if_safe(zone)
+def clear_alert_if_safe(zone: str, update_cooldown: bool = True):
+        coordinator = get_alert_coordinator()
+        coordinator.clear_alert_if_safe(zone, update_cooldown=update_cooldown)
 
 
 def render_improved_alerts(placeholder, alert_manager: AlertManager):

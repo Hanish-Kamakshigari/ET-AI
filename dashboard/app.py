@@ -59,7 +59,7 @@ from dashboard.sidebar import render_sidebar
 import importlib
 import dashboard.layout
 importlib.reload(dashboard.layout)
-from dashboard.layout import create_layout
+from dashboard.layout import create_layout, render_top_alert_banner
 import dashboard.components
 importlib.reload(dashboard.components)
 from dashboard.components import (
@@ -94,7 +94,27 @@ df = load_data()
 engine = init_engine()
 alert_system = init_alerts(engine, df)
 frame_processor = get_frame_processor()
-am = AlertManager()
+# Session-scoped AlertManager — persists across reruns within a session
+# but does NOT leak across sessions/users like @st.cache_resource would.
+if 'alert_manager' not in st.session_state:
+    st.session_state.alert_manager = AlertManager()
+am = st.session_state.alert_manager
+
+# On initial load (or when autoplay is off): resolve any stale active alerts
+# so the UI starts completely clean before the operator starts the simulation.
+if not st.session_state.get('sim_play_active', False):
+    try:
+        from src.alert_system import clear_alert_if_safe
+        _all_zones = ["Zone_A", "Zone_B", "Zone_C", "Reactor_Area", "Storage_Area"]
+        for _z in _all_zones:
+            clear_alert_if_safe(_z)
+        for _alert_id in list(am.active_alerts.keys()):
+            try:
+                am.resolve_alert(_alert_id)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 # Handle URL parameters/Operator Action Acknowledges
 handle_url_actions(alert_system, am)
@@ -119,7 +139,7 @@ render_navbar(risk_level=_navbar_risk, active_tab=active_tab)
 
 # ════════════════════════════════════════════════════════════════════════════════
 # 2. RENDER DASHBOARD LAYOUT & SIDEBAR
-# ════════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 # Render Loading overlay if injecting compound threat simulation
 if st.session_state.get('sim_stage') == 'injecting':
@@ -163,16 +183,29 @@ with col_right:
     alerts_placeholder = st.empty()
 
     st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-    st.markdown(render_section_header("🔌 SYSTEM DIAGNOSTICS & TELEMETRY"), unsafe_allow_html=True)
+    st.markdown(render_section_header("🧩 COMPOUND RISK ENGINE"), unsafe_allow_html=True)
+    risk_engine_placeholder = st.empty()
 
-    # Initialize placeholders dict for sidebar panels & right panel components
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown(render_section_header("📊 LIVE TELEMETRY"), unsafe_allow_html=True)
+    telemetry_trends_placeholder = st.empty()
+
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown(render_section_header("🔌 SYSTEM DIAGNOSTICS"), unsafe_allow_html=True)
+
     placeholders = {
         'alerts': alerts_placeholder,
         'notifications': notifications_placeholder,
-        'warnings': warnings_placeholder
+        'warnings': warnings_placeholder,
+        'top_banner': auto_banner_placeholder,
+        'risk_engine': risk_engine_placeholder,
+        'telemetry_trends': telemetry_trends_placeholder
     }
     from dashboard.components import render_right_panel_diagnostics
     render_right_panel_diagnostics(placeholders, data_dict, am, init_mode=True)
+
+# Render the top alert banner above the column layout — scoped to selected zone
+render_top_alert_banner(auto_banner_placeholder, am, selected_zone=st.session_state.get('cctv_zone_selector', None))
 
 render_sidebar(sidebar_placeholder, placeholders, data_dict, engine, am, alert_system)
 
@@ -228,14 +261,11 @@ with col_center:
         cctv_status_placeholder = st.empty()
 
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-        col_l1, col_r1 = st.columns([1.2, 0.8])
-        timeline_placeholder = col_l1.empty()
-        risk_engine_placeholder = col_r1.empty()
+        # Compound Risk Engine & Live Telemetry moved to right sidebar for better column balance
+        timeline_placeholder = st.empty()
 
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-        col_l2, col_r2 = st.columns([1.0, 1.0])
-        ai_decision_placeholder = col_l2.empty()
-        telemetry_trends_placeholder = col_r2.empty()
+        ai_decision_placeholder = st.empty()
 
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
         col_l3, col_r3 = st.columns([1.0, 1.0])
@@ -288,8 +318,10 @@ with col_center:
         render_risk_analysis_row(dashboard_placeholders, data_dict, selected_zone, current_detections)
         render_decision_telemetry_row(dashboard_placeholders, data_dict, selected_zone, current_detections)
         render_notifications_panel(notifications_placeholder, data_dict, selected_zone)
-        render_alerts_panel(alerts_placeholder, am)
+        render_alerts_panel(alerts_placeholder, am, selected_zone=selected_zone)
 
+        # Incident counters — read directly from session-scoped AlertManager.
+        # No sim_on gate: active alerts should always be reflected in real time.
         open_incidents = len(am.active_alerts)
         closed_incidents = len(am.history)
         today_incidents = open_incidents + closed_incidents
@@ -297,7 +329,7 @@ with col_center:
             render_incident_summary_html(open_incidents, closed_incidents, today_incidents),
             unsafe_allow_html=True
         )
-        
+
         # Render bottom SCADA operational overview row
         render_operational_overview(scada_placeholders, data_dict)
 

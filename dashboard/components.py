@@ -761,17 +761,43 @@ def render_compact_alert_card_html(alert: Any) -> str:
     return html.strip().replace("\n", "")
 
 
-def render_alerts_panel(placeholder: Any, am: Any):
-    """Renders active and acknowledged alerts"""
-    if not am.active_alerts:
+def render_alerts_panel(placeholder: Any, am: Any, selected_zone: str = None):
+    """Renders active and acknowledged alerts, filtered to the selected zone.
+
+    Alerts are only shown while Autoplay Simulation is active. When autoplay
+    is off the panel always shows a nominal state, so no stale database
+    alerts leak through before the operator starts the simulation.
+
+    Args:
+        placeholder: st.empty() placeholder for the alerts panel.
+        am: AlertManager instance.
+        selected_zone: If provided, only alerts whose zone matches are shown.
+    """
+    # Gate: no alerts shown unless simulation is running
+    if not st.session_state.get('sim_play_active', False):
         placeholder.markdown(render_nominal_card(
-            title="All Zones Nominal",
-            message="The compound risk engine is scanning all active zones. No telemetry threshold breaches or hazardous intersections detected."
+            title="Simulation Inactive",
+            message="Start Autoplay Simulation to begin live zone monitoring. No alerts will be raised until the simulation is active."
+        ), unsafe_allow_html=True)
+        return
+
+    all_alerts = am.active_alerts
+
+    # Filter to selected zone when provided
+    if selected_zone and all_alerts:
+        zone_alerts = {k: v for k, v in all_alerts.items() if getattr(v, 'zone', None) == selected_zone}
+    else:
+        zone_alerts = all_alerts
+
+    if not zone_alerts:
+        placeholder.markdown(render_nominal_card(
+            title="Zone Nominal",
+            message="No active alerts for this zone. The risk engine is monitoring all telemetry channels."
         ), unsafe_allow_html=True)
         return
 
     sorted_alerts = sorted(
-        am.active_alerts.values(),
+        zone_alerts.values(),
         key=lambda x: x.severity.value[0],
         reverse=True
     )
@@ -1115,6 +1141,8 @@ def render_right_panel_diagnostics(placeholders_dict: dict, data_dict: dict, am:
     stat_low = sum(1 for a in active_alerts_dict.values() if a.severity.name == 'LOW') + sum(1 for a in history_list if a.severity.name == 'LOW')
     stat_resolved = len(history_list)
 
+    # Incident counters - read directly from AlertManager state.
+    # No sim_on gate: active alerts should always be reflected in real time.
     open_incidents = len(active_alerts_dict)
     closed_incidents = len(history_list)
     today_incidents = open_incidents + closed_incidents
@@ -1201,7 +1229,7 @@ def render_right_panel_diagnostics(placeholders_dict: dict, data_dict: dict, am:
                     st.session_state.sim_stage = 'normal'
                     st.session_state.compound_risk_active = False
                     for z in ["Zone_A", "Zone_B", "Zone_C", "Reactor_Area", "Storage_Area"]:
-                        clear_alert_if_safe(z)
+                        clear_alert_if_safe(z, update_cooldown=False)
                         st.session_state[f"alert_active_{z}"] = False
                     st.session_state["_last_incident"] = None
                     st.toast("🔄 Simulation status reset. Clear alert commands dispatched.")

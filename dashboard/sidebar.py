@@ -89,8 +89,8 @@ def render_sidebar(
             <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 10px; margin-bottom:8px;">
                 <div style="font-size:8px; color:#64748B; font-weight:700; text-transform:uppercase;">System Status</div>
                 <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:4px;">
-                    <span>Uptime: <b style="color:#22c55e;">100%</b></span>
-                    <span>Engine: <b style="color:#22c55e;">HEALTHY</b></span>
+                <span>Uptime: <b style="color:#22c55e;">100%</b></span>
+                <span>Engine: <b style="color:#22c55e;">HEALTHY</b></span>
                 </div>
                 <div style="font-size:9px; color:#64748b; margin-top:2px; font-family:monospace;">Heartbeat: {now_time.strftime('%H:%M:%S')}</div>
             </div>
@@ -122,6 +122,25 @@ def render_sidebar(
             # 4. Autoplay Simulation
             play_active = st.toggle("Autoplay Simulation", value=st.session_state.get('sim_play_active', False), key="autoplay_sim_toggle")
             if play_active != st.session_state.get('sim_play_active', False):
+                # --- Clear all active alerts on every toggle (ON or OFF) ---
+                # This ensures: before autoplay starts → no stale alerts shown;
+                # after autoplay stops → no lingering alerts from previous run.
+                try:
+                    from src.alert_system import clear_alert_if_safe
+                    all_zones = ["Zone_A", "Zone_B", "Zone_C", "Reactor_Area", "Storage_Area"]
+                    for z in all_zones:
+                        clear_alert_if_safe(z, update_cooldown=False)
+                        st.session_state[f"alert_active_{z}"] = False
+                    # Resolve any remaining active alerts via am.resolve_alert
+                    for alert_id in list(am.active_alerts.keys()):
+                        try:
+                            am.resolve_alert(alert_id)
+                        except Exception:
+                            pass
+                    st.session_state["_last_incident"] = None
+                except Exception:
+                    pass
+                # -------------------------------------------------------
                 st.session_state.sim_play_active = play_active
 
             speed_options = ["1x", "2x", "4x"]
@@ -179,7 +198,7 @@ def render_sidebar(
                     st.session_state.sim_stage = 'normal'
                     st.session_state.compound_risk_active = False
                     for z in ["Zone_A", "Zone_B", "Zone_C", "Reactor_Area", "Storage_Area"]:
-                        clear_alert_if_safe(z)
+                        clear_alert_if_safe(z, update_cooldown=False)
                         st.session_state[f"alert_active_{z}"] = False
                     st.session_state["_last_incident"] = None
                     st.toast("🛑 Simulation Stopped & Cleaned.")
@@ -236,12 +255,68 @@ def render_sidebar(
                 render_db_logs_panel(db_logs_slot, data_dict)
                 placeholders['db_logs'] = db_logs_slot
 
+            # 9b. Recent Alerts List (active + recently resolved)
+            with st.expander("🚨 Recent Alerts", expanded=True):
+                recent_alerts_slot = st.empty()
+                recent_html_lines = []
+                active_list = list(am.active_alerts.values())[-5:] if am.active_alerts else []
+                for a in reversed(active_list):
+                    sev = getattr(a.severity, "value", ("", "", "LOW"))
+                    sev_label = sev[2] if isinstance(sev, tuple) and len(sev) > 2 else str(sev)
+                    sev_upper = sev_label.upper()
+                    sev_color = {"CRITICAL": "#EF4444", "HIGH": "#F97316", "MEDIUM": "#F59E0B", "LOW": "#22C55E"}.get(sev_upper, "#3B82F6")
+                    zone_lbl = ZONE_LABELS.get(a.zone, a.zone)
+                    dur = int(getattr(a, 'duration', 0))
+                    dur_str = f"{dur // 60:02d}:{dur % 60:02d}"
+                    recent_html_lines.append(
+                        f'<div style="border-left:3px solid {sev_color}; background:rgba(255,255,255,0.02); padding:4px 8px; margin-bottom:3px; border-radius:0 4px 4px 0;">'
+                        f'<div style="display:flex; justify-content:space-between; align-items:center;">'
+                        f'<span style="font-size:9px; font-weight:800; color:{sev_color}; text-transform:uppercase;">{sev_label}</span>'
+                        f'<span style="font-size:8px; color:#64748b; font-family:monospace;">{dur_str}</span>'
+                        f'</div>'
+                        f'<div style="font-size:10px; color:#F8FAFC; font-weight:600; margin-top:1px; line-height:1.2;">{a.message[:60]}</div>'
+                        f'<div style="font-size:8.5px; color:#94A3B8; margin-top:1px;">📍 {zone_lbl}</div>'
+                        f'</div>'
+                    )
+                history_list = list(am.history)[-3:] if am.history else []
+                for a in reversed(history_list):
+                    sev = getattr(a.severity, "value", ("", "", "LOW"))
+                    sev_label = sev[2] if isinstance(sev, tuple) and len(sev) > 2 else str(sev)
+                    sev_upper = sev_label.upper()
+                    sev_color = {"CRITICAL": "#EF4444", "HIGH": "#F97316", "MEDIUM": "#F59E0B", "LOW": "#22C55E"}.get(sev_upper, "#3B82F6")
+                    zone_lbl = ZONE_LABELS.get(a.zone, a.zone)
+                    dur = int(getattr(a, 'duration', 0))
+                    dur_str = f"{dur // 60:02d}:{dur % 60:02d}"
+                    end_str = a.end_time.strftime('%H:%M:%S') if a.end_time else ''
+                    recent_html_lines.append(
+                        f'<div style="border-left:3px solid rgba(34,197,94,0.4); background:rgba(34,197,94,0.02); padding:4px 8px; margin-bottom:3px; border-radius:0 4px 4px 0; opacity:0.7;">'
+                        f'<div style="display:flex; justify-content:space-between; align-items:center;">'
+                        f'<span style="font-size:9px; font-weight:800; color:#22C55E; text-transform:uppercase;">✓ RESOLVED</span>'
+                        f'<span style="font-size:8px; color:#64748b; font-family:monospace;">{end_str}</span>'
+                        f'</div>'
+                        f'<div style="font-size:10px; color:#CBD5E1; font-weight:600; margin-top:1px; line-height:1.2;">{a.message[:60]}</div>'
+                        f'<div style="font-size:8.5px; color:#64748B; margin-top:1px;">📍 {zone_lbl} | {dur_str}</div>'
+                        f'</div>'
+                    )
+                if not recent_html_lines:
+                    recent_html_lines.append(
+                        '<div style="text-align:center; padding:12px; color:#64748b; font-size:10px;">'
+                        '🟢 No recent alerts. All zones nominal.'
+                        '</div>'
+                    )
+                recent_html = "".join(recent_html_lines)
+                recent_alerts_slot.markdown(
+                    f'<div style="max-height:180px; overflow-y:auto; padding-right:4px;">{recent_html}</div>',
+                    unsafe_allow_html=True
+                )
+                placeholders['recent_alerts'] = recent_alerts_slot
+
             # 10. Footer
             st.markdown("""
             <div style="font-size:9px; color:#64748b; font-family:monospace; margin-top:9px; border-top:1px solid rgba(255,255,255,0.06); padding-top:6px;">
               <div>App Version: v3.0.4</div>
-              <div>Build: #9104</div>
-              <div>Connected User: Operator #08</div>
+                <div>Build: #9104</div>
+                <div>Connected User: Operator #08</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -297,7 +372,7 @@ def render_sidebar(
             """, unsafe_allow_html=True)
             
             st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
-            
+
             # Export Report download button at the bottom
             st.download_button(
                 "📄",
@@ -316,5 +391,3 @@ def render_sidebar(
                 placeholders['failsafes'].empty()
             if 'db_logs' in placeholders and placeholders['db_logs']:
                 placeholders['db_logs'].empty()
-
-

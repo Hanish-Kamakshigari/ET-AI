@@ -1076,18 +1076,25 @@ def stream_cctv_feed_raw(placeholders: Dict[str, Any], selected_zone: str, video
                             render_db_logs_panel,
                             render_kpi_grid
                         )
-                        
+                        from dashboard.layout import render_top_alert_banner
+
                         df = load_data()
                         engine = init_engine()
                         updated_data_dict = calculate_telemetry(df, engine, alert_system)
-                        
+
                         # Direct placeholder updates using updated telemetry data
-                        render_alerts_panel(placeholders['alerts'], am)
+                        render_alerts_panel(placeholders['alerts'], am, selected_zone=selected_zone)
+
+                        # Keep the top-of-page banner in sync — scoped to the active zone
+                        top_banner_ph = placeholders.get('top_banner')
+                        if top_banner_ph is not None:
+                            render_top_alert_banner(top_banner_ph, am, selected_zone=selected_zone)
+
                         render_notifications_panel(placeholders['notifications'], updated_data_dict, selected_zone)
                         render_zone_status_panel(placeholders['zone_status'], updated_data_dict)
                         render_failsafes_panel(placeholders['failsafes'], updated_data_dict)
                         render_db_logs_panel(placeholders['db_logs'], updated_data_dict)
-                        
+
                         kpi_cols = placeholders.get('kpi_cols')
                         if kpi_cols:
                             render_kpi_grid(kpi_cols, updated_data_dict)

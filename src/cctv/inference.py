@@ -221,18 +221,18 @@ def load_zones_config():
 def get_yolo_model(model_type: str, zone: str = None):
     """Load or retrieve YOLO model from cache"""
     global _models
-    
+
     # Try importing YOLO from ultralytics
     try:
         from ultralytics import YOLO
     except ImportError:
         print("[WARNING] ultralytics not installed, cannot load YOLO models.")
         return None
-        
+
     cache_key = model_type
     if _models.get(cache_key) is not None:
         return _models[cache_key]
-        
+
     if model_type == "fire_smoke":
         paths = ["models/best_fire_smoke.pt", "best_fire_smoke.pt"]
         for p in paths:
@@ -243,7 +243,7 @@ def get_yolo_model(model_type: str, zone: str = None):
                     return _models["fire_smoke"]
                 except Exception as e:
                     print(f"[ERROR] Failed to load custom Fire/Smoke model {p}: {e}")
-                    
+
     elif model_type == "stock":
         paths = ["yolov8n.pt", "models/yolov8n.pt"]
         for p in paths:
@@ -254,7 +254,7 @@ def get_yolo_model(model_type: str, zone: str = None):
                     return _models["stock"]
                 except Exception as e:
                     print(f"[ERROR] Failed to load stock YOLOv8 model {p}: {e}")
-        
+
         # Download stock YOLO model if missing
         p_s = "models/yolov8n.pt"
         if not os.path.exists(p_s):
@@ -277,8 +277,42 @@ def get_yolo_model(model_type: str, zone: str = None):
                 return _models["stock"]
             except Exception as e:
                 print(f"[WARNING] Stock YOLO model could not be loaded: {e}. System will use simulation fallback.")
-                    
+
     return None
+
+
+def _patch_ultralytics_fuse() -> None:
+    """Wrap BaseModel.fuse with a try/except safety net.
+
+    The primary fix is in the installed ultralytics tasks.py (hasattr guard
+    added after Conv2.fuse_convs()). This wrapper is a belt-and-suspenders
+    fallback in case the installed version is ever updated or the guard is
+    bypassed by another code path.
+    """
+    try:
+        import ultralytics.nn.tasks as _tasks
+        _orig = _tasks.BaseModel.fuse
+        if getattr(_orig, "_suraksha_patched", False):
+            return  # already wrapped
+
+        def _safe_fuse(self, verbose=True):
+            try:
+                return _orig(self, verbose=verbose)
+            except AttributeError as exc:
+                if "bn" in str(exc):
+                    # BN already removed (double-fuse) — safe to ignore
+                    return self
+                raise
+
+        _safe_fuse._suraksha_patched = True
+        _tasks.BaseModel.fuse = _safe_fuse
+        print("[INFO] Applied ultralytics BaseModel.fuse safety wrapper.")
+    except Exception as e:
+        print(f"[WARNING] Could not apply ultralytics fuse safety wrapper: {e}")
+
+
+# Apply fuse safety patch once at module init
+_patch_ultralytics_fuse()
 
 # Load zones config on initialization
 load_zones_config()
