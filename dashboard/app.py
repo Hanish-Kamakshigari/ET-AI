@@ -174,23 +174,23 @@ with col_right:
     st.markdown(render_section_header("⚠️ ACTIVE COMPLIANCE WARNINGS"), unsafe_allow_html=True)
     warnings_placeholder = st.empty()
 
-    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("📢 NOTIFICATION CHANNELS"), unsafe_allow_html=True)
     notifications_placeholder = st.empty()
 
-    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("🔔 LIVE ALERTS"), unsafe_allow_html=True)
     alerts_placeholder = st.empty()
 
-    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("🧩 COMPOUND RISK ENGINE"), unsafe_allow_html=True)
     risk_engine_placeholder = st.empty()
 
-    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("📊 LIVE TELEMETRY"), unsafe_allow_html=True)
     telemetry_trends_placeholder = st.empty()
 
-    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("🔌 SYSTEM DIAGNOSTICS"), unsafe_allow_html=True)
 
     placeholders = {
@@ -220,7 +220,7 @@ with col_center:
             'm4': col4.empty()
         }
         render_kpi_grid(kpi_cols, data_dict)
-        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
     else:
         kpi_cols = None
 
@@ -245,7 +245,7 @@ with col_center:
         selected_zone = zone_sel
 
         selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
-        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
         st.markdown(f"""
         <div class='cctv-header'>
             <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
@@ -260,20 +260,20 @@ with col_center:
             
         cctv_status_placeholder = st.empty()
 
-        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
         # Compound Risk Engine & Live Telemetry moved to right sidebar for better column balance
         timeline_placeholder = st.empty()
 
-        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
         ai_decision_placeholder = st.empty()
 
-        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
         col_l3, col_r3 = st.columns([1.0, 1.0])
         zone_response_placeholder = col_l3.empty()
         incident_summary_placeholder = col_r3.empty()
 
         # Operational Overview SCADA status row (6 columns)
-        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
         col_scada1, col_scada2, col_scada3, col_scada4, col_scada5, col_scada6 = st.columns(6)
         scada_placeholders = {
             'plant_health': col_scada1.empty(),

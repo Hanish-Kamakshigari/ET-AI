@@ -874,18 +874,27 @@ def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, 
 
     events_html = []
     for e in events:
+        if e["icon"] in ('🚨', '🔴'):
+            status_bg, status_color, status_border, status_label = 'rgba(239,68,68,0.15)', '#ef4444', 'rgba(239,68,68,0.3)', 'CRITICAL'
+        elif e["icon"] in ('⚠️', '🟡'):
+            status_bg, status_color, status_border, status_label = 'rgba(245,158,11,0.15)', '#f59e0b', 'rgba(245,158,11,0.3)', 'WARNING'
+        elif e["icon"] in ('📱', '📧', '🔊'):
+            status_bg, status_color, status_border, status_label = 'rgba(59,130,246,0.15)', '#3b82f6', 'rgba(59,130,246,0.3)', 'ESCALATED'
+        else:
+            status_bg, status_color, status_border, status_label = 'rgba(34,197,94,0.12)', '#22c55e', 'rgba(34,197,94,0.3)', 'NOMINAL'
         events_html.append(
-            f'<div style="display: flex; gap: 6px; margin-bottom: 5px; align-items: center;">'
-            f'<span style="color: #64748b; font-family: monospace; font-size: 9px;">{e["time"]}</span>'
-            f'<span style="font-size: 10px;">{e["icon"]}</span>'
-            f'<span style="color: #cbd5e1; font-weight: 500;">{e["message"]}</span>'
+            f'<div style="display: flex; align-items: center; gap: 8px; padding: 5px 8px; margin-bottom: 4px; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.04); border-radius: 6px;">'
+            f'<span style="color: #64748b; font-family: monospace; font-size: 9px; min-width: 56px; flex-shrink: 0;">{e["time"]}</span>'
+            f'<span style="font-size: 11px; flex-shrink: 0;">{e["icon"]}</span>'
+            f'<span style="color: #cbd5e1; font-weight: 500; font-size: 10px; flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{e["message"]}</span>'
+            f'<span style="background: {status_bg}; color: {status_color}; border: 1px solid {status_border}; border-radius: 4px; padding: 1px 6px; font-size: 7.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; flex-shrink: 0;">{status_label}</span>'
             f'</div>'
         )
 
     timeline_html = (
-        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 12px; padding: 12px 14px; min-height: 180px; box-sizing: border-box; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif;">'
+        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 12px; padding: 10px 12px; min-height: 200px; box-sizing: border-box; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif; display: flex; flex-direction: column;">'
         f'<div style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 8px;">LIVE INCIDENT TIMELINE</div>'
-        f'<div style="max-height: 140px; overflow-y: auto; font-size: 10px; line-height: 1.4;">'
+        f'<div style="max-height: 160px; overflow-y: auto; font-size: 10px; line-height: 1.4; flex-grow: 1;">'
         f'{"".join(events_html)}'
         f'</div></div>'
     )
@@ -925,9 +934,9 @@ def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, 
         )
 
     risk_engine_html = (
-        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 12px; padding: 12px 14px; min-height: 180px; box-sizing: border-box; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif;">'
+        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 12px; padding: 10px 12px; min-height: 200px; box-sizing: border-box; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif; display: flex; flex-direction: column;">'
         f'<div style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 8px;">COMPOUND RISK ENGINE</div>'
-        f'<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; max-height: 140px; overflow-y: auto;">'
+        f'<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; max-height: 160px; overflow-y: auto; flex-grow: 1;">'
         f'{"".join(badges)}'
         f'</div></div>'
     )
@@ -1004,22 +1013,25 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         recommendation = "Continue standard plant surveillance."
 
     ai_decision_html = (
-        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:12px 14px; min-height:220px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column; justify-content:space-between;">'
-        f'<div>'
+        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 15px; min-height:200px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">'
         f'<div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:10px;">AI DECISION ENGINE</div>'
-        f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">'
-        f'<div><span style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:0.5px;">Risk Level</span><div style="font-size:17px; font-weight:800; color:{risk_color}; display:flex; align-items:center; gap:4px;">{risk_icon} {risk_level}</div></div>'
-        f'<div style="text-align:right;"><span style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:0.5px;">Confidence</span><div style="font-size:17px; font-weight:800; color:#3b82f6;">{confidence}</div></div>'
+        f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; flex-grow:1; align-content:space-between;">'
+        f'<div style="display:flex; flex-direction:column; gap:14px; justify-content:space-between;">'
+        f'<div><span style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:0.5px; display:block; margin-bottom:2px;">Risk Level</span><div style="font-size:17px; font-weight:800; color:{risk_color}; display:flex; align-items:center; gap:4px;">{risk_icon} {risk_level}</div></div>'
+        f'<div><span style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:0.5px; display:block; margin-bottom:2px;">Confidence</span><div style="font-size:17px; font-weight:800; color:#3b82f6;">{confidence}</div></div>'
         f'</div>'
-        f'<div style="margin-bottom:10px;">'
+        f'<div style="display:flex; flex-direction:column; gap:14px; border-left:1px solid rgba(255,255,255,0.06); padding-left:12px; justify-content:space-between;">'
+        f'<div style="flex-grow:1;">'
         f'<span style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; display:block; margin-bottom:4px; letter-spacing:0.5px;">Matched Rules</span>'
-        f'<div style="line-height:1.4; max-height:42px; overflow-y:auto; font-size:11.5px;">{reasons_bullets}</div>'
-        f'</div>'
+        f'<div style="line-height:1.5; max-height:60px; overflow-y:auto; font-size:11.5px;">{reasons_bullets}</div>'
         f'</div>'
         f'<div>'
         f'<span style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; display:block; margin-bottom:3px; letter-spacing:0.5px;">Recommendation</span>'
-        f'<div style="font-size:13.5px; font-weight:700; color:#fff; line-height:1.4;">{recommendation}</div>'
-        f'</div></div>'
+        f'<div style="font-size:12.5px; font-weight:700; color:#fff; line-height:1.35;">{recommendation}</div>'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+        f'</div>'
     )
     placeholders['ai_decision'].markdown(ai_decision_html, unsafe_allow_html=True)
 
@@ -1031,7 +1043,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
     gas_spark_svg = render_sparkline_svg(st.session_state.telemetry_history_gas, stroke_color="#ff9f43", height=50)
 
     telemetry_html = f"""
-    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:12px 14px; min-height:220px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column; justify-content:space-between;">
+    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 15px; min-height:200px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">
         <div>
             <div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:10px;">LIVE TELEMETRY</div>
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
@@ -1043,7 +1055,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
                 </div>
             </div>
         </div>
-        <div>
+        <div style="margin-top:auto;">
             <div style="font-size:10px; color:#ff9f43; font-weight:700; margin-bottom:3px; display:flex; justify-content:space-between; letter-spacing:0.5px;">
                 <span>GAS LEVEL TREND</span>
                 <span style="font-family:monospace;">Current: {current_gas:.1f} ppm</span>
@@ -1099,18 +1111,16 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         """
 
     zone_response_html = (
-        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:12px 14px; min-height:220px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column; justify-content:space-between;">'
-        f'<div>'
+        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 15px; min-height:200px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">'
         f'<div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:10px;">ZONE RESPONSE & ACTIONS</div>'
-        f'<div style="display:flex; flex-direction:column; gap:6px; font-size:11.5px; line-height:1.35;">'
-        f'<div><span style="color:#94a3b8; font-weight:600;">Affected Zone:</span> <span style="color:#fff; font-weight:700;">{ZONE_LABELS.get(selected_zone, selected_zone)}</span></div>'
-        f'<div><span style="color:#94a3b8; font-weight:600;">Emergency Teams:</span> <span style="color:#cbd5e1;">{teams_str}</span></div>'
-        f'<div><span style="color:#94a3b8; font-weight:600;">Channels:</span> <span style="color:#cbd5e1; font-size:10px;">{channels}</span></div>'
-        f'<div><span style="color:#94a3b8; font-weight:600;">Deadline:</span> <span style="color:#fff; font-weight:700;">{deadline}</span></div>'
-        f'<div><span style="color:#94a3b8; font-weight:600;">Action:</span> <span style="color:{risk_color}; font-weight:700; font-size:11px;">{action}</span></div>'
+        f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; font-size:11px; line-height:1.3; margin-bottom:10px;">'
+        f'<div><span style="color:#94a3b8; font-weight:600; font-size:9.5px; display:block; margin-bottom:1px;">Affected Zone</span><span style="color:#fff; font-weight:700;">{ZONE_LABELS.get(selected_zone, selected_zone)}</span></div>'
+        f'<div><span style="color:#94a3b8; font-weight:600; font-size:9.5px; display:block; margin-bottom:1px;">Emergency Teams</span><span style="color:#cbd5e1;">{teams_str}</span></div>'
+        f'<div><span style="color:#94a3b8; font-weight:600; font-size:9.5px; display:block; margin-bottom:1px;">Channels</span><span style="color:#cbd5e1; font-size:10px;">{channels}</span></div>'
+        f'<div><span style="color:#94a3b8; font-weight:600; font-size:9.5px; display:block; margin-bottom:1px;">Deadline</span><span style="color:#fff; font-weight:700;">{deadline}</span></div>'
+        f'<div style="grid-column:1 / -1;"><span style="color:#94a3b8; font-weight:600; font-size:9.5px; display:block; margin-bottom:1px;">Action</span><span style="color:{risk_color}; font-weight:700; font-size:11px;">{action}</span></div>'
         f'</div>'
-        f'</div>'
-        f'<div style="border-top:1px solid rgba(255,255,255,0.06); padding-top:6px; margin-top:6px;">'
+        f'<div style="border-top:1px solid rgba(255,255,255,0.06); padding-top:8px; margin-top:auto; flex-grow:1;">'
         f'<div style="font-size:9.5px; color:#94a3b8; text-transform:uppercase; font-weight:600; margin-bottom:5px; letter-spacing:0.5px;">Operator Failsafes</div>'
         f'<div style="line-height:1.4; font-size:11px;">{actions_html}</div>'
         f'</div></div>'
@@ -1389,20 +1399,20 @@ def render_right_panel_diagnostics(placeholders_dict: dict, data_dict: dict, am:
 def render_incident_summary_html(open_incidents: int, closed_incidents: int, today_incidents: int) -> str:
     """Renders a beautiful industrial SCADA incident summary card"""
     html = f"""
-    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:12px 14px; min-height:220px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column; justify-content:space-between;">
-        <div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">INCIDENT SUMMARY</div>
-        <div style="display:flex; flex-direction:column; gap:10px; flex-grow:1; justify-content:center;">
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.15); border-radius:8px;">
-                <span style="font-size:11.5px; font-weight:700; color:#ef4444; letter-spacing:0.5px;">ACTIVE/OPEN INCIDENTS</span>
-                <span style="font-size:22px; font-weight:800; color:#ef4444; font-family:monospace; line-height:1.0;">{open_incidents}</span>
+    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 15px; min-height:200px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">
+        <div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:10px;">INCIDENT SUMMARY</div>
+        <div style="display:flex; flex-direction:column; gap:8px; flex-grow:1; justify-content:center;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 12px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.15); border-radius:8px;">
+                <span style="font-size:11px; font-weight:700; color:#ef4444; letter-spacing:0.5px;">ACTIVE/OPEN INCIDENTS</span>
+                <span style="font-size:24px; font-weight:800; color:#ef4444; font-family:monospace; line-height:1.0;">{open_incidents}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(34,197,94,0.06); border:1px solid rgba(34,197,94,0.15); border-radius:8px;">
-                <span style="font-size:11.5px; font-weight:700; color:#22c55e; letter-spacing:0.5px;">RESOLVED/CLOSED INCIDENTS</span>
-                <span style="font-size:22px; font-weight:800; color:#22c55e; font-family:monospace; line-height:1.0;">{closed_incidents}</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 12px; background:rgba(34,197,94,0.06); border:1px solid rgba(34,197,94,0.15); border-radius:8px;">
+                <span style="font-size:11px; font-weight:700; color:#22c55e; letter-spacing:0.5px;">RESOLVED/CLOSED INCIDENTS</span>
+                <span style="font-size:24px; font-weight:800; color:#22c55e; font-family:monospace; line-height:1.0;">{closed_incidents}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:8px;">
-                <span style="font-size:11.5px; font-weight:700; color:#cbd5e1; letter-spacing:0.5px;">TOTAL INCIDENTS TODAY</span>
-                <span style="font-size:22px; font-weight:800; color:#cbd5e1; font-family:monospace; line-height:1.0;">{today_incidents}</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:8px;">
+                <span style="font-size:11px; font-weight:700; color:#cbd5e1; letter-spacing:0.5px;">TOTAL INCIDENTS TODAY</span>
+                <span style="font-size:24px; font-weight:800; color:#cbd5e1; font-family:monospace; line-height:1.0;">{today_incidents}</span>
             </div>
         </div>
     </div>

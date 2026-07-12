@@ -226,7 +226,7 @@ section[data-testid="stSidebar"] > div {{ padding-top: 0 !important; }}
 
 /* LAYOUT UTILITIES */
 .main-content {{
-  padding: 0px 18px 110px 18px;
+  padding: 0px 18px 20px 18px;
 }}
 div[data-testid="stVerticalBlock"] > div {{ margin-top: 0px !important; gap: 14px !important; }}
 div[data-testid="stHorizontalBlock"] {{ gap: 14px !important; align-items: stretch !important; }}
@@ -242,7 +242,7 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) {{
   flex-direction: row !important;
   flex-wrap: nowrap !important;
   align-items: stretch !important;
-  gap: 16px !important;
+  gap: 14px !important;
   width: 100% !important;
   max-width: 100% !important;
   margin: 0 !important;
@@ -264,7 +264,7 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
 
 /* Optimize sidebar widget spacing and expanders padding */
 div[data-testid="column"]:first-child [data-testid="stExpander"] {{
-    margin-bottom: 6px !important;
+    margin-bottom: 14px !important;
 }}
 div[data-testid="column"]:first-child [data-testid="stExpander"] details summary {{
     padding: 6px 10px !important;
@@ -359,7 +359,7 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   flex: 1 1 auto !important;
   min-height: 0 !important;
   height: 100% !important;
-  gap: 8px !important;
+  gap: 14px !important;
 }}
 
 /* LEFT SIDEBAR: Recent Alerts expander fills remaining space (flex: 1) and its
