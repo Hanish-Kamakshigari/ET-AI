@@ -228,8 +228,8 @@ section[data-testid="stSidebar"] > div {{ padding-top: 0 !important; }}
 .main-content {{
   padding: 0px 18px 110px 18px;
 }}
-div[data-testid="stVerticalBlock"] > div {{ margin-top: 0px !important; gap: 12px !important; }}
-div[data-testid="stHorizontalBlock"] {{ gap: 12px !important; align-items: stretch !important; }}
+div[data-testid="stVerticalBlock"] > div {{ margin-top: 0px !important; gap: 14px !important; }}
+div[data-testid="stHorizontalBlock"] {{ gap: 14px !important; align-items: stretch !important; }}
 
 /* Global transition for interactive elements and containers */
 button, select, div[role="button"], .stButton>button, [data-testid="stExpander"] {{
@@ -251,14 +251,14 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) {{
 
 /* Sidebar column (1st child of layout block) */
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:first-child {{
-  width: var(--sidebar-width, 300px) !important;
-  min-width: var(--sidebar-width, 300px) !important;
-  max-width: var(--sidebar-width, 300px) !important;
-  flex: 0 0 var(--sidebar-width, 300px) !important;
+  width: 19% !important;
+  min-width: 220px !important;
+  max-width: 19% !important;
+  flex: 0 0 19% !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
   border-right: 1px solid var(--border2) !important;
-  background: linear-gradient(180deg, var(--bg2) 0%, #0A1220 100%) !important;
-  padding: 12px !important;
+  background: linear-gradient(180deg, #070D1A 0%, #050811 100%) !important;
+  padding: 14px !important;
   box-sizing: border-box !important;
 }}
 
@@ -273,11 +273,11 @@ div[data-testid="column"]:first-child [data-testid="stExpander"] details summary
 
 /* Center column (2nd child of layout block) - responsive, fills all remaining space */
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:nth-child(2) {{
-  flex: 1 1 auto !important;
-  width: 100% !important;
+  flex: 1 1 53% !important;
+  width: 53% !important;
   min-width: 0 !important;
   max-width: none !important;
-  padding: 0 12px !important;
+  padding: 14px 18px !important;
   box-sizing: border-box !important;
   margin-left: 0 !important;
   transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
@@ -317,13 +317,13 @@ div[data-testid="column"]:has(div[data-testid="stImage"]) {{
 
 /* Right column (3rd child of layout block) */
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:last-child {{
-  width: 360px !important;
-  min-width: 360px !important;
-  max-width: 360px !important;
-  flex: 0 0 360px !important;
+  width: 28% !important;
+  min-width: 280px !important;
+  max-width: 28% !important;
+  flex: 0 0 28% !important;
   box-sizing: border-box !important;
-  padding: 12px !important;
-  background: rgba(10, 22, 40, 0.2) !important;
+  padding: 14px !important;
+  background: linear-gradient(180deg, #070D1A 0%, #050811 100%) !important;
   border-left: 1px solid var(--border2) !important;
 }}
 
@@ -344,9 +344,50 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   height: 100% !important;
   max-height: 100% !important;
   box-sizing: border-box !important;
+  overflow: hidden !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}}
+
+/* The Streamlit vertical block inside each panel becomes the flex column.
+   This is the actual flex container that distributes space among children. */
+.st-key-left_console_panel > div[data-testid="stVerticalBlock"],
+.st-key-right_diag_panel > div[data-testid="stVerticalBlock"] {{
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  gap: 8px !important;
+}}
+
+/* LEFT SIDEBAR: Recent Alerts expander fills remaining space (flex: 1) and its
+   inner content scrolls independently. Targeted via :has(summary text match). */
+.st-key-left_console_panel div[data-testid="stExpander"]:has(summary:has-text("Recent Alerts")) {{
+  flex: 1 1 auto !important;
+  min-height: 60px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}}
+.st-key-left_console_panel div[data-testid="stExpander"]:has(summary:has-text("Recent Alerts")) > div {{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
-  width: 100% !important;
+}}
+
+/* LEFT SIDEBAR: Footer (version/build) pinned to bottom via margin-top: auto */
+.st-key-left_console_panel > div[data-testid="stVerticalBlock"] > div:last-child {{
+  margin-top: auto !important;
+  flex-shrink: 0 !important;
+}}
+
+/* RIGHT SIDEBAR: Last diagnostics section fills remaining height */
+.st-key-right_diag_panel > div[data-testid="stVerticalBlock"] > div:last-child {{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
 }}
 
 /* Slim, unobtrusive scrollbar for the side panels */
