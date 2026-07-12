@@ -306,7 +306,7 @@ def render_sidebar(
                     )
                 recent_html = "".join(recent_html_lines)
                 recent_alerts_slot.markdown(
-                    f'<div style="max-height:180px; overflow-y:auto; padding-right:4px;">{recent_html}</div>',
+                    f'<div style="padding-right:4px;">{recent_html}</div>',
                     unsafe_allow_html=True
                 )
                 placeholders['recent_alerts'] = recent_alerts_slot

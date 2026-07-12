@@ -436,9 +436,8 @@ st.markdown(f"""
     </div>
 </div>
 <style>
-/* Add extra bottom padding to main layout content wrapper to prevent overlap with fixed footer */
-.main-content {{
-    padding-bottom: 140px !important;
-}}
+/* Bottom padding for the fixed SCADA footer is handled by the canonical
+   .main-content rule in src/ui_components.py (padding-bottom: 110px).
+   No duplicate override here to avoid conflicting spacing. */
 </style>
 """, unsafe_allow_html=True)

@@ -194,6 +194,10 @@ def get_global_css() -> str:
 }}
 
 /* BASE RESET */
+html, body, .stApp, #root {{
+  margin: 0 !important;
+  padding-top: 0 !important;
+}}
 html, body, [class*="css"], .stApp {{
   font-family: var(--font-system) !important;
   color: var(--text) !important;
@@ -203,7 +207,14 @@ html, body, [class*="css"], .stApp {{
 .stApp {{ background: var(--bg) !important; }}
 #MainMenu, footer {{ visibility: hidden; }}
 header[data-testid="stHeader"] {{ display: none !important; }}
-.block-container {{ padding: 0 !important; max-width: 100% !important; }}
+/* Single canonical rule: push all page content directly below the fixed 52px navbar.
+   No extra top padding/margin — content starts immediately under the navbar. */
+.block-container {{
+  padding: 52px 0 0 0 !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}}
 .stMarkdown {{ margin: 0 !important; }}
 section[data-testid="stSidebar"] > div {{ padding-top: 0 !important; }}
 
@@ -216,10 +227,7 @@ section[data-testid="stSidebar"] > div {{ padding-top: 0 !important; }}
 /* LAYOUT UTILITIES */
 .main-content {{
   padding: 0px 18px 110px 18px;
-  margin-top: -45px !important;
 }}
-.block-container {{ padding-top: 0 !important; padding-bottom: 0 !important; margin-top: 0 !important; }}
-section.main > div:first-child {{ padding-top: 0 !important; }}
 div[data-testid="stVerticalBlock"] > div {{ margin-top: 0px !important; gap: 12px !important; }}
 div[data-testid="stHorizontalBlock"] {{ gap: 12px !important; align-items: stretch !important; }}
 
@@ -233,7 +241,7 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) {{
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
-  align-items: flex-start !important;
+  align-items: stretch !important;
   gap: 16px !important;
   width: 100% !important;
   max-width: 100% !important;
@@ -319,12 +327,23 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   border-left: 1px solid var(--border2) !important;
 }}
 
-/* Pin the left console and right diagnostics panel, scroll independently */
+/* Equal-height columns: each sidebar column fills the viewport height below the
+   fixed 52px navbar. The column is the height container; the inner panel fills
+   it (height:100%) and scrolls independently. No position:sticky — the columns
+   participate normally in the parent's align-items: stretch flex layout so left,
+   center, and right always share the same height with no empty gaps beneath. */
+div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:first-child,
+div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:last-child {{
+  height: calc(100vh - 52px) !important;
+  max-height: calc(100vh - 52px) !important;
+  overflow: hidden !important;
+}}
+
 .st-key-left_console_panel,
 .st-key-right_diag_panel {{
-  position: sticky !important;
-  top: 64px !important;
-  max-height: calc(100vh - 64px) !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  box-sizing: border-box !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
   width: 100% !important;
@@ -845,12 +864,7 @@ div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="
   border: 1px solid rgba(255,255,255,0.05);
 }}
 
-/* Push page content below navbar — tightened to remove dead space above navbar */
-.main-content,
-section.main > div:first-child,
-.block-container {{
-  padding-top: 56px !important;
-}}
+/* Navbar offset is handled by .block-container rule above — no duplicate needed */
 
 /* AI Explainability Redesign Animations */
 @keyframes slideInStep {{
