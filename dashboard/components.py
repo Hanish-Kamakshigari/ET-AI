@@ -171,7 +171,6 @@ def render_zones_tab(placeholders, data_dict, engine=None, alert_system=None):
     with col_a:
         video_path = _zone_video_path(selected_zone)
         if video_path:
-            from src.config.ui_constants import ZONE_LABELS
             selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
             st.markdown(f"""
             <div class='cctv-header'>
@@ -883,16 +882,16 @@ def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, 
         else:
             status_bg, status_color, status_border, status_label = 'rgba(34,197,94,0.12)', '#22c55e', 'rgba(34,197,94,0.3)', 'NOMINAL'
         events_html.append(
-            f'<div style="display: flex; align-items: center; gap: 8px; padding: 5px 8px; margin-bottom: 4px; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.04); border-radius: 6px;">'
-            f'<span style="color: #64748b; font-family: monospace; font-size: 9px; min-width: 56px; flex-shrink: 0;">{e["time"]}</span>'
-            f'<span style="font-size: 11px; flex-shrink: 0;">{e["icon"]}</span>'
-            f'<span style="color: #cbd5e1; font-weight: 500; font-size: 10px; flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{e["message"]}</span>'
-            f'<span style="background: {status_bg}; color: {status_color}; border: 1px solid {status_border}; border-radius: 4px; padding: 1px 6px; font-size: 7.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; flex-shrink: 0;">{status_label}</span>'
+            f'<div style="display: grid; grid-template-columns: 64px 20px 1fr auto; align-items: center; gap: 6px; padding: 5px 10px; margin-bottom: 3px; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.04); border-radius: 6px;">'
+            f'<span style="color: #64748b; font-family: monospace; font-size: 9px; text-align: left;">{e["time"]}</span>'
+            f'<span style="font-size: 11px; text-align: center;">{e["icon"]}</span>'
+            f'<span style="color: #cbd5e1; font-weight: 500; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{e["message"]}</span>'
+            f'<span style="background: {status_bg}; color: {status_color}; border: 1px solid {status_border}; border-radius: 4px; padding: 1px 6px; font-size: 7.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px;">{status_label}</span>'
             f'</div>'
         )
 
     timeline_html = (
-        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 12px; padding: 10px 12px; min-height: 200px; box-sizing: border-box; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif; display: flex; flex-direction: column;">'
+        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 12px; padding: 14px 16px; min-height: 170px; box-sizing: border-box; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif; display: flex; flex-direction: column;">'
         f'<div style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 8px;">LIVE INCIDENT TIMELINE</div>'
         f'<div style="max-height: 160px; overflow-y: auto; font-size: 10px; line-height: 1.4; flex-grow: 1;">'
         f'{"".join(events_html)}'
@@ -934,7 +933,7 @@ def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, 
         )
 
     risk_engine_html = (
-        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 12px; padding: 10px 12px; min-height: 200px; box-sizing: border-box; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif; display: flex; flex-direction: column;">'
+        f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 12px; padding: 14px 16px; min-height: 170px; box-sizing: border-box; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif; display: flex; flex-direction: column;">'
         f'<div style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 8px;">COMPOUND RISK ENGINE</div>'
         f'<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; max-height: 160px; overflow-y: auto; flex-grow: 1;">'
         f'{"".join(badges)}'
@@ -1013,21 +1012,21 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         recommendation = "Continue standard plant surveillance."
 
     ai_decision_html = (
-        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 15px; min-height:200px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">'
-        f'<div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:10px;">AI DECISION ENGINE</div>'
-        f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; flex-grow:1; align-content:space-between;">'
-        f'<div style="display:flex; flex-direction:column; gap:14px; justify-content:space-between;">'
+        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 16px; min-height:155px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">'
+        f'<div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">AI DECISION ENGINE</div>'
+        f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 16px; flex-grow:1; align-content:space-between;">'
+        f'<div style="display:flex; flex-direction:column; gap:8px; justify-content:space-between;">'
         f'<div><span style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:0.5px; display:block; margin-bottom:2px;">Risk Level</span><div style="font-size:17px; font-weight:800; color:{risk_color}; display:flex; align-items:center; gap:4px;">{risk_icon} {risk_level}</div></div>'
         f'<div><span style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:0.5px; display:block; margin-bottom:2px;">Confidence</span><div style="font-size:17px; font-weight:800; color:#3b82f6;">{confidence}</div></div>'
         f'</div>'
-        f'<div style="display:flex; flex-direction:column; gap:14px; border-left:1px solid rgba(255,255,255,0.06); padding-left:12px; justify-content:space-between;">'
+        f'<div style="display:flex; flex-direction:column; gap:8px; border-left:1px solid rgba(255,255,255,0.06); padding-left:14px; justify-content:space-between;">'
         f'<div style="flex-grow:1;">'
         f'<span style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; display:block; margin-bottom:4px; letter-spacing:0.5px;">Matched Rules</span>'
-        f'<div style="line-height:1.5; max-height:60px; overflow-y:auto; font-size:11.5px;">{reasons_bullets}</div>'
+        f'<div style="line-height:1.4; max-height:52px; overflow-y:auto; font-size:11px;">{reasons_bullets}</div>'
         f'</div>'
         f'<div>'
         f'<span style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; display:block; margin-bottom:3px; letter-spacing:0.5px;">Recommendation</span>'
-        f'<div style="font-size:12.5px; font-weight:700; color:#fff; line-height:1.35;">{recommendation}</div>'
+        f'<div style="font-size:12px; font-weight:700; color:#fff; line-height:1.3;">{recommendation}</div>'
         f'</div>'
         f'</div>'
         f'</div>'
@@ -1043,9 +1042,9 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
     gas_spark_svg = render_sparkline_svg(st.session_state.telemetry_history_gas, stroke_color="#ff9f43", height=50)
 
     telemetry_html = f"""
-    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 15px; min-height:200px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">
+    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 16px; min-height:155px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">
         <div>
-            <div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:10px;">LIVE TELEMETRY</div>
+            <div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">LIVE TELEMETRY</div>
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
                 <div style="flex:1; background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.03); border-radius:8px; padding:4px 2px; text-align:center;">
                     {temp_gauge_svg}
@@ -1111,9 +1110,9 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         """
 
     zone_response_html = (
-        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 15px; min-height:200px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">'
-        f'<div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:10px;">ZONE RESPONSE & ACTIONS</div>'
-        f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; font-size:11px; line-height:1.3; margin-bottom:10px;">'
+        f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 16px; min-height:155px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">'
+        f'<div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">ZONE RESPONSE & ACTIONS</div>'
+        f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; font-size:11px; line-height:1.3; margin-bottom:8px;">'
         f'<div><span style="color:#94a3b8; font-weight:600; font-size:9.5px; display:block; margin-bottom:1px;">Affected Zone</span><span style="color:#fff; font-weight:700;">{ZONE_LABELS.get(selected_zone, selected_zone)}</span></div>'
         f'<div><span style="color:#94a3b8; font-weight:600; font-size:9.5px; display:block; margin-bottom:1px;">Emergency Teams</span><span style="color:#cbd5e1;">{teams_str}</span></div>'
         f'<div><span style="color:#94a3b8; font-weight:600; font-size:9.5px; display:block; margin-bottom:1px;">Channels</span><span style="color:#cbd5e1; font-size:10px;">{channels}</span></div>'
@@ -1122,7 +1121,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         f'</div>'
         f'<div style="border-top:1px solid rgba(255,255,255,0.06); padding-top:8px; margin-top:auto; flex-grow:1;">'
         f'<div style="font-size:9.5px; color:#94a3b8; text-transform:uppercase; font-weight:600; margin-bottom:5px; letter-spacing:0.5px;">Operator Failsafes</div>'
-        f'<div style="line-height:1.4; font-size:11px;">{actions_html}</div>'
+        f'<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px 10px; line-height:1.4; font-size:11px;">{actions_html}</div>'
         f'</div></div>'
     )
     placeholders['zone_response'].markdown(zone_response_html, unsafe_allow_html=True)
@@ -1395,24 +1394,37 @@ def render_right_panel_diagnostics(placeholders_dict: dict, data_dict: dict, am:
             events_html.append("</div>")
             placeholders_dict['recent_events_inner'].markdown("".join(events_html), unsafe_allow_html=True)
 
+    # ── Safety Intelligence Panels ──────────────────────────────────────────
+    # Render the multi-agent intelligence layer (Executive Command Center,
+    # Dynamic Safety Scores, Compound Risk Intelligence, Predictive Analytics,
+    # AI Safety Copilot, Smart Alert Prioritization, Emergency Response,
+    # Incident Intelligence, Timeline, Geospatial Plant Map).
+    if 'intelligence' in placeholders_dict and placeholders_dict['intelligence']:
+        try:
+            from dashboard.intelligence_ui import render_intelligence_panels
+            with placeholders_dict['intelligence'].container():
+                render_intelligence_panels()
+        except Exception:
+            pass  # Intelligence panels are additive — never break the dashboard
+
 
 def render_incident_summary_html(open_incidents: int, closed_incidents: int, today_incidents: int) -> str:
     """Renders a beautiful industrial SCADA incident summary card"""
     html = f"""
-    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 15px; min-height:200px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">
-        <div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:10px;">INCIDENT SUMMARY</div>
-        <div style="display:flex; flex-direction:column; gap:8px; flex-grow:1; justify-content:center;">
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 12px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.15); border-radius:8px;">
-                <span style="font-size:11px; font-weight:700; color:#ef4444; letter-spacing:0.5px;">ACTIVE/OPEN INCIDENTS</span>
-                <span style="font-size:24px; font-weight:800; color:#ef4444; font-family:monospace; line-height:1.0;">{open_incidents}</span>
+    <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #1e3a5f; border-radius:12px; padding:14px 16px; min-height:155px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">
+        <div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">INCIDENT SUMMARY</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; flex-grow:1; align-items:stretch;">
+            <div style="display:flex; flex-direction:column; justify-content:space-between; padding:8px 10px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.15); border-radius:8px;">
+                <span style="font-size:9px; font-weight:700; color:#ef4444; letter-spacing:0.5px; text-transform:uppercase;">Active/Open</span>
+                <span style="font-size:28px; font-weight:800; color:#ef4444; font-family:monospace; line-height:1.0; text-align:right;">{open_incidents}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 12px; background:rgba(34,197,94,0.06); border:1px solid rgba(34,197,94,0.15); border-radius:8px;">
-                <span style="font-size:11px; font-weight:700; color:#22c55e; letter-spacing:0.5px;">RESOLVED/CLOSED INCIDENTS</span>
-                <span style="font-size:24px; font-weight:800; color:#22c55e; font-family:monospace; line-height:1.0;">{closed_incidents}</span>
+            <div style="display:flex; flex-direction:column; justify-content:space-between; padding:8px 10px; background:rgba(34,197,94,0.06); border:1px solid rgba(34,197,94,0.15); border-radius:8px;">
+                <span style="font-size:9px; font-weight:700; color:#22c55e; letter-spacing:0.5px; text-transform:uppercase;">Resolved/Closed</span>
+                <span style="font-size:28px; font-weight:800; color:#22c55e; font-family:monospace; line-height:1.0; text-align:right;">{closed_incidents}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:8px;">
-                <span style="font-size:11px; font-weight:700; color:#cbd5e1; letter-spacing:0.5px;">TOTAL INCIDENTS TODAY</span>
-                <span style="font-size:24px; font-weight:800; color:#cbd5e1; font-family:monospace; line-height:1.0;">{today_incidents}</span>
+            <div style="display:flex; flex-direction:column; justify-content:space-between; padding:8px 10px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:8px;">
+                <span style="font-size:9px; font-weight:700; color:#cbd5e1; letter-spacing:0.5px; text-transform:uppercase;">Total Today</span>
+                <span style="font-size:28px; font-weight:800; color:#cbd5e1; font-family:monospace; line-height:1.0; text-align:right;">{today_incidents}</span>
             </div>
         </div>
     </div>
@@ -1440,7 +1452,7 @@ def render_operational_overview(scada_placeholders: dict, data_dict: dict):
                 value=ph_level,
                 border_color=ph_color,
                 value_color=ph_color,
-                height="100px",
+                height="118px",
                 extra_html="All sectors tracked"
             ),
             unsafe_allow_html=True
@@ -1454,7 +1466,7 @@ def render_operational_overview(scada_placeholders: dict, data_dict: dict):
                 value="24/24",
                 border_color="#22C55E",
                 value_color="#22C55E",
-                height="100px",
+                height="118px",
                 extra_html="🟢 Modbus Gateway OK"
             ),
             unsafe_allow_html=True
@@ -1468,7 +1480,7 @@ def render_operational_overview(scada_placeholders: dict, data_dict: dict):
                 value="ONLINE",
                 border_color="#22C55E",
                 value_color="#22C55E",
-                height="100px",
+                height="118px",
                 extra_html="🟢 MQTT & OPC Link OK"
             ),
             unsafe_allow_html=True
@@ -1482,7 +1494,7 @@ def render_operational_overview(scada_placeholders: dict, data_dict: dict):
                 value="SQLite OK",
                 border_color="#3B82F6",
                 value_color="#60A5FA",
-                height="100px",
+                height="118px",
                 extra_html="Synced to AWS IoT"
             ),
             unsafe_allow_html=True
@@ -1496,7 +1508,7 @@ def render_operational_overview(scada_placeholders: dict, data_dict: dict):
                 value="YOLOv8n",
                 border_color="#3B82F6",
                 value_color="#60A5FA",
-                height="100px",
+                height="118px",
                 extra_html="FP16 GPU Accelerated"
             ),
             unsafe_allow_html=True
@@ -1512,7 +1524,7 @@ def render_operational_overview(scada_placeholders: dict, data_dict: dict):
                 value=sync_time_str,
                 border_color="#F59E0B",
                 value_color="#FBBF24",
-                height="100px",
+                height="118px",
                 extra_html="Real-time stream"
             ),
             unsafe_allow_html=True

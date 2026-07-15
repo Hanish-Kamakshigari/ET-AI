@@ -17,8 +17,38 @@ logging.getLogger("streamlit.runtime.scriptrunner").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 if sys.platform == 'win32':
-    # Suppress asyncio noise via log filter only — monkey-patching asyncio internals
-    # causes RecursionError on Streamlit reruns because app.py re-executes each run.
+    # 0) Patch _ProactorBasePipeTransport._call_connection_lost to swallow socket shutdown exceptions.
+    # On Windows, when a remote client forcibly closes the connection, socket.shutdown()
+    # raises ConnectionResetError (WinError 10054). Because it occurs in the finally block,
+    # it prevents socket cleanup/detachment and causes infinite loops and noisy printouts.
+    try:
+        import socket
+        from asyncio.proactor_events import _ProactorBasePipeTransport
+        
+        def _patched_call_connection_lost(self, exc):
+            if self._called_connection_lost:
+                return
+            try:
+                self._protocol.connection_lost(exc)
+            finally:
+                if hasattr(self._sock, 'shutdown') and self._sock.fileno() != -1:
+                    try:
+                        self._sock.shutdown(socket.SHUT_RDWR)
+                    except (ConnectionResetError, ConnectionAbortedError, OSError):
+                        pass
+                self._sock.close()
+                self._sock = None
+                server = self._server
+                if server is not None:
+                    server._detach(self)
+                    self._server = None
+                self._called_connection_lost = True
+
+        _ProactorBasePipeTransport._call_connection_lost = _patched_call_connection_lost
+    except Exception:
+        pass
+
+    # 1) Log filter — catches messages routed through the logging system.
     class _SuppressAsyncioFilter(logging.Filter):
         _SUPPRESS = ("Event loop is closed", "ConnectionResetError", "ConnectionAbortedError")
         def filter(self, record):
@@ -29,6 +59,24 @@ if sys.platform == 'win32':
         _lg = logging.getLogger(_log_name)
         if not any(isinstance(f, _SuppressAsyncioFilter) for f in _lg.filters):
             _lg.addFilter(_SuppressAsyncioFilter())
+
+    # 2) Exception-handler patch — the real source of the WinError 10054 printouts.
+    # asyncio calls loop.call_exception_handler() for transport errors, which bypasses
+    # the logging system entirely and writes directly to stderr.
+    try:
+        _loop = asyncio.get_event_loop()
+    except RuntimeError:
+        _loop = None
+    if _loop is not None and not getattr(_loop, '_suraksha_exc_handler_patched', False):
+        _original_exc_handler = _loop.call_exception_handler
+        _SUPPRESS_EXC = ("ConnectionResetError", "ConnectionAbortedError", "WinError 10054", "WinError 10053")
+        def _filtered_exception_handler(context):
+            msg = context.get("message", "") + str(context.get("exception", ""))
+            if any(s in msg for s in _SUPPRESS_EXC):
+                return  # swallow harmless Windows transport teardown noise
+            _original_exc_handler(context)
+        _loop.call_exception_handler = _filtered_exception_handler
+        _loop._suraksha_exc_handler_patched = True
 
 import streamlit as st
 from datetime import datetime
@@ -122,6 +170,29 @@ handle_url_actions(alert_system, am)
 # Inject CSS styles
 inject_global_css()
 
+# ════════════════════════════════════════════════════════════════════════════════
+# EMERGENCY MODE ORCHESTRATION — Immersive incident experience
+# ════════════════════════════════════════════════════════════════════════════════
+from dashboard.emergency_mode import (
+    orchestrate_emergency_mode,
+    render_critical_banner,
+    render_cctv_emergency_overlay,
+    render_camera_focus_style,
+    is_emergency_active,
+    get_affected_zone,
+)
+
+# Calculate telemetry metrics across all zones
+data_dict = calculate_telemetry(df, engine, alert_system)
+
+# Orchestrate emergency mode (injects CSS, toggles body class, audio, recovery)
+_emergency_zone = st.session_state.get('cctv_zone_selector', 'Zone_A')
+_emergency_dets = st.session_state.get('current_detections', [])
+orchestrate_emergency_mode(data_dict, _emergency_zone, _emergency_dets)
+
+# Critical incident banner placeholder (rendered after layout is created)
+critical_banner_placeholder = st.empty()
+
 # Parse active tab
 query_params = st.query_params
 active_tab = query_params.get("tab", st.session_state.get("active_tab", "dashboard"))
@@ -191,6 +262,10 @@ with col_right:
     telemetry_trends_placeholder = st.empty()
 
     st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+    st.markdown(render_section_header("🧠 SAFETY INTELLIGENCE"), unsafe_allow_html=True)
+    intelligence_placeholder = st.empty()
+
+    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("🔌 SYSTEM DIAGNOSTICS"), unsafe_allow_html=True)
 
     placeholders = {
@@ -199,7 +274,8 @@ with col_right:
         'warnings': warnings_placeholder,
         'top_banner': auto_banner_placeholder,
         'risk_engine': risk_engine_placeholder,
-        'telemetry_trends': telemetry_trends_placeholder
+        'telemetry_trends': telemetry_trends_placeholder,
+        'intelligence': intelligence_placeholder,
     }
     from dashboard.components import render_right_panel_diagnostics
     render_right_panel_diagnostics(placeholders, data_dict, am, init_mode=True)
@@ -274,6 +350,15 @@ with col_center:
 
         # Operational Overview SCADA status row (6 columns)
         st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <style>
+        /* Tighten horizontal gaps between SCADA status cards */
+        div[data-testid="stHorizontalBlock"]:has(> div > div[data-testid="stMetric"]) > div {
+            padding-left: 4px !important;
+            padding-right: 4px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         col_scada1, col_scada2, col_scada3, col_scada4, col_scada5, col_scada6 = st.columns(6)
         scada_placeholders = {
             'plant_health': col_scada1.empty(),
@@ -428,7 +513,7 @@ st.markdown(f"""
 ">
     <div>🛡️ SURAKSHAAI CONSOLE — v3.0.4</div>
     <div style="display: flex; gap: 16px;">
-        <span>👤 USER: <b>OPERATOR #08</b></span>
+        <span>👤 USER: <b>OPERATOR #01</b></span>
         <span>📡 MQTT: <b style="color: #22c55e;">CONNECTED</b></span>
         <span>🗄️ DB: <b style="color: #22c55e;">SQLITE OK</b></span>
         <span>🧠 MODEL: <b style="color: #60a5fa;">YOLOv8n-PPE</b></span>

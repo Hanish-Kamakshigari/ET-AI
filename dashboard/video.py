@@ -987,6 +987,19 @@ def stream_cctv_feed_raw(placeholders: Dict[str, Any], selected_zone: str, video
             st.session_state.current_detections = active_dets
             st.session_state.yolo_worker_counts[selected_zone] = w_count
             latest[f"{selected_zone}_worker_count"] = w_count
+
+            # ── Feed live data to the Safety Intelligence Orchestrator ──────
+            try:
+                from src.safety_intelligence import get_intelligence_orchestrator
+                _orch = get_intelligence_orchestrator()
+                _orch.ingest_live_frame(
+                    zone=selected_zone,
+                    detections=active_dets,
+                    telemetry=latest,
+                    alert_manager=am,
+                )
+            except Exception:
+                pass  # Intelligence layer is additive — never break the feed
             
             # 1. Render CCTV Frame and Status Bar first
             if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):

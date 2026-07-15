@@ -269,7 +269,7 @@ def create_layout() -> Tuple[
 
     is_expanded = st.session_state.sidebar_expanded
     sidebar_width = "300px" if is_expanded else "70px"
-    right_width = "380px"
+    right_width = "350px"
 
     # Inject dynamic css custom property for sidebar transition
     st.markdown(f"""
@@ -282,7 +282,7 @@ def create_layout() -> Tuple[
     """, unsafe_allow_html=True)
 
     # Always use constant columns ratios to prevent Streamlit from rebuilding columns container
-    col_sidebar, col_center, col_right = st.columns([1.8, 5.8, 2.4])
+    col_sidebar, col_center, col_right = st.columns([1.8, 6.1, 2.1])
 
     with col_sidebar:
         sidebar_cls = "suraksha-sidebar-expanded" if is_expanded else "suraksha-sidebar-collapsed"
