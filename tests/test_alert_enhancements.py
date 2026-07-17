@@ -22,6 +22,8 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from typing import Dict, Any, Generator, Optional, List, Tuple
+from unittest.mock import MagicMock
 
 # Ensure src is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -39,7 +41,7 @@ from src.alert_enhancements import (
 # ==============================================================================
 
 @pytest.fixture
-def mock_config():
+def mock_config() -> Dict[str, Any]:
     """Minimal config matching alerting.yaml structure."""
     return {
         "rules": {
@@ -56,7 +58,7 @@ def mock_config():
 
 
 @pytest.fixture
-def temp_db():
+def temp_db() -> Generator[str, None, None]:
     """Create a temporary database for testing."""
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
@@ -69,7 +71,7 @@ def temp_db():
 
 
 @pytest.fixture
-def mock_persistence(temp_db):
+def mock_persistence(temp_db: str) -> Generator[MagicMock, None, None]:
     """Mock PersistenceLayer with a real SQLite database."""
     persistence = MagicMock()
     persistence.db_path = temp_db
@@ -124,13 +126,13 @@ def mock_persistence(temp_db):
     # and is safe for concurrent tests — each thread gets its own connection).
     _open_connections: list = []
 
-    def _get_conn():
+    def _get_conn() -> sqlite3.Connection:
         c = sqlite3.connect(temp_db, check_same_thread=False, timeout=10)
         c.row_factory = sqlite3.Row
         _open_connections.append(c)
         return c
 
-    def _return_conn(c):
+    def _return_conn(c: sqlite3.Connection) -> None:
         try:
             c.close()
         except Exception:
@@ -151,7 +153,7 @@ def mock_persistence(temp_db):
 
 
 @pytest.fixture
-def orchestrator(mock_config, mock_persistence):
+def orchestrator(mock_config: Dict[str, Any], mock_persistence: MagicMock) -> Generator[AlertEnhancementOrchestrator, None, None]:
     """Create an AlertEnhancementOrchestrator with mock dependencies."""
     coordinator = MagicMock()
     coordinator.config = mock_config
@@ -162,15 +164,24 @@ def orchestrator(mock_config, mock_persistence):
     yield orch
 
 
-def _fetch_incident(conn, incident_id):
+def _fetch_incident(conn: sqlite3.Connection, incident_id: str) -> Optional[Dict[str, Any]]:
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM incidents WHERE incident_id = ?", (incident_id,))
     row = cursor.fetchone()
     return dict(row) if row else None
 
 
-def _insert_incident(conn, incident_id, zone="Zone_A", severity="CRITICAL", status="Active",
-                     start_time=None, acknowledged_by=None, acknowledged_at=None, end_time=None):
+def _insert_incident(
+    conn: sqlite3.Connection,
+    incident_id: str,
+    zone: str = "Zone_A",
+    severity: str = "CRITICAL",
+    status: str = "Active",
+    start_time: Optional[str] = None,
+    acknowledged_by: Optional[str] = None,
+    acknowledged_at: Optional[str] = None,
+    end_time: Optional[str] = None,
+) -> None:
     """Helper to insert a test incident."""
     cursor = conn.cursor()
     cursor.execute("""
@@ -191,13 +202,13 @@ def _insert_incident(conn, incident_id, zone="Zone_A", severity="CRITICAL", stat
 # ==============================================================================
 
 class TestRuleVersioning:
-    def test_rule_version_is_deterministic(self, mock_config):
+    def test_rule_version_is_deterministic(self, mock_config: Dict[str, Any]) -> None:
         """Rule version hash should be deterministic for the same config."""
         registry1 = RuleVersionRegistry(mock_config)
         registry2 = RuleVersionRegistry(mock_config)
         assert registry1.get_version() == registry2.get_version()
 
-    def test_rule_version_changes_with_config(self, mock_config):
+    def test_rule_version_changes_with_config(self, mock_config: Dict[str, Any]) -> None:
         """Different rule configs should produce different version hashes."""
         registry1 = RuleVersionRegistry(mock_config)
         modified_config = json.loads(json.dumps(mock_config))
@@ -205,13 +216,13 @@ class TestRuleVersioning:
         registry2 = RuleVersionRegistry(modified_config)
         assert registry1.get_version() != registry2.get_version()
 
-    def test_rule_version_is_12_chars(self, mock_config):
+    def test_rule_version_is_12_chars(self, mock_config: Dict[str, Any]) -> None:
         """Version hash should be truncated to 12 characters."""
         registry = RuleVersionRegistry(mock_config)
         version = registry.get_version()
         assert len(version) == 12
 
-    def test_rule_version_metadata_contains_snapshot(self, mock_config):
+    def test_rule_version_metadata_contains_snapshot(self, mock_config: Dict[str, Any]) -> None:
         """Version metadata should include the rules snapshot."""
         registry = RuleVersionRegistry(mock_config)
         meta = registry.get_version_metadata()
@@ -219,7 +230,7 @@ class TestRuleVersioning:
         assert "rules_snapshot" in meta
         assert meta["rules_snapshot"] == mock_config["rules"]
 
-    def test_rule_version_registered_in_db(self, orchestrator, mock_persistence):
+    def test_rule_version_registered_in_db(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Active rule version should be registered in the database."""
         versions = orchestrator.get_rule_version_history()
         assert len(versions) >= 1
@@ -227,7 +238,7 @@ class TestRuleVersioning:
         assert active is not None
         assert active["is_active"] == 1
 
-    def test_incident_stamped_with_rule_version(self, orchestrator, mock_persistence):
+    def test_incident_stamped_with_rule_version(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Incidents should be stamped with the rule version that generated them."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-001")
@@ -246,7 +257,7 @@ class TestRuleVersioning:
 # ==============================================================================
 
 class TestAuditTrail:
-    def test_audit_event_recorded_on_creation(self, orchestrator, mock_persistence):
+    def test_audit_event_recorded_on_creation(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """An audit event should be recorded when an incident is created."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-AUDIT-001")
@@ -257,7 +268,7 @@ class TestAuditTrail:
         assert trail[0]["event_type"] == "INCIDENT_CREATED"
         assert trail[0]["actor"] == "system"
 
-    def test_audit_trail_records_acknowledgment(self, orchestrator, mock_persistence):
+    def test_audit_trail_records_acknowledgment(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Audit trail should record who acknowledged, when, and remarks."""
         conn = mock_persistence.get_connection()
         start = (datetime.now() - timedelta(seconds=30)).isoformat()
@@ -271,7 +282,7 @@ class TestAuditTrail:
         assert ack_events[0]["actor"] == "John Doe"
         assert ack_events[0]["remarks"] == "Investigating gas leak"
 
-    def test_audit_trail_records_response_duration(self, orchestrator, mock_persistence):
+    def test_audit_trail_records_response_duration(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Response duration should be computed and stored on acknowledgment."""
         conn = mock_persistence.get_connection()
         start = (datetime.now() - timedelta(seconds=45)).isoformat()
@@ -285,7 +296,7 @@ class TestAuditTrail:
         assert row["response_duration_seconds"] is not None
         assert row["response_duration_seconds"] >= 40  # ~45 seconds
 
-    def test_audit_trail_records_resolution(self, orchestrator, mock_persistence):
+    def test_audit_trail_records_resolution(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Audit trail should record incident resolution."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-RES-001")
@@ -302,7 +313,7 @@ class TestAuditTrail:
 # ==============================================================================
 
 class TestIncidentTimeline:
-    def test_timeline_has_detection_event(self, orchestrator, mock_persistence):
+    def test_timeline_has_detection_event(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Timeline should start with a DETECTION event."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-TL-001")
@@ -312,7 +323,7 @@ class TestIncidentTimeline:
         assert len(timeline) >= 1
         assert timeline[0]["event_type"] == "DETECTION"
 
-    def test_timeline_records_notifications(self, orchestrator, mock_persistence):
+    def test_timeline_records_notifications(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Timeline should record notification dispatch and sent events."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-TL-002")
@@ -326,7 +337,7 @@ class TestIncidentTimeline:
         assert "NOTIFICATION_DISPATCHED" in event_types
         assert "NOTIFICATION_SENT" in event_types
 
-    def test_timeline_is_chronologically_ordered(self, orchestrator, mock_persistence):
+    def test_timeline_is_chronologically_ordered(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Timeline events should be in chronological order."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-TL-003")
@@ -342,7 +353,7 @@ class TestIncidentTimeline:
         timestamps = [e["event_timestamp"] for e in timeline]
         assert timestamps == sorted(timestamps)
 
-    def test_timeline_records_full_lifecycle(self, orchestrator, mock_persistence):
+    def test_timeline_records_full_lifecycle(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Timeline should capture the full incident lifecycle."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-LIFE-001")
@@ -366,7 +377,7 @@ class TestIncidentTimeline:
 # ==============================================================================
 
 class TestSnapshotAttachment:
-    def test_snapshot_saved_and_retrieved(self, orchestrator, mock_persistence):
+    def test_snapshot_saved_and_retrieved(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Snapshots should be saved and retrievable for an incident."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-SNAP-001")
@@ -386,7 +397,7 @@ class TestSnapshotAttachment:
         finally:
             os.unlink(snap_path)
 
-    def test_snapshot_path_stored_on_incident(self, orchestrator, mock_persistence):
+    def test_snapshot_path_stored_on_incident(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """The incident record itself should have the snapshot path."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-SNAP-002")
@@ -403,7 +414,7 @@ class TestSnapshotAttachment:
         finally:
             os.unlink(snap_path)
 
-    def test_snapshot_timeline_event_recorded(self, orchestrator, mock_persistence):
+    def test_snapshot_timeline_event_recorded(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """A SNAPSHOT_CAPTURED timeline event should be recorded."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-SNAP-003")
@@ -425,7 +436,7 @@ class TestSnapshotAttachment:
 # ==============================================================================
 
 class TestSystemMetrics:
-    def test_metrics_returns_all_fields(self, orchestrator, mock_persistence):
+    def test_metrics_returns_all_fields(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """System metrics should return all expected fields."""
         metrics = orchestrator.get_system_metrics()
         assert "active_incidents" in metrics
@@ -438,7 +449,7 @@ class TestSystemMetrics:
         assert "incidents_by_zone" in metrics
         assert "timestamp" in metrics
 
-    def test_active_incidents_count(self, orchestrator, mock_persistence):
+    def test_active_incidents_count(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Active incidents count should reflect non-resolved incidents."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-MET-001", status="Active")
@@ -448,7 +459,7 @@ class TestSystemMetrics:
         metrics = orchestrator.get_system_metrics()
         assert metrics["active_incidents"] == 2
 
-    def test_notification_success_rate(self, orchestrator, mock_persistence):
+    def test_notification_success_rate(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Notification success rate should be computed correctly."""
         conn = mock_persistence.get_connection()
         cursor = conn.cursor()
@@ -463,7 +474,7 @@ class TestSystemMetrics:
         metrics = orchestrator.get_system_metrics()
         assert metrics["notification_success_rate"] == 75.0
 
-    def test_false_positive_rate(self, orchestrator, mock_persistence):
+    def test_false_positive_rate(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """False-positive rate = auto-resolved without ack / total resolved."""
         conn = mock_persistence.get_connection()
         # 2 resolved with ack, 3 resolved without ack -> 60% FP rate
@@ -478,7 +489,7 @@ class TestSystemMetrics:
         metrics = orchestrator.get_system_metrics()
         assert metrics["false_positive_rate"] == 60.0
 
-    def test_metrics_by_severity(self, orchestrator, mock_persistence):
+    def test_metrics_by_severity(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Metrics should include breakdown by severity."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-SEV-001", severity="CRITICAL")
@@ -495,7 +506,7 @@ class TestSystemMetrics:
 # ==============================================================================
 
 class TestEdgeCases:
-    def test_simultaneous_critical_incidents(self, orchestrator, mock_persistence):
+    def test_simultaneous_critical_incidents(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Multiple critical incidents created simultaneously should all be tracked."""
         conn = mock_persistence.get_connection()
         incident_ids = [f"INC-SIM-{i}" for i in range(10)]
@@ -504,7 +515,7 @@ class TestEdgeCases:
         for iid in incident_ids:
             _insert_incident(conn, iid, severity="CRITICAL")
 
-            def create(iid=iid):
+            def create(iid: str = iid) -> None:
                 orchestrator.on_incident_created(iid)
 
             t = threading.Thread(target=create)
@@ -519,7 +530,7 @@ class TestEdgeCases:
             assert len(trail) >= 1
             assert trail[0]["event_type"] == "INCIDENT_CREATED"
 
-    def test_notification_failure_recorded(self, orchestrator, mock_persistence):
+    def test_notification_failure_recorded(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Notification failures should be recorded in audit trail and timeline."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-FAIL-001")
@@ -535,7 +546,7 @@ class TestEdgeCases:
         fail_tl = [e for e in timeline if e["event_type"] == "NOTIFICATION_FAILED"]
         assert len(fail_tl) == 1
 
-    def test_corrupted_persistence_graceful_degradation(self, mock_config):
+    def test_corrupted_persistence_graceful_degradation(self, mock_config: Dict[str, Any]) -> None:
         """System should degrade gracefully if persistence is corrupted."""
         broken_persistence = MagicMock()
         broken_persistence.get_connection.side_effect = sqlite3.OperationalError("database is locked")
@@ -549,7 +560,7 @@ class TestEdgeCases:
         with pytest.raises(sqlite3.OperationalError):
             EnhancedPersistence(broken_persistence)
 
-    def test_high_frequency_event_bursts(self, orchestrator, mock_persistence):
+    def test_high_frequency_event_bursts(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """High-frequency event bursts should be handled without data loss."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-BURST-001")
@@ -562,13 +573,13 @@ class TestEdgeCases:
         dispatch_events = [e for e in timeline if e["event_type"] == "NOTIFICATION_DISPATCHED"]
         assert len(dispatch_events) == 100
 
-    def test_nonexistent_incident_queries(self, orchestrator):
+    def test_nonexistent_incident_queries(self, orchestrator: AlertEnhancementOrchestrator) -> None:
         """Querying audit trail / timeline for nonexistent incident should return empty."""
         assert orchestrator.get_audit_trail("NONEXISTENT") == []
         assert orchestrator.get_incident_timeline("NONEXISTENT") == []
         assert orchestrator.get_snapshots("NONEXISTENT") == []
 
-    def test_escalation_recorded_in_timeline(self, orchestrator, mock_persistence):
+    def test_escalation_recorded_in_timeline(self, orchestrator: AlertEnhancementOrchestrator, mock_persistence: MagicMock) -> None:
         """Escalation events should be recorded in both audit trail and timeline."""
         conn = mock_persistence.get_connection()
         _insert_incident(conn, "INC-ESC-001")
@@ -583,7 +594,7 @@ class TestEdgeCases:
         esc_tl = [e for e in timeline if e["event_type"] == "ESCALATED"]
         assert len(esc_tl) == 1
 
-    def test_migration_is_idempotent(self, mock_persistence):
+    def test_migration_is_idempotent(self, mock_persistence: MagicMock) -> None:
         """Running migration multiple times should not fail."""
         # First migration
         EnhancedPersistence(mock_persistence)

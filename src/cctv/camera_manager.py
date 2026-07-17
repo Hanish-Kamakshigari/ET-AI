@@ -6,7 +6,10 @@ Supports webcam, IP cameras, and video files
 import cv2
 import threading
 import time
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import matplotlib.axes
 from datetime import datetime
 import os
 import numpy as np
@@ -15,7 +18,7 @@ import numpy as np
 class CameraSource:
     """Represents a single camera source"""
     
-    def __init__(self, source_id: str, source_type: str, source_path: str):
+    def __init__(self, source_id: str, source_type: str, source_path: str) -> None:
         self.id = source_id
         self.type = source_type  # 'webcam', 'ip_camera', 'video_file'
         self.path = source_path
@@ -64,7 +67,7 @@ class CameraSource:
         """Get the latest frame without reading new one"""
         return self.frame
     
-    def release(self):
+    def release(self) -> None:
         """Release the camera resources"""
         if self.cap:
             self.cap.release()
@@ -77,7 +80,7 @@ class CameraManager:
     Supports real-time streaming and frame capture
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.cameras: Dict[str, CameraSource] = {}
         self.active_cameras: Dict[str, bool] = {}
         self.frame_buffer: Dict[str, list] = {}
@@ -110,7 +113,7 @@ class CameraManager:
                 print(f"❌ Failed to add camera {source_id}: {camera.error}")
                 return False
     
-    def remove_camera(self, source_id: str):
+    def remove_camera(self, source_id: str) -> None:
         """Remove a camera source"""
         with self._lock:
             if source_id in self.cameras:
@@ -121,7 +124,7 @@ class CameraManager:
                     del self.frame_buffer[source_id]
                 print(f"✅ Camera {source_id} removed")
     
-    def start_streaming(self):
+    def start_streaming(self) -> None:
         """Start real-time streaming from all active cameras"""
         if self.is_streaming:
             return
@@ -131,14 +134,14 @@ class CameraManager:
         self.stream_thread.start()
         print("✅ Camera streaming started")
     
-    def stop_streaming(self):
+    def stop_streaming(self) -> None:
         """Stop streaming"""
         self.is_streaming = False
         if self.stream_thread:
             self.stream_thread.join(timeout=2)
         print("⏹️ Camera streaming stopped")
     
-    def _stream_loop(self):
+    def _stream_loop(self) -> None:
         """Main streaming loop - runs in background thread"""
         while self.is_streaming:
             with self._lock:
@@ -206,7 +209,7 @@ class CameraManager:
         
         return sources
     
-    def toggle_camera(self, camera_id: str, active: bool):
+    def toggle_camera(self, camera_id: str, active: bool) -> None:
         """Enable or disable a camera"""
         with self._lock:
             if camera_id in self.active_cameras:
@@ -326,7 +329,14 @@ class DemoVideoGenerator:
                     color=color, fontsize=6, alpha=0.8)
                     
         # ── STICK FIGURE WORKERS DRAWING FUNCTION (FIXED LIGHTBULB APPEARANCE) ──
-        def draw_stick_figure(ax, cx, cy, color='#00d4ff', has_helmet=True, alert=False):
+        def draw_stick_figure(
+            ax: 'matplotlib.axes.Axes',
+            cx: float,
+            cy: float,
+            color: str = '#00d4ff',
+            has_helmet: bool = True,
+            alert: bool = False,
+        ) -> None:
             lw = 1.8
             # Head: solid background fill, color outline, zorder to render cleanly
             head = plt.Circle((cx, cy+5.5), 1.6, 
@@ -468,7 +478,7 @@ class DemoVideoGenerator:
         return frames
     
     @staticmethod
-    def save_video(frames: List[np.ndarray], output_path: str, fps: int = 5):
+    def save_video(frames: List[np.ndarray], output_path: str, fps: int = 5) -> None:
         """Save frames as a video file"""
         if not frames:
             return

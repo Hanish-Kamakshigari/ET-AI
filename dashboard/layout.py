@@ -5,8 +5,9 @@ SurakshaAI Dashboard Layout Module
 
 import sys
 import os
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 import streamlit as st
+from src.alert_system import AlertManager
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -63,7 +64,7 @@ SEVERITY_BANNER_STYLES = {
 SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 
 
-def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: Any, selected_zone: str = None) -> None:
+def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: AlertManager, selected_zone: Optional[str] = None) -> None:
     """Renders a dismissible top-of-page alert banner for the highest-severity active alert.
 
     The banner only appears while Autoplay Simulation is active. When autoplay
@@ -175,7 +176,7 @@ def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: 
     placeholder.markdown(html, unsafe_allow_html=True)
 
 
-def render_auto_banner(placeholder: st.delta_generator.DeltaGenerator, data_dict: Dict[str, Any]):
+def render_auto_banner(placeholder: st.delta_generator.DeltaGenerator, data_dict: Dict[str, Any]) -> None:
     """Renders the top alert banner dynamically based on system state"""
     banner_level = data_dict['banner_level']
     banner_color = data_dict['banner_color']

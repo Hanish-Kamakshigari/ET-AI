@@ -27,7 +27,7 @@ class FrameProcessor:
     Processes CCTV frames, runs detection, and generates alerts
     """
     
-    def __init__(self, use_simulation: bool = True):
+    def __init__(self, use_simulation: bool = True) -> None:
         self.detector = ObjectDetector(use_simulation=use_simulation)
         self.risk_engine = CompoundRiskEngine()
         self.alert_system = AlertSystem()
@@ -97,7 +97,7 @@ class FrameProcessor:
         
         return result
     
-    def _update_zone_counts(self, detections: List[Detection], frame_w: int, frame_h: int):
+    def _update_zone_counts(self, detections: List[Detection], frame_w: int, frame_h: int) -> None:
         """Update worker counts per zone from telemetry (footage ground truth)"""
         latest = getattr(self.detector, 'latest_telemetry', None)
         if latest is not None:
@@ -278,7 +278,7 @@ class FrameProcessor:
             return True
         return False
     
-    def _record_alert(self, alert_key: str):
+    def _record_alert(self, alert_key: str) -> None:
         """Record when an alert was last sent"""
         if not hasattr(self, '_last_alert_times'):
             self._last_alert_times = {}
@@ -292,7 +292,7 @@ class FrameProcessor:
         total_time = sum(self.frame_times)
         return len(self.frame_times) / total_time if total_time > 0 else 0
     
-    def set_alert_callback(self, callback: Callable):
+    def set_alert_callback(self, callback: Callable[..., Any]) -> None:
         """Set callback for when alerts are generated"""
         self.alert_callback = callback
     

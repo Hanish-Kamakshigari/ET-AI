@@ -11,6 +11,7 @@ import unittest
 import threading
 import pandas as pd
 from datetime import datetime, timedelta
+from typing import Dict, Any, List
 
 # Setup path to import src modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -29,14 +30,14 @@ from src.compliance_engine import ComplianceEngine
 from src.action_engine import ActionEngine
 
 class MockDetection:
-    def __init__(self, label, confidence=0.9, zone_violation=False):
+    def __init__(self, label: str, confidence: float = 0.9, zone_violation: bool = False) -> None:
         self.label = label
         self.confidence = confidence
         self.zone_violation = zone_violation
 
 class TestAlertingArchitecture(unittest.TestCase):
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         cls.coordinator = get_alert_coordinator()
         cls.coordinator.config["database"]["db_path"] = "data/test_alerts.db"
         cls.coordinator.is_primary = True
@@ -61,7 +62,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         )
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         import os
         for ext in ["", "-wal", "-shm"]:
             path = f"data/test_alerts.db{ext}"
@@ -71,7 +72,7 @@ class TestAlertingArchitecture(unittest.TestCase):
                 except Exception:
                     pass
 
-    def setUp(self):
+    def setUp(self) -> None:
         # Clear database to ensure clean, hermetic tests
         conn = self.coordinator.persistence.get_connection()
         try:
@@ -90,7 +91,7 @@ class TestAlertingArchitecture(unittest.TestCase):
             with self.coordinator.incident_manager._cooldown_lock:
                 self.coordinator.incident_manager._cooldown_cache.clear()
 
-    def test_risk_evaluation_pure(self):
+    def test_risk_evaluation_pure(self) -> None:
         """Verify the RiskEvaluator logic does not depend on database/state"""
         evaluator = self.coordinator.risk_evaluator
         
@@ -106,7 +107,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertTrue(res_gas["matched"])
         self.assertEqual(res_gas["severity"], "HIGH")
 
-    def test_deduplication_and_frame_persistence(self):
+    def test_deduplication_and_frame_persistence(self) -> None:
         """Verify that frame processing deduplicates same incident and increments frame counts"""
         zone = "Zone_B"
         dets = [MockDetection("smoke", confidence=0.88)]
@@ -142,7 +143,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         finally:
             self.coordinator.persistence.return_connection(conn)
 
-    def test_lifecycle_and_acknowledgement(self):
+    def test_lifecycle_and_acknowledgement(self) -> None:
         """Verify incident goes from PENDING to ACTIVE, and acknowledgement updates DB state"""
         zone = "Zone_A"
         dets = [MockDetection("gas_leak")]
@@ -165,7 +166,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertEqual(inc_ack["status"], AlertStatus.ACKNOWLEDGED.value)
         self.assertEqual(inc_ack["acknowledged_by"], "Operator Bob")
 
-    def test_escalation_engine(self):
+    def test_escalation_engine(self) -> None:
         """Verify the event-driven priority queue executes escalation on unacknowledged ACTIVE incidents"""
         zone = "Zone_C"
         dets = [MockDetection("gas_leak")] # trigger telemetry temperature breach
@@ -199,11 +200,11 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertEqual(inc_esc["status"], "Escalated")
         self.assertEqual(inc_esc["escalation_tier"], 2)
 
-    def test_concurrent_db_writes(self):
+    def test_concurrent_db_writes(self) -> None:
         """Verify that concurrent writes from multiple threads do not cause SQLite locking errors (WAL check)"""
         exceptions = []
         
-        def writer_thread(t_idx):
+        def writer_thread(t_idx: int) -> None:
             try:
                 for i in range(10):
                     self.coordinator.process_frame(
@@ -225,7 +226,7 @@ class TestAlertingArchitecture(unittest.TestCase):
             
         self.assertEqual(len(exceptions), 0, f"Exceptions occurred during concurrent write: {exceptions}")
 
-    def test_health_monitor(self):
+    def test_health_monitor(self) -> None:
         """Verify health check returns required indicators"""
         health = self.coordinator.health_monitor.health_check()
         self.assertIn("database_pool_status", health)
@@ -233,7 +234,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertIn("average_frame_processing_ms", health)
         self.assertIn("notification_success_rate", health)
 
-    def test_backward_compatibility_layer(self):
+    def test_backward_compatibility_layer(self) -> None:
         """Ensure legacy modules and methods wrap AlertCoordinator seamlessly"""
         # Test evaluate_alert_conditions compatibility wrapper
         res = evaluate_alert_conditions([], 1, "Zone_A", {"gas_ppm": 5.0})
@@ -249,7 +250,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         active = sys_compat.get_active_alerts()
         self.assertIsInstance(active, list)
 
-    def test_all_data_driven_rules(self):
+    def test_all_data_driven_rules(self) -> None:
         """Verify that all YAML configuration defined rules evaluate correctly on first frame"""
         evaluator = self.coordinator.risk_evaluator
         
@@ -302,7 +303,7 @@ class TestAlertingArchitecture(unittest.TestCase):
     # NEW REFACTORING UNIT TESTS
     # ==========================================================================
 
-    def test_risk_engine_sensor_risk(self):
+    def test_risk_engine_sensor_risk(self) -> None:
         """Verify RiskEngine single sensor thresholds"""
         risk_engine = CompoundRiskEngine()
         self.assertEqual(risk_engine.get_sensor_risk(10.0, 'gas_ppm')[1], 'NORMAL')
@@ -310,7 +311,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertEqual(risk_engine.get_sensor_risk(40.0, 'gas_ppm')[1], 'HIGH')
         self.assertEqual(risk_engine.get_sensor_risk(60.0, 'gas_ppm')[1], 'CRITICAL')
 
-    def test_risk_engine_analyze_zone(self):
+    def test_risk_engine_analyze_zone(self) -> None:
         """Verify RiskEngine compound rule matching"""
         risk_engine = CompoundRiskEngine()
         row = pd.Series({
@@ -324,7 +325,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertEqual(res['risk_level'], 'HIGH')
         self.assertIn('PERMIT_GAS_COMBINATION', res['compound_factors'])
 
-    def test_compliance_engine(self):
+    def test_compliance_engine(self) -> None:
         """Verify ComplianceEngine checking and reporting"""
         compliance_engine = ComplianceEngine()
         df = pd.DataFrame([{
@@ -337,7 +338,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertEqual(res['OISD_150']['status'], 'VIOLATION')
         self.assertEqual(compliance_engine.get_compliance_score(df), 90.0)
 
-    def test_action_engine(self):
+    def test_action_engine(self) -> None:
         """Verify ActionEngine prescriptive advice generation"""
         action_engine = ActionEngine(knowledge_base_path='data/test_actions.json')
         try:
@@ -361,7 +362,7 @@ class TestAlertingArchitecture(unittest.TestCase):
                 except Exception:
                     pass
 
-    def test_cooldown_logic(self):
+    def test_cooldown_logic(self) -> None:
         """Verify cooldown suppresses repeated alerts within the threshold"""
         zone = "Zone_A"
         dets = [MockDetection("gas_leak")]
@@ -392,7 +393,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         finally:
             self.coordinator.persistence.return_connection(conn)
 
-    def test_alert_priority_sorting(self):
+    def test_alert_priority_sorting(self) -> None:
         """Verify matching rules are processed in priority order (Critical first)"""
         # Trigger fire (Critical) and worker count (Normal/None)
         # We check that process_frame evaluates both, and they are ordered
@@ -409,7 +410,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         res = self.coordinator.process_frame(dets, "Zone_A", {"violations_count": 1})
         self.assertIsNotNone(res)
 
-    def test_composite_cooldown_index_exists(self):
+    def test_composite_cooldown_index_exists(self) -> None:
         """Verify the new composite index exists on the database"""
         conn = self.coordinator.persistence.get_connection()
         try:
@@ -420,7 +421,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         finally:
             self.coordinator.persistence.return_connection(conn)
 
-    def test_in_memory_cooldown_cache(self):
+    def test_in_memory_cooldown_cache(self) -> None:
         """Verify that resolved incidents populate the in-memory cache and bypass database select"""
         zone = "Zone_A"
         dets = [MockDetection("fire")]
@@ -458,7 +459,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         inc_suppressed = self.coordinator.persistence.fetch_incident_by_key(key)
         self.assertIsNone(inc_suppressed)
 
-    def test_configurable_hysteresis_frames(self):
+    def test_configurable_hysteresis_frames(self) -> None:
         """Verify the custom resolution hysteresis configuration is loaded and applied"""
         zone = "Zone_A"
         dets = [MockDetection("fire")]
@@ -494,7 +495,7 @@ class TestAlertingArchitecture(unittest.TestCase):
             self.coordinator.config["persistence"]["resolution_hysteresis_frames"] = orig_hysteresis
             self.coordinator.incident_manager.resolution_hysteresis_frames = orig_hysteresis
 
-    def test_discard_pending_incidents(self):
+    def test_discard_pending_incidents(self) -> None:
         """Verify that PENDING/NEW incidents are deleted/discarded if the hazard disappears"""
         zone = "Zone_A"
         dets = [MockDetection("fire")]
@@ -515,7 +516,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertIsNone(inc_discarded)
         self.assertEqual(self.coordinator.health_monitor.false_positive_count, orig_fp + 1)
 
-    def test_cooldown_updates_resolved_record(self):
+    def test_cooldown_updates_resolved_record(self) -> None:
         """Verify hazard re-trigger inside cooldown updates the resolved incident instead of creating a new one"""
         zone = "Zone_A"
         dets = [MockDetection("fire")]
@@ -550,14 +551,14 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertEqual(inc_after["frame_count"], orig_frame_count + 1)
         self.assertNotEqual(inc_after["end_time"], orig_end_time)
 
-    def test_notification_channel_tracking_and_retry(self):
+    def test_notification_channel_tracking_and_retry(self) -> None:
         """Verify notification dispatch tracks statuses in DB and executes retries on failure"""
         from src.alert_coordinator import NotificationChannel
         
         class FailingChannel(NotificationChannel):
-            def __init__(self):
+            def __init__(self) -> None:
                 self.calls = 0
-            def send(self, incident):
+            def send(self, incident: Dict[str, Any]) -> bool:
                 self.calls += 1
                 return False # always fails to test retries
                 
@@ -591,7 +592,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         finally:
             self.coordinator.persistence.return_connection(conn)
 
-    def test_system_metrics(self):
+    def test_system_metrics(self) -> None:
         """Verify the DashboardAdapter.get_metrics retrieves all requested keys"""
         metrics = self.coordinator.dashboard_adapter.get_metrics()
         self.assertIn("total_incidents", metrics)
@@ -605,7 +606,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertIn("false_positive_count", metrics)
         self.assertIn("system_uptime_seconds", metrics)
 
-    def test_bat4_gas_leak_rule(self):
+    def test_bat4_gas_leak_rule(self) -> None:
         """Verify BAT4_GAS_LEAK triggers on critical gas ppm or gas leak detections in Battery-4"""
         evaluator = self.coordinator.risk_evaluator
         # Test critical gas ppm
@@ -620,7 +621,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertTrue(any(r["rule_id"] == "BAT4_GAS_LEAK" for r in res2["matched_rules"]))
         self.assertEqual(res2["severity"], "CRITICAL")
 
-    def test_bat5_ppe_violation_rule(self):
+    def test_bat5_ppe_violation_rule(self) -> None:
         """Verify BAT5_PPE_VIOLATION triggers on violations count or missing PPE labels in Battery-5"""
         evaluator = self.coordinator.risk_evaluator
         res1 = evaluator.evaluate([], {"violations_count": 1}, False, 2, False, "Zone_B")
@@ -634,7 +635,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertTrue(any(r["rule_id"] == "BAT5_PPE_VIOLATION" for r in res2["matched_rules"]))
         self.assertEqual(res2["severity"], "MEDIUM")
 
-    def test_bat6_high_pressure_rule(self):
+    def test_bat6_high_pressure_rule(self) -> None:
         """Verify BAT6_HIGH_PRESSURE triggers on pressure limits or overpressure label in Battery-6"""
         evaluator = self.coordinator.risk_evaluator
         # Test pressure threshold
@@ -649,7 +650,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertTrue(any(r["rule_id"] == "BAT6_HIGH_PRESSURE" for r in res2["matched_rules"]))
         self.assertEqual(res2["severity"], "CRITICAL")
 
-    def test_reactor_welding_proximity_rule(self):
+    def test_reactor_welding_proximity_rule(self) -> None:
         """Verify REACTOR_WELDING_PROXIMITY triggers when sparks/welding fume AND no_helmet are detected"""
         evaluator = self.coordinator.risk_evaluator
         dets = [MockDetection("sparks"), MockDetection("no_helmet")]
@@ -658,7 +659,7 @@ class TestAlertingArchitecture(unittest.TestCase):
         self.assertEqual(res["severity"], "HIGH")
         self.assertIn("Stop welding activity if required, alert welder and worker, enforce safe distance, dispatch safety officer.", res["recommended_actions"])
 
-    def test_storage_overcrowding_rule(self):
+    def test_storage_overcrowding_rule(self) -> None:
         """Verify STORAGE_OVERCROWDING triggers when worker count exceeds threshold in Storage Block"""
         evaluator = self.coordinator.risk_evaluator
         res = evaluator.evaluate([], {}, False, 9, False, "Storage_Area")
@@ -675,7 +676,7 @@ class TestAlertEnhancements(unittest.TestCase):
     """Integration tests for AlertEnhancementOrchestrator covering all 5 enhancement pillars."""
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         from src.alert_coordinator import (
             get_alert_coordinator,
             PersistenceLayer,
@@ -704,7 +705,7 @@ class TestAlertEnhancements(unittest.TestCase):
         cls.enhancer = cls.coordinator.enhancer
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         import os
         for ext in ["", "-wal", "-shm"]:
             path = f"data/test_enhancements.db{ext}"
@@ -714,7 +715,7 @@ class TestAlertEnhancements(unittest.TestCase):
                 except Exception:
                     pass
 
-    def setUp(self):
+    def setUp(self) -> None:
         """Reset DB tables between tests.
         Note: rule_versions is NOT cleared here because it is class-level state
         written once during AlertEnhancementOrchestrator.__init__. Clearing it
@@ -744,7 +745,7 @@ class TestAlertEnhancements(unittest.TestCase):
     # 1. Rule Versioning
     # --------------------------------------------------------------------------
 
-    def test_rule_version_computed_and_registered(self):
+    def test_rule_version_computed_and_registered(self) -> None:
         """Rule version must be a 12-char hex hash that is registered in rule_versions."""
         rv = self.enhancer.rule_registry.get_version()
         self.assertIsInstance(rv, str)
@@ -756,7 +757,7 @@ class TestAlertEnhancements(unittest.TestCase):
         self.assertEqual(active["version_hash"], rv)
         self.assertEqual(active["is_active"], 1)
 
-    def test_rule_version_history_after_re_register(self):
+    def test_rule_version_history_after_re_register(self) -> None:
         """Re-registering a new version deactivates the previous one."""
         first_version = self.enhancer.rule_registry.get_version()
         # Simulate a second registration with a dummy hash
@@ -794,7 +795,7 @@ class TestAlertEnhancements(unittest.TestCase):
             self.coordinator.persistence.return_connection(conn)
         return incident_id
 
-    def test_on_incident_created_adds_timeline_events(self):
+    def test_on_incident_created_adds_timeline_events(self) -> None:
         """on_incident_created must write DETECTION and stamp rule version."""
         incident_id = self._create_test_incident()
         self.enhancer.on_incident_created(incident_id)
@@ -813,7 +814,7 @@ class TestAlertEnhancements(unittest.TestCase):
         finally:
             self.coordinator.persistence.return_connection(conn)
 
-    def test_on_notification_dispatched_adds_timeline(self):
+    def test_on_notification_dispatched_adds_timeline(self) -> None:
         """Each dispatched channel should add a NOTIFICATION_DISPATCHED event."""
         incident_id = self._create_test_incident()
         self.enhancer.on_incident_created(incident_id)
@@ -826,7 +827,7 @@ class TestAlertEnhancements(unittest.TestCase):
         self.assertTrue(any("DASHBOARD" in m for m in channels_recorded))
         self.assertTrue(any("SMS" in m for m in channels_recorded))
 
-    def test_on_incident_resolved_adds_timeline(self):
+    def test_on_incident_resolved_adds_timeline(self) -> None:
         """Resolution event must appear in the incident timeline."""
         incident_id = self._create_test_incident()
         self.enhancer.on_incident_created(incident_id)
@@ -840,7 +841,7 @@ class TestAlertEnhancements(unittest.TestCase):
     # 3. Audit Trail
     # --------------------------------------------------------------------------
 
-    def test_on_incident_acknowledged_writes_audit(self):
+    def test_on_incident_acknowledged_writes_audit(self) -> None:
         """Acknowledging an incident must produce an ACKNOWLEDGED audit event with operator name."""
         incident_id = self._create_test_incident()
         self.enhancer.on_incident_created(incident_id)
@@ -852,7 +853,7 @@ class TestAlertEnhancements(unittest.TestCase):
         self.assertEqual(ack_events[0]["actor"], "Eng. Hanis")
         self.assertIn("PPE team dispatched", ack_events[0]["remarks"])
 
-    def test_on_notification_failed_writes_audit_and_timeline(self):
+    def test_on_notification_failed_writes_audit_and_timeline(self) -> None:
         """A permanently failed notification must appear in both audit and timeline."""
         incident_id = self._create_test_incident()
         self.enhancer.on_incident_created(incident_id)
@@ -872,7 +873,7 @@ class TestAlertEnhancements(unittest.TestCase):
     # 4. Snapshot Attachment Storage
     # --------------------------------------------------------------------------
 
-    def test_save_snapshot_records_metadata(self):
+    def test_save_snapshot_records_metadata(self) -> None:
         """Saving a (non-existent) snapshot path stores metadata correctly."""
         incident_id = self._create_test_incident()
         self.enhancer.on_incident_created(incident_id)
@@ -886,7 +887,7 @@ class TestAlertEnhancements(unittest.TestCase):
         self.assertEqual(snapshots[0]["snapshot_path"], fake_path)
         self.assertEqual(snapshots[0]["frame_number"], 42)
 
-    def test_on_incident_created_with_snapshot_adds_event(self):
+    def test_on_incident_created_with_snapshot_adds_event(self) -> None:
         """Providing a snapshot_path to on_incident_created adds SNAPSHOT_CAPTURED to timeline."""
         incident_id = self._create_test_incident()
         self.enhancer.on_incident_created(
@@ -902,7 +903,7 @@ class TestAlertEnhancements(unittest.TestCase):
     # 5. System Metrics Dashboard
     # --------------------------------------------------------------------------
 
-    def test_system_metrics_returns_required_keys(self):
+    def test_system_metrics_returns_required_keys(self) -> None:
         """System metrics dict must contain all expected operational keys."""
         metrics = self.enhancer.get_system_metrics()
         required_keys = [
@@ -919,7 +920,7 @@ class TestAlertEnhancements(unittest.TestCase):
         for key in required_keys:
             self.assertIn(key, metrics, f"Missing key: {key}")
 
-    def test_system_metrics_active_count_reflects_db(self):
+    def test_system_metrics_active_count_reflects_db(self) -> None:
         """Active incidents count in metrics must match actual unresolved DB rows."""
         # Start with zero
         metrics_before = self.enhancer.get_system_metrics()

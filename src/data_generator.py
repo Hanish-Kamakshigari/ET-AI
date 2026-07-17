@@ -8,6 +8,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import random
 import os
+from typing import Dict, Any
 
 class IndustrialPlantSimulator:
     """
@@ -15,7 +16,7 @@ class IndustrialPlantSimulator:
     Generates realistic data including normal operations and incident events.
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         # Plant zones
         self.zones = ['Zone_A', 'Zone_B', 'Zone_C', 'Reactor_Area', 'Storage_Area']
         
@@ -33,7 +34,7 @@ class IndustrialPlantSimulator:
             'permit_active': 0.15          # 15% chance a permit is active
         }
     
-    def generate_timestamp(self, base_time):
+    def generate_timestamp(self, base_time: datetime) -> Dict[str, Any]:
         """Generate sensor readings for a single timestamp"""
         data = {'timestamp': base_time}
         
@@ -54,7 +55,7 @@ class IndustrialPlantSimulator:
         
         return data
     
-    def inject_compound_risk(self, df, start_idx, duration=25):
+    def inject_compound_risk(self, df: pd.DataFrame, start_idx: int, duration: int = 25) -> pd.DataFrame:
         """
         Inject a compound risk scenario (like Visakhapatnam)
         Combines gas leak + maintenance activity
@@ -84,7 +85,7 @@ class IndustrialPlantSimulator:
         
         return df
     
-    def generate_data(self, days=30, interval_minutes=5):
+    def generate_data(self, days: int = 30, interval_minutes: int = 5) -> pd.DataFrame:
         """
         Generate complete plant dataset
         
@@ -112,7 +113,7 @@ class IndustrialPlantSimulator:
         
         return df
     
-    def save_data(self, df, filename='plant_data.csv'):
+    def save_data(self, df: pd.DataFrame, filename: str = 'plant_data.csv') -> str:
         """Save generated data to CSV"""
         os.makedirs('data', exist_ok=True)
         filepath = f'data/{filename}'

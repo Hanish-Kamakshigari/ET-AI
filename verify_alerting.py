@@ -35,13 +35,13 @@ from src.alert_enhancements import (
 
 class MockDetection:
     """Minimal mock detection object matching the interface expected by RiskEvaluator."""
-    def __init__(self, label, confidence=0.9, zone_violation=False):
+    def __init__(self, label: str, confidence: float = 0.9, zone_violation: bool = False) -> None:
         self.label = label
         self.confidence = confidence
         self.zone_violation = zone_violation
 
 
-def main():
+def main() -> None:
     print("=" * 80)
     print("  SurakshaAI - Alerting System Manual Verification")
     print("=" * 80)

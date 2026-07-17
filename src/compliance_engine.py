@@ -16,7 +16,7 @@ class ComplianceEngine:
     Supports OISD, Factory Act, DGMS standards
     """
     
-    def __init__(self, plant_name: str = "Suraksha Plant", plant_id: str = "SP-001"):
+    def __init__(self, plant_name: str = "Suraksha Plant", plant_id: str = "SP-001") -> None:
         self.plant_name = plant_name
         self.plant_id = plant_id
         self.standards = self._load_standards()

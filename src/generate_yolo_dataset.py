@@ -2,8 +2,16 @@ import os
 import random
 import yaml
 from PIL import Image, ImageDraw
+from typing import List, Tuple
 
-def draw_worker(draw, cx_ref, cy_ref, scale, helmet, vest):
+def draw_worker(
+    draw: ImageDraw.ImageDraw,
+    cx_ref: int,
+    cy_ref: int,
+    scale: float,
+    helmet: bool,
+    vest: bool,
+) -> List[Tuple[int, int, int, int, int]]:
     # Apply minor position jitter
     cx = cx_ref + random.randint(-15, 15)
     cy = cy_ref + random.randint(-15, 15)
@@ -79,7 +87,11 @@ def draw_worker(draw, cx_ref, cy_ref, scale, helmet, vest):
         
     return worker_labels
 
-def to_yolo_format(labels, img_width=640, img_height=640):
+def to_yolo_format(
+    labels: List[Tuple[int, int, int, int, int]],
+    img_width: int = 640,
+    img_height: int = 640,
+) -> List[str]:
     lines = []
     for cls_id, x1, y1, x2, y2 in labels:
         x1 = max(0, min(x1, img_width))
@@ -95,7 +107,7 @@ def to_yolo_format(labels, img_width=640, img_height=640):
         lines.append(f"{cls_id} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}")
     return lines
 
-def generate_dataset():
+def generate_dataset() -> None:
     base_dir = "data/battery5_ppe"
     for split in ["train", "val"]:
         os.makedirs(f"{base_dir}/images/{split}", exist_ok=True)

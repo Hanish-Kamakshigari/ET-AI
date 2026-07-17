@@ -5,7 +5,7 @@ Allows external systems to integrate with SurakshaAI
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime
 import pandas as pd
 import json
@@ -85,7 +85,7 @@ compliance_engine = ComplianceEngine()
 # Endpoints
 # ============================================
 @app.get("/")
-async def root():
+async def root() -> Dict[str, Any]:
     return {
         "service": "SurakshaAI",
         "version": "1.0.0",
@@ -102,7 +102,7 @@ async def root():
     }
 
 @app.post("/api/v1/ingest")
-async def ingest_sensor_data(data: BulkSensorData, background_tasks: BackgroundTasks):
+async def ingest_sensor_data(data: BulkSensorData, background_tasks: BackgroundTasks) -> Dict[str, Any]:
     """
     Ingest sensor data from plant systems
     
@@ -125,7 +125,7 @@ async def ingest_sensor_data(data: BulkSensorData, background_tasks: BackgroundT
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def process_ingested_data(df: pd.DataFrame, plant_id: str):
+def process_ingested_data(df: pd.DataFrame, plant_id: str) -> None:
     """Background processing for ingested data"""
     try:
         # Analyze with risk engine
@@ -153,7 +153,7 @@ def process_ingested_data(df: pd.DataFrame, plant_id: str):
         print(f"❌ Error processing data: {e}")
 
 @app.get("/api/v1/alerts", response_model=List[AlertResponse])
-async def get_alerts(limit: int = 10, severity: Optional[str] = None):
+async def get_alerts(limit: int = 10, severity: Optional[str] = None) -> List[AlertResponse]:
     """
     Get recent alerts
     
@@ -181,7 +181,7 @@ async def get_alerts(limit: int = 10, severity: Optional[str] = None):
     ]
 
 @app.post("/api/v1/alerts/{alert_id}/acknowledge")
-async def acknowledge_alert(alert_id: str):
+async def acknowledge_alert(alert_id: str) -> Dict[str, Any]:
     """Acknowledge an alert - integrates with EHS workflows"""
     success = alert_system.acknowledge_alert(alert_id)
     if success:
@@ -189,7 +189,7 @@ async def acknowledge_alert(alert_id: str):
     raise HTTPException(status_code=404, detail="Alert not found")
 
 @app.get("/api/v1/actions/{alert_id}", response_model=ActionPlanResponse)
-async def get_action_plan(alert_id: str):
+async def get_action_plan(alert_id: str) -> ActionPlanResponse:
     """Get action plan for an alert"""
     # Find alert
     alert = None
@@ -203,7 +203,7 @@ async def get_action_plan(alert_id: str):
     
     # Create alert object for action engine
     class AlertObject:
-        def __init__(self, data):
+        def __init__(self, data: Dict[str, Any]) -> None:
             self.zone = data.get('zone', 'Unknown')
             self.risk_level = data.get('risk_level', 'LOW')
             self.compound_factors = data.get('compound_factors', [])
@@ -221,7 +221,7 @@ async def get_action_plan(alert_id: str):
     )
 
 @app.get("/api/v1/compliance/report", response_model=ComplianceReportResponse)
-async def get_compliance_report(start_date: Optional[str] = None, end_date: Optional[str] = None):
+async def get_compliance_report(start_date: Optional[str] = None, end_date: Optional[str] = None) -> ComplianceReportResponse:
     """Generate compliance report"""
     # Load data
     df = pd.read_csv('data/plant_data.csv', parse_dates=['timestamp'])
@@ -241,7 +241,7 @@ async def get_compliance_report(start_date: Optional[str] = None, end_date: Opti
     )
 
 @app.get("/api/v1/health")
-async def health_check():
+async def health_check() -> Dict[str, Any]:
     """Health check endpoint"""
     return {
         "status": "healthy",

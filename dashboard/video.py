@@ -8,9 +8,12 @@ import os
 import cv2
 import time
 from datetime import datetime
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from typing import Dict, List, Any, Optional, Tuple
 import streamlit as st
+from src.risk_engine import CompoundRiskEngine
+from src.alert_system import AlertSystem, AlertManager
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -507,7 +510,26 @@ def interpolate_box(keyframes: List[Tuple[int, int, int, int, int]], current_fra
     return None
 
 
-def draw_labeled_worker(draw, font, px1, py1, px2, py2, hx1, hy1, hx2, hy2, vx1, vy1, vx2, vy2, person_label, helmet_label, vest_label, has_helmet=True):
+def draw_labeled_worker(
+    draw: ImageDraw.ImageDraw,
+    font: Optional[ImageFont.ImageFont],
+    px1: float,
+    py1: float,
+    px2: float,
+    py2: float,
+    hx1: float,
+    hy1: float,
+    hx2: float,
+    hy2: float,
+    vx1: float,
+    vy1: float,
+    vx2: float,
+    vy2: float,
+    person_label: str,
+    helmet_label: str,
+    vest_label: str,
+    has_helmet: bool = True,
+) -> None:
     draw.rectangle([px1, py1, px2, py2], outline="#22c55e", width=3)
     if has_helmet:
         draw.rectangle([hx1, hy1, hx2, hy2], outline="#00d4ff", width=2)
@@ -541,7 +563,13 @@ def draw_labeled_worker(draw, font, px1, py1, px2, py2, hx1, hy1, hx2, hy2, vx1,
     draw.text((px1, py2 + 4), vest_label, fill="#00d4ff", font=font)
 
 
-def draw_pil_overlays(frame_np, selected_zone: str, latest_telemetry: Dict, current_frame: int = 0, detections: List = None):
+def draw_pil_overlays(
+    frame_np: np.ndarray,
+    selected_zone: str,
+    latest_telemetry: Dict[str, Any],
+    current_frame: int = 0,
+    detections: Optional[List[Any]] = None,
+) -> Tuple[Image.Image, int, int, List[Any]]:
     rgb = cv2.cvtColor(frame_np, cv2.COLOR_BGR2RGB)
     img = Image.fromarray(rgb)
     width, height = img.size
@@ -839,8 +867,8 @@ def draw_pil_overlays(frame_np, selected_zone: str, latest_telemetry: Dict, curr
 
 
 class FrameTracker:
-    def __init__(self):
-        self.indices = {}
+    def __init__(self) -> None:
+        self.indices: Dict[str, int] = {}
 
     def get_index(self, zone: str, total_frames: int) -> int:
         idx = self.indices.get(zone, 0)
@@ -848,11 +876,11 @@ class FrameTracker:
             idx = 0
         return idx
 
-    def increment(self, zone: str, step: int, total_frames: int):
+    def increment(self, zone: str, step: int, total_frames: int) -> None:
         idx = self.indices.get(zone, 0)
         self.indices[zone] = (idx + step) % total_frames
 
-    def reset(self, zone: str):
+    def reset(self, zone: str) -> None:
         self.indices[zone] = 0
 
 
@@ -897,7 +925,14 @@ def _zone_video_path(zone: str) -> str | None:
 
 
 @st.fragment
-def stream_cctv_feed_fragment(placeholders: Dict[str, Any], data_dict: Dict[str, Any], selected_zone: str, engine: Any, am: Any, alert_system: Any):
+def stream_cctv_feed_fragment(
+    placeholders: Dict[str, Any],
+    data_dict: Dict[str, Any],
+    selected_zone: str,
+    engine: CompoundRiskEngine,
+    am: AlertManager,
+    alert_system: AlertSystem,
+) -> None:
     """
     Renders live CCTV streaming panel inside a non-blocking st.fragment.
     """
@@ -913,7 +948,14 @@ def stream_cctv_feed_fragment(placeholders: Dict[str, Any], data_dict: Dict[str,
     )
 
 
-def stream_cctv_feed_headless(placeholders: Dict[str, Any], selected_zone: str, video_path: str, data_dict: Dict[str, Any], alert_system: Any, am: Any):
+def stream_cctv_feed_headless(
+    placeholders: Dict[str, Any],
+    selected_zone: str,
+    video_path: Optional[str],
+    data_dict: Dict[str, Any],
+    alert_system: AlertSystem,
+    am: AlertManager,
+) -> None:
     """
     Runs the CCTV streaming and inference loop headlessly (without rendering elements)
     to keep alerts, notifications, and databases synchronized.
@@ -929,7 +971,15 @@ def stream_cctv_feed_headless(placeholders: Dict[str, Any], selected_zone: str, 
     )
 
 
-def stream_cctv_feed_raw(placeholders: Dict[str, Any], selected_zone: str, video_path: str, latest: Dict[str, Any], alert_system: Any, am: Any, data_dict: Dict[str, Any] = None):
+def stream_cctv_feed_raw(
+    placeholders: Dict[str, Any],
+    selected_zone: str,
+    video_path: Optional[str],
+    latest: Dict[str, Any],
+    alert_system: AlertSystem,
+    am: AlertManager,
+    data_dict: Optional[Dict[str, Any]] = None,
+) -> None:
     """
     Renders live CCTV streaming panel.
     Updates telemetry counts and dispatches alerts dynamically using a sequential loop.
@@ -1077,7 +1127,10 @@ def stream_cctv_feed_raw(placeholders: Dict[str, Any], selected_zone: str, video
                         st.session_state["_last_incident"] = None
                         alert_transition = True
                         
-            if alert_transition:
+            # 3. Update all dashboard components periodically or on alert transitions
+            should_update_ui = (not play_active) or (frame_idx % 10 == 0) or alert_transition
+            
+            if should_update_ui:
                 if data_dict is not None:
                     try:
                         from dashboard.data import load_data, init_engine, calculate_telemetry
@@ -1087,26 +1140,52 @@ def stream_cctv_feed_raw(placeholders: Dict[str, Any], selected_zone: str, video
                             render_zone_status_panel,
                             render_failsafes_panel,
                             render_db_logs_panel,
-                            render_kpi_grid
+                            render_kpi_grid,
+                            render_risk_analysis_row,
+                            render_decision_telemetry_row,
                         )
                         from dashboard.layout import render_top_alert_banner
+                        from dashboard.emergency_mode import render_critical_banner
+                        from dashboard.intelligence_ui import render_intelligence_panels
 
                         df = load_data()
                         engine = init_engine()
                         updated_data_dict = calculate_telemetry(df, engine, alert_system)
 
-                        # Direct placeholder updates using updated telemetry data
-                        render_alerts_panel(placeholders['alerts'], am, selected_zone=selected_zone)
-
-                        # Keep the top-of-page banner in sync — scoped to the active zone
+                        # Update top banners
                         top_banner_ph = placeholders.get('top_banner')
                         if top_banner_ph is not None:
                             render_top_alert_banner(top_banner_ph, am, selected_zone=selected_zone)
+                        
+                        crit_banner_ph = placeholders.get('critical_banner')
+                        if crit_banner_ph is not None:
+                            render_critical_banner(crit_banner_ph, updated_data_dict)
 
+                        # Update center panel components
+                        render_risk_analysis_row(placeholders, updated_data_dict, selected_zone, active_dets)
+                        render_decision_telemetry_row(placeholders, updated_data_dict, selected_zone, active_dets)
+
+                        # Update safety intelligence panels
+                        intel_ph = placeholders.get('intelligence')
+                        if intel_ph is not None:
+                            with intel_ph.container():
+                                render_intelligence_panels()
+                                try:
+                                    from src.permit_intelligence import render_permit_intelligence_panel
+                                    render_permit_intelligence_panel()
+                                except Exception:
+                                    pass
+
+                        # Update right panel diagnostics
+                        render_alerts_panel(placeholders['alerts'], am, selected_zone=selected_zone)
                         render_notifications_panel(placeholders['notifications'], updated_data_dict, selected_zone)
-                        render_zone_status_panel(placeholders['zone_status'], updated_data_dict)
-                        render_failsafes_panel(placeholders['failsafes'], updated_data_dict)
-                        render_db_logs_panel(placeholders['db_logs'], updated_data_dict)
+                        
+                        if placeholders.get('zone_status'):
+                            render_zone_status_panel(placeholders['zone_status'], updated_data_dict)
+                        if placeholders.get('failsafes'):
+                            render_failsafes_panel(placeholders['failsafes'], updated_data_dict)
+                        if placeholders.get('db_logs'):
+                            render_db_logs_panel(placeholders['db_logs'], updated_data_dict)
 
                         kpi_cols = placeholders.get('kpi_cols')
                         if kpi_cols:

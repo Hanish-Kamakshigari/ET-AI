@@ -50,7 +50,7 @@ class Colors:
     PURPLE = "#A78BFA"
 
     # Severity mapping
-    SEVERITY = {
+    SEVERITY: Dict[str, str] = {
         "CRITICAL": RED,
         "HIGH": ORANGE,
         "MEDIUM": AMBER,
@@ -59,7 +59,7 @@ class Colors:
         "CLEAR": GREEN,
     }
 
-    SEVERITY_BG = {
+    SEVERITY_BG: Dict[str, str] = {
         "CRITICAL": "rgba(239, 68, 68, 0.08)",
         "HIGH": "rgba(249, 115, 22, 0.08)",
         "MEDIUM": "rgba(245, 158, 11, 0.08)",
@@ -68,7 +68,7 @@ class Colors:
         "CLEAR": "rgba(34, 197, 94, 0.08)",
     }
 
-    SEVERITY_BORDER = {
+    SEVERITY_BORDER: Dict[str, str] = {
         "CRITICAL": "rgba(239, 68, 68, 0.4)",
         "HIGH": "rgba(249, 115, 22, 0.4)",
         "MEDIUM": "rgba(245, 158, 11, 0.4)",
@@ -77,7 +77,7 @@ class Colors:
         "CLEAR": "rgba(34, 197, 94, 0.3)",
     }
 
-    SEVERITY_ICON = {
+    SEVERITY_ICON: Dict[str, str] = {
         "CRITICAL": "🔴",
         "HIGH": "🟠",
         "MEDIUM": "🟡",
@@ -86,7 +86,7 @@ class Colors:
         "CLEAR": "🟢",
     }
 
-    SEVERITY_LABEL_ICON = {
+    SEVERITY_LABEL_ICON: Dict[str, str] = {
         "CRITICAL": "🚨",
         "HIGH": "⚠️",
         "MEDIUM": "⚠️",
@@ -95,7 +95,7 @@ class Colors:
         "CLEAR": "✅",
     }
 
-    STATUS = {
+    STATUS: Dict[str, Tuple[str, str, str]] = {
         "ACTIVE": ("rgba(239, 68, 68, 0.15)", "#EF4444", "rgba(239, 68, 68, 0.3)"),
         "TRIGGERED": ("rgba(239, 68, 68, 0.15)", "#EF4444", "rgba(239, 68, 68, 0.3)"),
         "ACKNOWLEDGED": ("rgba(245, 158, 11, 0.15)", "#F59E0B", "rgba(245, 158, 11, 0.3)"),
@@ -974,7 +974,7 @@ div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="
 """
 
 
-def inject_global_css():
+def inject_global_css() -> None:
     """Inject global CSS into the Streamlit app"""
     st.markdown(get_global_css(), unsafe_allow_html=True)
 
@@ -1148,7 +1148,7 @@ def render_metric_card(
 
 
 def render_alert_card(
-    alert: Any,
+    alert: object,
     sim_start_time: Optional[datetime] = None,
 ) -> str:
     """
@@ -1248,7 +1248,7 @@ def render_alert_card(
     sensor_parts = []
     if hasattr(alert, "sensor_data") and alert.sensor_data:
         sd = alert.sensor_data
-        def gsv(key):
+        def gsv(key: str) -> Optional[float]:
             if key in sd: return float(sd[key])
             for k, v in sd.items():
                 if k.endswith(key): return float(v)

@@ -29,7 +29,7 @@ class CompoundRiskEngine:
     Alerts are rare (< 3-5%) - false alarms kill trust.
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         # REALISTIC THRESHOLDS - Based on actual industrial standards
         self.thresholds = {
             'gas_ppm': {

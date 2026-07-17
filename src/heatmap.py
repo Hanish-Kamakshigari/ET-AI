@@ -6,9 +6,12 @@ Creates color-coded map of plant safety risks
 import folium
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional
-from datetime import datetime
 import os
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
+from datetime import datetime
+
+if TYPE_CHECKING:
+    from src.risk_engine import CompoundRiskEngine
 
 
 class PlantHeatmap:
@@ -17,7 +20,7 @@ class PlantHeatmap:
     Each zone is represented as a colored circle on the map.
     """
     
-    def __init__(self, plant_coordinates: Optional[Dict] = None):
+    def __init__(self, plant_coordinates: Optional[Dict[str, Any]] = None) -> None:
         # Default plant coordinates (plant floor grid coordinates centered at 0.0, 0.0)
         if plant_coordinates is None:
             self.plant_coordinates = {
@@ -301,7 +304,7 @@ class PlantHeatmap:
         self.add_legend()
         return self.map
     
-    def add_legend(self):
+    def add_legend(self) -> None:
         """Add risk legend to the map"""
         legend_html = '''
         <div style="position: fixed; bottom: 15px; right: 15px; width: 130px; 
@@ -331,7 +334,7 @@ class PlantHeatmap:
         self.map.get_root().html.add_child(folium.Element(legend_html))
 
     
-    def analyze_and_visualize(self, df: pd.DataFrame, engine, 
+    def analyze_and_visualize(self, df: pd.DataFrame, engine: 'CompoundRiskEngine', 
                               timestamp_index: int = -1) -> folium.Map:
         """Analyze data and create heatmap for a specific timestamp"""
         row = df.iloc[timestamp_index]
@@ -361,7 +364,7 @@ class PlantHeatmap:
         self.create_risk_heatmap(risk_data)
         return self.map
     
-    def save_heatmap(self, filename: str = 'heatmap.html'):
+    def save_heatmap(self, filename: str = 'heatmap.html') -> Optional[str]:
         """Save heatmap to HTML file"""
         os.makedirs('outputs', exist_ok=True)
         filepath = f'outputs/{filename}'

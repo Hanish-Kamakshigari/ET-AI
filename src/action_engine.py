@@ -15,7 +15,7 @@ class ActionEngine:
     Generates specific, actionable recommendations
     """
     
-    def __init__(self, knowledge_base_path: str = 'data/actions.json'):
+    def __init__(self, knowledge_base_path: str = 'data/actions.json') -> None:
         self.knowledge_base_path = knowledge_base_path
         self.action_kb = self._load_knowledge_base()
     
@@ -159,7 +159,7 @@ class ActionEngine:
             print(f"⚠️ Error loading knowledge base: {e}")
             return default_actions
     
-    def get_action_plan(self, alert, plant_state: Optional[Dict] = None) -> Dict:
+    def get_action_plan(self, alert: object, plant_state: Optional[Dict] = None) -> Dict:
         """
         Generate a complete action plan for an alert
         

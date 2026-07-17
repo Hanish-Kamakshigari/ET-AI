@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import random
 from datetime import datetime
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any, Callable
 from PIL import Image, ImageDraw, ImageFont
 import streamlit as st
 
@@ -21,7 +21,7 @@ _models = {
     "stock": None
 }
 
-def reset_ppe_buffer():
+def reset_ppe_buffer() -> None:
     pass
 
 def detect_helmet_color(frame_bgr: np.ndarray, person_box: tuple, zone: str = None) -> bool:
@@ -111,7 +111,7 @@ def detect_vest_color(frame_bgr: np.ndarray, person_box: tuple, zone: str = None
     return orange_ratio > 0.10 or green_ratio > 0.10
 
 # Configurable zones
-_zones_config = {}
+_zones_config: Dict[str, Any] = {}
 
 # Class mapping to handle different Roboflow dataset conventions
 CLASS_MAPPING = {
@@ -134,7 +134,7 @@ CLASS_MAPPING = {
 }
 
 # Global tracking dictionary for consecutive fallen frames per person centroid
-_fall_tracker_history = {}
+_fall_tracker_history: Dict[Any, Any] = {}
 
 
 # Gas leak plume keyframes for Zone_A (Battery-4)
@@ -151,7 +151,7 @@ _GAS_LEAK_KF = [
     (300, 590, 80,  740, 530),
 ]
 
-def _interpolate_gas_leak(current_frame: int):
+def _interpolate_gas_leak(current_frame: int) -> Optional[Tuple[int, int, int, int]]:
     """Interpolate gas leak box for the given frame index."""
     kf = _GAS_LEAK_KF
     if not kf:
@@ -173,7 +173,7 @@ def _interpolate_gas_leak(current_frame: int):
             )
     return None
 
-def load_zones_config():
+def load_zones_config() -> None:
     """Load zones.json from root or fallback to defaults"""
     global _zones_config
     paths = ["zones.json", "src/cctv/zones.json"]
@@ -218,7 +218,7 @@ def load_zones_config():
     }
 
 @st.cache_resource
-def get_yolo_model(model_type: str, zone: str = None):
+def get_yolo_model(model_type: str, zone: Optional[str] = None) -> Optional[Any]:
     """Load or retrieve YOLO model from cache"""
     global _models
 
@@ -295,7 +295,7 @@ def _patch_ultralytics_fuse() -> None:
         if getattr(_orig, "_suraksha_patched", False):
             return  # already wrapped
 
-        def _safe_fuse(self, verbose=True):
+        def _safe_fuse(self, verbose: bool = True) -> object:
             try:
                 return _orig(self, verbose=verbose)
             except AttributeError as exc:
@@ -316,14 +316,14 @@ _patch_ultralytics_fuse()
 
 # Load zones config on initialization
 load_zones_config()
-_detections_cache = {}
+_detections_cache: Dict[str, Any] = {}
 
 def run_inference(
     frame_np: np.ndarray, 
     selected_zone: str, 
-    latest_telemetry: Dict, 
+    latest_telemetry: Dict[str, Any], 
     current_frame: int = 0,
-    draw_fallback_fn = None
+    draw_fallback_fn: Optional[Callable[..., Any]] = None
 ) -> Tuple[Image.Image, int, int, List[Detection]]:
     """
     Core inference pipeline:

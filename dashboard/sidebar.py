@@ -6,6 +6,8 @@ import sys
 import os
 from datetime import datetime
 from typing import Dict, Any
+from src.risk_engine import CompoundRiskEngine
+from src.alert_system import AlertSystem, AlertManager
 import streamlit as st
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -23,10 +25,10 @@ def render_sidebar(
     sidebar_placeholder: st.delta_generator.DeltaGenerator,
     placeholders: Dict[str, Any],
     data_dict: Dict[str, Any],
-    engine: Any,
-    am: Any,
-    alert_system: Any,
-):
+    engine: CompoundRiskEngine,
+    am: AlertManager,
+    alert_system: AlertSystem,
+) -> None:
     """Renders the permanent SurakshaAI Console sidebar with all controls and status panels."""
     latest = data_dict['latest']
     max_score = data_dict['max_score']

@@ -12,6 +12,7 @@ from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import defaultdict
+import streamlit as st
 
 # Import zone labels from shared config (single source of truth)
 from src.config.ui_constants import ZONE_LABELS_MAP
@@ -104,7 +105,7 @@ class SafetyAlert:
     frame_counter: int = 1
 
     @property
-    def duration(self):
+    def duration(self) -> float:
         end = self.end_time or datetime.now()
         st = self.start_time
         if st.tzinfo != end.tzinfo:
@@ -113,7 +114,7 @@ class SafetyAlert:
         return (end - st).total_seconds()
 
 class AlertManager:
-    def __init__(self):
+    def __init__(self) -> None:
         self.coordinator = get_alert_coordinator()
         self.persistence_threshold = self.coordinator.incident_manager.persistence_threshold
 
@@ -216,18 +217,18 @@ class AlertManager:
         }
         return msg_map.get(label, f"Safety violation: {label} detected")
 
-    def update(self, current_detections: List[Any], zone: str):
+    def update(self, current_detections: List[Any], zone: str) -> None:
         # Forward detection frame to the coordinator
         from src.alert_coordinator import get_current_telemetry
         telemetry = get_current_telemetry(zone)
         self.coordinator.process_frame(current_detections, zone, telemetry)
 
-    def acknowledge(self, alert_id: str, user_name: str):
+    def acknowledge(self, alert_id: str, user_name: str) -> None:
         self.coordinator.acknowledge_incident(alert_id, user_name)
 
 
 class AlertSystem:
-    def __init__(self, db_path: str = "data/alerts.db"):
+    def __init__(self, db_path: str = "data/alerts.db") -> None:
         self.coordinator = get_alert_coordinator()
         self.db_path = db_path
         self.running = True
@@ -238,7 +239,7 @@ class AlertSystem:
             k: v.get("emergency_teams", []) for k, v in self.coordinator.config.get("zones", {}).items()
         }
 
-    def trigger_alert(self, row: Any, risk_result: Dict) -> Optional[Dict]:
+    def trigger_alert(self, row: Dict[str, Any], risk_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return self.coordinator.trigger_incident_from_risk(row, risk_result)
 
     def acknowledge_alert(self, alert_id: str) -> bool:
@@ -258,13 +259,13 @@ class AlertSystem:
         return self.get_recent_alerts(100)
 
     @alerts.setter
-    def alerts(self, value):
+    def alerts(self, value: List[Dict[str, Any]]) -> None:
         # Handle custom mock injections from scenario triggers
         if not hasattr(self, "_mock_alerts"):
             self._mock_alerts = []
         self._mock_alerts = value
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.running = False
         self.coordinator.shutdown()
 
@@ -322,17 +323,17 @@ def evaluate_alert_conditions(
     }
 
 
-def dispatch_alerts(alert_payload: dict):
+def dispatch_alerts(alert_payload: Dict[str, Any]) -> None:
     coordinator = get_alert_coordinator()
     coordinator.dispatch_payload_alert(alert_payload)
 
 
-def clear_alert_if_safe(zone: str, update_cooldown: bool = True):
+def clear_alert_if_safe(zone: str, update_cooldown: bool = True) -> None:
         coordinator = get_alert_coordinator()
         coordinator.clear_alert_if_safe(zone, update_cooldown=update_cooldown)
 
 
-def render_improved_alerts(placeholder, alert_manager: AlertManager):
+def render_improved_alerts(placeholder: st.delta_generator.DeltaGenerator, alert_manager: AlertManager) -> None:
     if not alert_manager.active_alerts:
         placeholder.markdown(NOMINAL_HTML_TEMPLATE, unsafe_allow_html=True)
         return

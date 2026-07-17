@@ -34,12 +34,12 @@ class Detection:
         return w * h
 
 
-def _is_sentinel_box(box):
+def _is_sentinel_box(box: Optional[Tuple[int, int, int, int]]) -> bool:
     """Return True if box is a (0,0,0,0) sentinel meaning 'not present'."""
     return box is not None and box[0] == 0 and box[1] == 0 and box[2] == 0 and box[3] == 0
 
 
-def interpolate_box(keyframes, current_frame):
+def interpolate_box(keyframes: List[Tuple[int, ...]], current_frame: int) -> Optional[Tuple[int, int, int, int]]:
     """Interpolate between keyframes. Returns None for sentinel (0,0,0,0) boxes."""
     sorted_kf = sorted(keyframes, key=lambda x: x[0])
     
@@ -89,7 +89,7 @@ class ObjectDetector:
     Supports real YOLO or simulated detection
     """
     
-    def __init__(self, use_simulation: bool = True, confidence_threshold: float = 0.5):
+    def __init__(self, use_simulation: bool = True, confidence_threshold: float = 0.5) -> None:
         self.use_simulation = use_simulation
         self.confidence_threshold = confidence_threshold
         self.model = None
@@ -103,7 +103,7 @@ class ObjectDetector:
         if not use_simulation:
             self._load_model()
     
-    def _load_model(self):
+    def _load_model(self) -> None:
         """Load real YOLO model (optional)"""
         if self._attempted_load:
             return
@@ -333,7 +333,7 @@ class ObjectDetector:
         self.tracking_id_counter += 1
         return self.tracking_id_counter
     
-    def _add_to_history(self, detections: List[Detection]):
+    def _add_to_history(self, detections: List[Detection]) -> None:
         """Add detections to history"""
         self.detection_history.extend(detections)
         if len(self.detection_history) > self.max_history:

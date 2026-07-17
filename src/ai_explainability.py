@@ -7,7 +7,7 @@ All explainability panels read from this — no DB round-trips needed for live d
 import time
 import threading
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from collections import deque
 
 
@@ -18,7 +18,7 @@ from collections import deque
 class DetectionSnapshot:
     """A single AI detection captured at inference time."""
 
-    LABEL_ICONS = {
+    LABEL_ICONS: Dict[str, str] = {
         'person':        '👷', 'helmet':       '⛑️',  'no_helmet':    '⚠️',
         'vest':          '🦺', 'no_vest':      '⚠️',  'gas_leak':     '💨',
         'gas_alarm':     '🚨', 'fire':         '🔥',  'smoke':        '💨',
@@ -26,12 +26,12 @@ class DetectionSnapshot:
         'chemical_haze': '🌫️', 'overpressure': '💥', 'worker_fall':  '🆘',
         'intrusion':     '🚷',
     }
-    HAZARD_LABELS = frozenset([
+    HAZARD_LABELS: frozenset[str] = frozenset([
         'gas_leak','gas_alarm','fire','smoke','overpressure','worker_fall',
         'chemical_haze','welding_fume','no_helmet','no_vest','intrusion','warning_light',
     ])
 
-    def __init__(self, label: str, confidence: float, zone: str):
+    def __init__(self, label: str, confidence: float, zone: str) -> None:
         self.label = label
         self.confidence = confidence
         self.zone = zone
@@ -60,7 +60,15 @@ class DetectionSnapshot:
 class RuleEvalResult:
     """Stores the evaluation result of a single safety rule."""
 
-    def __init__(self, rule_id, rule_name, passed, conditions, severity='LOW', score=0):
+    def __init__(
+        self,
+        rule_id: str,
+        rule_name: str,
+        passed: bool,
+        conditions: List[Dict[str, Any]],
+        severity: str = 'LOW',
+        score: float = 0.0,
+    ) -> None:
         self.rule_id = rule_id
         self.rule_name = rule_name
         self.passed = passed
@@ -77,7 +85,7 @@ class RuleEvalResult:
 class AIFrameState:
     """Snapshot of one complete inference cycle."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.frame_number: int = 0
         self.zone: str = ''
         self.model_name: str = 'YOLOv11'
@@ -127,14 +135,21 @@ class AIFrameState:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class DetectionHistoryEntry:
-    EVENT_COLORS = {
+    EVENT_COLORS: Dict[str, str] = {
         'frame':        '#475569', 'detection':    '#3b82f6',
         'hazard':       '#ef4444', 'sensor':       '#f97316',
         'rule_match':   '#8b5cf6', 'alert':        '#ef4444',
         'notification': '#22c55e',
     }
 
-    def __init__(self, event_type, label, detail, zone, confidence=0.0):
+    def __init__(
+        self,
+        event_type: str,
+        label: str,
+        detail: str,
+        zone: str,
+        confidence: float = 0.0,
+    ) -> None:
         self.timestamp = datetime.now().strftime('%H:%M:%S')
         self.event_type = event_type
         self.label = label
@@ -156,9 +171,9 @@ class AIExplainabilityBus:
     """
 
     _instance: Optional['AIExplainabilityBus'] = None
-    _class_lock = threading.Lock()
+    _class_lock: threading.Lock = threading.Lock()
 
-    def __new__(cls):
+    def __new__(cls) -> 'AIExplainabilityBus':
         with cls._class_lock:
             if cls._instance is None:
                 inst = super().__new__(cls)
@@ -174,7 +189,7 @@ class AIExplainabilityBus:
         self,
         frame_number: int,
         zone: str,
-        detections: list,
+        detections: List[Any],
         sensor_values: Dict[str, Any],
         latest_telemetry: Dict[str, Any],
         inference_ms: float,
@@ -182,7 +197,7 @@ class AIExplainabilityBus:
         model_name: str = 'YOLOv11',
         permit_active: bool = False,
         permit_zone: str = '',
-    ):
+    ) -> None:
         """Called once per inference cycle. Captures the full AI reasoning snapshot."""
         with self._state_lock:
             s = AIFrameState()
@@ -248,7 +263,7 @@ class AIExplainabilityBus:
             self.current = s
             self._append_history(s)
 
-    def update_notifications(self, channels: List[str], alert_id: Optional[str] = None):
+    def update_notifications(self, channels: List[str], alert_id: Optional[str] = None) -> None:
         with self._state_lock:
             self.current.notification_channels = channels
             if alert_id:
@@ -259,7 +274,7 @@ class AIExplainabilityBus:
                     detail=ch.upper(), zone=self.current.zone,
                 ))
 
-    def update_alert_count(self, count: int):
+    def update_alert_count(self, count: int) -> None:
         with self._state_lock:
             self.current.total_alerts_active = count
 
@@ -275,7 +290,13 @@ class AIExplainabilityBus:
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
-    def _evaluate_rules(self, detections, sensors, permit_active, zone):
+    def _evaluate_rules(
+        self,
+        detections: List[Any],
+        sensors: Dict[str, Any],
+        permit_active: bool,
+        zone: str,
+    ) -> Tuple[List[RuleEvalResult], List[RuleEvalResult]]:
         gas = sensors.get('gas_ppm', 0.0)
         temp = sensors.get('temperature', 0.0)
         pressure = sensors.get('pressure', 0.0)
@@ -350,7 +371,7 @@ class AIExplainabilityBus:
                 matched.append(r)
         return all_results, matched
 
-    def _append_history(self, s: AIFrameState):
+    def _append_history(self, s: AIFrameState) -> None:
         self.history.appendleft(DetectionHistoryEntry(
             'frame', f'Frame #{s.frame_number}',
             f'{s.inference_ms:.0f}ms \u2022 {s.model_name}', s.zone

@@ -95,7 +95,7 @@ def load_config() -> Dict[str, Any]:
 # ==============================================================================
 
 class PersistenceLayer:
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any]) -> None:
         db_cfg = config.get("database", {})
         self.db_path = db_cfg.get("db_path", "data/alerts_v2.db")
         self.timeout = db_cfg.get("timeout_seconds", 10)
@@ -128,13 +128,13 @@ class PersistenceLayer:
             self.logger.warning("Connection pool exhausted, creating temp connection")
             return self._create_connection()
 
-    def return_connection(self, conn: sqlite3.Connection):
+    def return_connection(self, conn: sqlite3.Connection) -> None:
         try:
             self._pool.put(conn, block=False)
         except Full:
             conn.close()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -225,7 +225,7 @@ class PersistenceLayer:
         finally:
             self.return_connection(conn)
 
-    def close(self):
+    def close(self) -> None:
         while not self._pool.empty():
             try:
                 conn = self._pool.get_nowait()
@@ -238,7 +238,7 @@ class PersistenceLayer:
 # ==============================================================================
 
 class RiskEvaluator:
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any]) -> None:
         self.config = config
         self.rules_config = config.get("rules", {})
         self.escalation_matrix = config.get("escalation_matrix", {})
@@ -457,7 +457,7 @@ class RiskEvaluator:
 # ==============================================================================
 
 class DetectionProcessor:
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any]) -> None:
         self.config = config
 
     def generate_incident_key(self, zone: str, hazard_type: str) -> str:
@@ -699,7 +699,7 @@ class SirenChannel(NotificationChannel):
         return True
 
 class NotificationDispatcher:
-    def __init__(self):
+    def __init__(self) -> None:
         self._channels: Dict[str, NotificationChannel] = {}
         # Share a single I/O-bound executor (max 3 workers) across the app.
         self.executor = get_shared_executor()
@@ -717,10 +717,10 @@ class NotificationDispatcher:
         self.register_channel("PHONE", VoiceChannel())  # Distinct voice/phone call channel
         self.register_channel("SIREN", SirenChannel())
 
-    def register_channel(self, name: str, channel: NotificationChannel):
+    def register_channel(self, name: str, channel: NotificationChannel) -> None:
         self._channels[name.upper()] = channel
 
-    def _update_status(self, incident_id: str, channel: str, status: str, retry_count: Optional[int] = None):
+    def _update_status(self, incident_id: str, channel: str, status: str, retry_count: Optional[int] = None) -> None:
         try:
             coordinator = get_alert_coordinator()
             conn = coordinator.persistence.get_connection()
@@ -776,7 +776,7 @@ class NotificationDispatcher:
         
         return target_channels
 
-    def _safe_send(self, name: str, channel: NotificationChannel, incident: Dict[str, Any], ctx=None, dispatch_start: Optional[float] = None):
+    def _safe_send(self, name: str, channel: NotificationChannel, incident: Dict[str, Any], ctx: Optional[Any] = None, dispatch_start: Optional[float] = None) -> None:
         incident_id = incident.get("incident_id")
         if incident_id:
             self._update_status(incident_id, name, "Sending")
@@ -806,7 +806,7 @@ class NotificationDispatcher:
             self.logger.error(f"Exception during notification dispatch on {name}: {e}")
             self._handle_failure(name, channel, incident, ctx, dispatch_start)
 
-    def _handle_failure(self, name: str, channel: NotificationChannel, incident: Dict[str, Any], ctx=None, dispatch_start: Optional[float] = None):
+    def _handle_failure(self, name: str, channel: NotificationChannel, incident: Dict[str, Any], ctx: Optional[Any] = None, dispatch_start: Optional[float] = None) -> None:
         incident_id = incident.get("incident_id")
         if not incident_id:
             return
@@ -831,7 +831,7 @@ class NotificationDispatcher:
             self._update_status(incident_id, name, "Pending", retry_count=new_retry)
             
             # Re-submit to the executor after a short delay (1 second sleep)
-            def retry_task():
+            def retry_task() -> None:
                 time.sleep(1.0)
                 self._safe_send(name, channel, incident, ctx, dispatch_start)
                 
@@ -846,7 +846,7 @@ class NotificationDispatcher:
             except Exception as ex:
                 self.logger.error(f"Enhancer on_notification_failed failed: {ex}")
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.executor.shutdown(wait=False)
 
 # ==============================================================================
@@ -854,7 +854,7 @@ class NotificationDispatcher:
 # ==============================================================================
 
 class EscalationEngine:
-    def __init__(self, coordinator):
+    def __init__(self, coordinator: 'AlertCoordinator') -> None:
         self.coordinator = coordinator
         self._queue: List[Tuple[float, str]] = [] # list of (run_at_timestamp, incident_id)
         self._lock = threading.Lock()
@@ -865,7 +865,7 @@ class EscalationEngine:
         self._thread = threading.Thread(target=self._run, daemon=True, name="EscalationThread")
         self._thread.start()
 
-    def schedule_escalation(self, incident_id: str, delay_seconds: float):
+    def schedule_escalation(self, incident_id: str, delay_seconds: float) -> None:
         run_at = time.time() + delay_seconds
         import heapq
         with self._lock:
@@ -873,7 +873,7 @@ class EscalationEngine:
             self.logger.info(f"Scheduled escalation check for incident {incident_id} in {delay_seconds} seconds")
             self._cond.notify()
 
-    def _run(self):
+    def _run(self) -> None:
         import heapq
         while self._running:
             with self._lock:
@@ -902,7 +902,7 @@ class EscalationEngine:
             except Exception as e:
                 self.logger.error(f"Error in escalation evaluation: {e}")
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         with self._lock:
             self._running = False
             self._cond.notify()
@@ -914,7 +914,7 @@ class EscalationEngine:
 class DashboardAdapter:
     # Dynamic cache TTL (seconds) keyed by the highest active severity.
     # Lower TTL for fast-changing critical incidents, longer for stable/acked ones.
-    CACHE_TTL = {
+    CACHE_TTL: Dict[str, float] = {
         "CRITICAL": 0.5,
         "HIGH": 1.0,
         "MEDIUM": 2.0,
@@ -924,7 +924,7 @@ class DashboardAdapter:
     }
     DEFAULT_TTL = 2.0
 
-    def __init__(self, persistence: PersistenceLayer):
+    def __init__(self, persistence: PersistenceLayer) -> None:
         self.persistence = persistence
         self._active_alerts_cache = None
         self._active_alerts_timestamp = 0.0
@@ -1017,7 +1017,7 @@ class DashboardAdapter:
             "cache_hit_rate": f"{hit_rate:.1f}%",
         }
 
-    def invalidate_cache(self):
+    def invalidate_cache(self) -> None:
         """Clear cached dashboard queries (called after incident mutations)."""
         with self._cache_lock:
             self._active_alerts_cache = None
@@ -1133,7 +1133,7 @@ class DashboardAdapter:
 # ==============================================================================
 
 class HealthMonitor:
-    def __init__(self, coordinator):
+    def __init__(self, coordinator: 'AlertCoordinator') -> None:
         self.coordinator = coordinator
         self.frame_times = []
         self.frame_times_lock = threading.Lock()
@@ -1141,13 +1141,13 @@ class HealthMonitor:
         self.notification_latencies = []
         self.notification_latencies_lock = threading.Lock()
 
-    def record_frame_time(self, processing_time_ms: float):
+    def record_frame_time(self, processing_time_ms: float) -> None:
         with self.frame_times_lock:
             self.frame_times.append(processing_time_ms)
             if len(self.frame_times) > 100:
                 self.frame_times.pop(0)
 
-    def record_notification_latency(self, latency_seconds: float):
+    def record_notification_latency(self, latency_seconds: float) -> None:
         with self.notification_latencies_lock:
             self.notification_latencies.append(latency_seconds)
             if len(self.notification_latencies) > 100:
@@ -1209,7 +1209,7 @@ class HealthMonitor:
 # ==============================================================================
 
 class IncidentManager:
-    def __init__(self, config: Dict[str, Any], persistence: PersistenceLayer, dispatcher: NotificationDispatcher, escalation: EscalationEngine, dashboard_adapter: DashboardAdapter = None):
+    def __init__(self, config: Dict[str, Any], persistence: PersistenceLayer, dispatcher: NotificationDispatcher, escalation: EscalationEngine, dashboard_adapter: Optional[DashboardAdapter] = None) -> None:
         self.config = config
         self.persistence = persistence
         self.dispatcher = dispatcher
@@ -1221,7 +1221,7 @@ class IncidentManager:
         self._cooldown_cache: Dict[str, datetime] = {}
         self._cooldown_lock = threading.Lock()
 
-    def update_frame_incidents(self, zone: str, active_keys: List[Tuple[str, str, Dict[str, Any]]], detections: List[Any], telemetry: Dict[str, Any], evaluation: Dict[str, Any]):
+    def update_frame_incidents(self, zone: str, active_keys: List[Tuple[str, str, Dict[str, Any]]], detections: List[Any], telemetry: Dict[str, Any], evaluation: Dict[str, Any]) -> None:
         """
         Saves frames, creates new incidents, promotes them based on persistence,
         and resolves absent incidents using a 10 safe-frame hysteresis count.
@@ -1452,7 +1452,7 @@ class IncidentManager:
                 except Exception as ex:
                     self.logger.error(f"Enhancer on_incident_resolved failed: {ex}")
 
-    def _clear_dashboard_visuals(self, zone: str):
+    def _clear_dashboard_visuals(self, zone: str) -> None:
         import sys
         if 'streamlit' in sys.modules:
             from streamlit.runtime.scriptrunner import get_script_run_ctx
@@ -1470,7 +1470,7 @@ class IncidentManager:
 
 
 class AlertCoordinator:
-    def __init__(self):
+    def __init__(self) -> None:
         self.start_time = time.time()
         self.config = load_config()
         self.logger = logging.getLogger("AlertCoordinator")
@@ -1537,7 +1537,7 @@ class AlertCoordinator:
         
         return evaluation
 
-    def trigger_incident_from_risk(self, row: Any, risk_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def trigger_incident_from_risk(self, row: Dict[str, Any], risk_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """API compatibility bridge to trigger incidents directly from compound risk signals"""
         zone = risk_result.get("zone", "Unknown")
         risk_level = risk_result.get("risk_level", "LOW")
@@ -1611,7 +1611,7 @@ class AlertCoordinator:
                 
         return incident_to_dispatch
 
-    def dispatch_payload_alert(self, alert_payload: dict):
+    def dispatch_payload_alert(self, alert_payload: Dict[str, Any]) -> None:
         """Dispatches an evaluated Streamlit alert dict into the coordinator's notification pipe"""
         severity = alert_payload.get("severity", "LOW")
         zone = alert_payload.get("zone", "Unknown")
@@ -1654,6 +1654,7 @@ class AlertCoordinator:
                 
                 cursor.execute("SELECT * FROM incidents WHERE incident_id = ?", (incident_id,))
                 incident_to_dispatch = dict(cursor.fetchone())
+                self.dashboard_adapter.invalidate_cache()
             else:
                 incident_id = row["incident_id"]
                 cursor.execute("""
@@ -1743,7 +1744,7 @@ class AlertCoordinator:
         finally:
             self.persistence.return_connection(conn)
 
-    def clear_alert_if_safe(self, zone: str, update_cooldown: bool = True):
+    def clear_alert_if_safe(self, zone: str, update_cooldown: bool = True) -> None:
         """Compatibility function to resolve all active incidents in a zone"""
         conn = self.persistence.get_connection()
         try:
@@ -1787,7 +1788,7 @@ class AlertCoordinator:
         finally:
             self.persistence.return_connection(conn)
 
-    def check_and_escalate_incident(self, incident_id: str):
+    def check_and_escalate_incident(self, incident_id: str) -> None:
         """Checks if active incident has breached its acknowledgement response window and escalates it"""
         conn = self.persistence.get_connection()
         escalated_incident = None
@@ -1834,7 +1835,7 @@ class AlertCoordinator:
                 except Exception as ex:
                     self.logger.error(f"Enhancer on_incident_escalated failed: {ex}")
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.escalation_engine.shutdown()
         self.notification_dispatcher.shutdown()
         self.persistence.close()

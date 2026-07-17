@@ -4,11 +4,17 @@ SurakshaAI Dashboard Components Module
 
 import os
 from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional, Union
 
 import pandas as pd
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
+
+from src.risk_engine import CompoundRiskEngine
+from src.alert_system import AlertSystem, AlertManager, SafetyAlert
 
 from src.config.ui_constants import SENSOR_ZONES, ZONE_LABELS
+from src.permit_intelligence import render_permit_intelligence_panel, init_default_permits
 from src.ui_components import (
     render_section_header,
     render_metric_card,
@@ -62,12 +68,17 @@ def _build_zone_risk_frame(data_dict: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def render_analytics_page():
+def render_analytics_page() -> None:
     """Backward-compatible wrapper kept for older imports."""
     st.markdown(render_section_header("📊 ANALYTICS DASHBOARD"), unsafe_allow_html=True)
 
 
-def render_analytics_tab(placeholders, data_dict, engine=None, alert_system=None):
+def render_analytics_tab(
+    placeholders: Dict[str, Any],
+    data_dict: Dict[str, Any],
+    engine: Optional[CompoundRiskEngine] = None,
+    alert_system: Optional[AlertSystem] = None,
+) -> None:
     """Render analytics using the live telemetry and alert state."""
     st.markdown(render_section_header("📊 ANALYTICS DASHBOARD"), unsafe_allow_html=True)
 
@@ -129,9 +140,14 @@ def render_analytics_tab(placeholders, data_dict, engine=None, alert_system=None
     st.bar_chart(zone_frame.set_index("Zone")["Risk Score"])
 
 
-def render_zones_tab(placeholders, data_dict, engine=None, alert_system=None):
+def render_zones_tab(
+    placeholders: Dict[str, Any],
+    data_dict: Dict[str, Any],
+    engine: Optional[CompoundRiskEngine] = None,
+    alert_system: Optional[AlertSystem] = None,
+) -> None:
     """Render the zone map with live risk colors and detailed zone telemetry."""
-    st.markdown(render_section_header("🗺️ ZONE MAP"), unsafe_allow_html=True)
+    st.markdown(render_section_header("🗺️ ZONE MAP — DIGITAL TWIN VIEW"), unsafe_allow_html=True)
 
     latest = data_dict.get("latest", {})
     zone_risks = data_dict.get("zone_risks", {})
@@ -241,8 +257,30 @@ def render_zones_tab(placeholders, data_dict, engine=None, alert_system=None):
     else:
         st.caption("No active alerts for this zone right now.")
 
+    # ── Interactive Plant Digital Twin (full synchronization) ──
+    st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+    st.markdown(render_section_header("🏭 INTERACTIVE PLANT DIGITAL TWIN"), unsafe_allow_html=True)
+    try:
+        from dashboard.digital_twin import render_zone_digital_twin_full
+        render_zone_digital_twin_full()
+    except Exception:
+        pass
+    # Smart Permit Intelligence (SIMOPS conflict detection)
+    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+    st.markdown(render_section_header("📋 SMART PERMIT INTELLIGENCE (SIMOPS)"), unsafe_allow_html=True)
+    try:
+        from src.permit_intelligence import render_permit_intelligence_panel
+        render_permit_intelligence_panel()
+    except Exception:
+        pass
 
-def render_settings_tab(placeholders, data_dict, engine=None, alert_system=None):
+
+def render_settings_tab(
+    placeholders: Dict[str, Any],
+    data_dict: Dict[str, Any],
+    engine: Optional[CompoundRiskEngine] = None,
+    alert_system: Optional[AlertSystem] = None,
+) -> None:
     """Render settings controls and persist them to session state."""
     st.markdown(render_section_header("⚙️ ADVANCED PLATFORM SETTINGS"), unsafe_allow_html=True)
     st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
@@ -374,12 +412,12 @@ def render_settings_tab(placeholders, data_dict, engine=None, alert_system=None)
 
 
 
-def render_sidebar_controls():
+def render_sidebar_controls() -> None:
     """Legacy helper kept for compatibility with older imports."""
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
 
-def render_kpi_grid(kpi_cols: Dict[str, Any], data_dict: Dict[str, Any]):
+def render_kpi_grid(kpi_cols: Dict[str, Any], data_dict: Dict[str, Any]) -> None:
     """Renders the top 4 KPI metric cards"""
     latest = data_dict['latest']
     STATUS = data_dict['STATUS']
@@ -476,7 +514,7 @@ def render_kpi_grid(kpi_cols: Dict[str, Any], data_dict: Dict[str, Any]):
         )
 
 
-def render_zone_status_panel(placeholder: Any, data_dict: Dict[str, Any]):
+def render_zone_status_panel(placeholder: DeltaGenerator, data_dict: Dict[str, Any]) -> None:
     """Renders the zone list monitoring status panel"""
     zone_risks = data_dict['zone_risks']
     latest = data_dict['latest']
@@ -503,7 +541,7 @@ def render_zone_status_panel(placeholder: Any, data_dict: Dict[str, Any]):
     placeholder.markdown("".join(rows_html), unsafe_allow_html=True)
 
 
-def render_failsafes_panel(placeholder: Any, data_dict: Dict[str, Any]):
+def render_failsafes_panel(placeholder: DeltaGenerator, data_dict: Dict[str, Any]) -> None:
     """Renders plant safety automated failsafes panel"""
     highest_risk = data_dict['STATUS']['level']
     compound_risk_score = data_dict['compound_risk_score']
@@ -546,7 +584,7 @@ def render_failsafes_panel(placeholder: Any, data_dict: Dict[str, Any]):
     placeholder.markdown(failsafes_html, unsafe_allow_html=True)
 
 
-def render_db_logs_panel(placeholder: Any, data_dict: Dict[str, Any]):
+def render_db_logs_panel(placeholder: DeltaGenerator, data_dict: Dict[str, Any]) -> None:
     """Renders active SQLite logs from the persistent DB"""
     db_logs = data_dict['db_logs']
 
@@ -571,7 +609,7 @@ def render_db_logs_panel(placeholder: Any, data_dict: Dict[str, Any]):
     placeholder.markdown("".join(logs_html), unsafe_allow_html=True)
 
 
-def render_scada_panel(placeholder: Any):
+def render_scada_panel(placeholder: DeltaGenerator) -> None:
     """Renders Modbus/OPC status gateways card"""
     scada_html = (
         '<div style="background:rgba(17,24,39,0.4);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:12px;font-family:Outfit,sans-serif;">'
@@ -585,7 +623,7 @@ def render_scada_panel(placeholder: Any):
     placeholder.markdown(scada_html, unsafe_allow_html=True)
 
 
-def render_notifications_panel(placeholder: Any, data_dict: Dict[str, Any], selected_zone: str):
+def render_notifications_panel(placeholder: DeltaGenerator, data_dict: Dict[str, Any], selected_zone: str) -> None:
     """Renders SMS, Email, and Siren notification channel dispatch status"""
     compound_risk_score = data_dict['compound_risk_score']
     zone_risks = data_dict['zone_risks']
@@ -656,7 +694,7 @@ def render_notifications_panel(placeholder: Any, data_dict: Dict[str, Any], sele
     placeholder.markdown(channels_html + escalated_toast, unsafe_allow_html=True)
 
 
-def render_compact_alert_card_html(alert: Any) -> str:
+def render_compact_alert_card_html(alert: Union[SafetyAlert, Dict[str, Any]]) -> str:
     """Renders a single compact alert card for the alerts panel"""
     # 1. Extract severity
     severity_name = "LOW"
@@ -760,7 +798,7 @@ def render_compact_alert_card_html(alert: Any) -> str:
     return html.strip().replace("\n", "")
 
 
-def render_alerts_panel(placeholder: Any, am: Any, selected_zone: str = None):
+def render_alerts_panel(placeholder: DeltaGenerator, am: AlertManager, selected_zone: Optional[str] = None) -> None:
     """Renders active and acknowledged alerts, filtered to the selected zone.
 
     Alerts are only shown while Autoplay Simulation is active. When autoplay
@@ -820,7 +858,7 @@ def render_alerts_panel(placeholder: Any, am: Any, selected_zone: str = None):
     placeholder.markdown("".join(cards_html), unsafe_allow_html=True)
 
 
-def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, Any], selected_zone: str, detections_list: List[Any]):
+def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, Any], selected_zone: str, detections_list: List[Any]) -> None:
     """Renders the Live Incident Timeline and the Rule Engine Status side-by-side"""
     timeline_placeholder = placeholders['timeline']
     risk_engine_placeholder = placeholders['risk_engine']
@@ -944,7 +982,7 @@ def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, 
     placeholders['risk_engine'].markdown(risk_engine_html, unsafe_allow_html=True)
 
 
-def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[str, Any], selected_zone: str, detections_list: List[Any]):
+def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[str, Any], selected_zone: str, detections_list: List[Any]) -> None:
     """Renders the AI Decision Engine, Live Telemetry gauges, and Zone Response side-by-side"""
     latest = data_dict['latest']
     STATUS = data_dict['STATUS']
@@ -1127,7 +1165,12 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
     placeholders['zone_response'].markdown(zone_response_html, unsafe_allow_html=True)
 
 
-def render_right_panel_diagnostics(placeholders_dict: dict, data_dict: dict, am: Any, init_mode: bool = False):
+def render_right_panel_diagnostics(
+    placeholders_dict: Dict[str, Any],
+    data_dict: Dict[str, Any],
+    am: AlertManager,
+    init_mode: bool = False,
+) -> None:
     """Renders the advanced AI diagnostics and connection health panels in the right side panel"""
     import streamlit as st
     from src.config.ui_constants import ZONE_LABELS
@@ -1399,13 +1442,8 @@ def render_right_panel_diagnostics(placeholders_dict: dict, data_dict: dict, am:
     # Dynamic Safety Scores, Compound Risk Intelligence, Predictive Analytics,
     # AI Safety Copilot, Smart Alert Prioritization, Emergency Response,
     # Incident Intelligence, Timeline, Geospatial Plant Map).
-    if 'intelligence' in placeholders_dict and placeholders_dict['intelligence']:
-        try:
-            from dashboard.intelligence_ui import render_intelligence_panels
-            with placeholders_dict['intelligence'].container():
-                render_intelligence_panels()
-        except Exception:
-            pass  # Intelligence panels are additive — never break the dashboard
+    # NOTE: Safety Intelligence Panels are now rendered directly in app.py
+    # after the orchestrator is fed with live telemetry, avoiding double rendering.
 
 
 def render_incident_summary_html(open_incidents: int, closed_incidents: int, today_incidents: int) -> str:
@@ -1432,7 +1470,7 @@ def render_incident_summary_html(open_incidents: int, closed_incidents: int, tod
     return "".join([line.strip() for line in html.split("\n")])
 
 
-def render_operational_overview(scada_placeholders: dict, data_dict: dict):
+def render_operational_overview(scada_placeholders: Dict[str, Any], data_dict: Dict[str, Any]) -> None:
     """Renders the 6 compact SCADA status cards for the operational overview row"""
     if not scada_placeholders:
         return

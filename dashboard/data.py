@@ -9,6 +9,7 @@ import sqlite3
 import random as _rand
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
+from src.alert_system import AlertSystem, AlertManager
 from dataclasses import dataclass
 import pandas as pd
 import streamlit as st
@@ -34,7 +35,7 @@ class RiskAlert:
 
 # ─── COMPOUND RISK ENGINE ─────────────────────────────────────────────────────
 class CompoundRiskEngine:
-    def __init__(self):
+    def __init__(self) -> None:
         self.thresholds = {
             'gas_ppm':       {'normal':(0,15),   'elevated':(15,30),  'high':(30,50),   'critical':(50,100)},
             'temperature_c': {'normal':(60,88),  'elevated':(88,95),  'high':(95,105),  'critical':(105,120)},
@@ -138,7 +139,7 @@ def init_engine() -> CompoundRiskEngine:
 
 
 @st.cache_resource
-def init_alerts(_engine: CompoundRiskEngine, _df: pd.DataFrame):
+def init_alerts(_engine: CompoundRiskEngine, _df: pd.DataFrame) -> AlertSystem:
     from src.alert_system import AlertSystem
     sys_obj = AlertSystem()
     for i in range(max(0, len(_df)-50), len(_df)):
@@ -152,7 +153,7 @@ def init_alerts(_engine: CompoundRiskEngine, _df: pd.DataFrame):
     return sys_obj
 
 
-def init_state_defaults():
+def init_state_defaults() -> None:
     """Initializes Streamlit session state defaults"""
     _defaults = {
         'simulate_active': False,
@@ -183,7 +184,7 @@ def init_state_defaults():
         st.session_state.scenario_start_time = datetime.now()
 
 
-def handle_url_actions(alert_system: Any, am: Any):
+def handle_url_actions(alert_system: AlertSystem, am: AlertManager) -> None:
     """Processes URL query parameters for acknowledging alerts"""
     if 'ack_alert' in st.query_params:
         aid = st.query_params['ack_alert']
@@ -238,7 +239,7 @@ def get_zone_color(status: str) -> str:
 
 
 # ─── TELEMETRY CALCULATIONS ───────────────────────────────────────────────────
-def calculate_telemetry(df: pd.DataFrame, engine: CompoundRiskEngine, alert_system: Any) -> Dict[str, Any]:
+def calculate_telemetry(df: pd.DataFrame, engine: CompoundRiskEngine, alert_system: AlertSystem) -> Dict[str, Any]:
     # Toast on state change
     if st.session_state.simulate_active != st.session_state.prev_simulate_active:
         msg = ('🚨 TRIPLE-THREAT COMPOUND RISK SIMULATED IN BATTERY-4!'
@@ -296,6 +297,9 @@ def calculate_telemetry(df: pd.DataFrame, engine: CompoundRiskEngine, alert_syst
     # Assemble latest
     latest = df.iloc[-1].copy()
     latest['timestamp'] = _now
+
+    # Store in session state for Digital Twin access
+    st.session_state['_last_telemetry'] = dict(latest)
     latest.update({
         'Zone_A_gas_ppm': _za_gas, 'Zone_A_temperature_c': _za_temp, 'Zone_A_pressure_bar': _za_pressure,
         'Zone_A_worker_count': _za_workers, 'Zone_A_maintenance_active': _za_maint, 'Zone_A_permit_active': _za_permit,

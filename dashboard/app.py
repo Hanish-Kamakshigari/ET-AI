@@ -10,6 +10,7 @@ import sys
 import os
 import logging
 import warnings
+from typing import Any, Dict, Optional
 
 # Suppress warnings process-wide
 logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").setLevel(logging.ERROR)
@@ -25,7 +26,7 @@ if sys.platform == 'win32':
         import socket
         from asyncio.proactor_events import _ProactorBasePipeTransport
         
-        def _patched_call_connection_lost(self, exc):
+        def _patched_call_connection_lost(self: _ProactorBasePipeTransport, exc: Optional[BaseException]) -> None:
             if self._called_connection_lost:
                 return
             try:
@@ -51,7 +52,7 @@ if sys.platform == 'win32':
     # 1) Log filter — catches messages routed through the logging system.
     class _SuppressAsyncioFilter(logging.Filter):
         _SUPPRESS = ("Event loop is closed", "ConnectionResetError", "ConnectionAbortedError")
-        def filter(self, record):
+        def filter(self, record: logging.LogRecord) -> bool:
             msg = record.getMessage()
             return not any(s in msg for s in self._SUPPRESS)
 
@@ -63,14 +64,15 @@ if sys.platform == 'win32':
     # 2) Exception-handler patch — the real source of the WinError 10054 printouts.
     # asyncio calls loop.call_exception_handler() for transport errors, which bypasses
     # the logging system entirely and writes directly to stderr.
+    _loop: Optional[asyncio.AbstractEventLoop] = None
     try:
         _loop = asyncio.get_event_loop()
     except RuntimeError:
-        _loop = None
+        pass
     if _loop is not None and not getattr(_loop, '_suraksha_exc_handler_patched', False):
         _original_exc_handler = _loop.call_exception_handler
         _SUPPRESS_EXC = ("ConnectionResetError", "ConnectionAbortedError", "WinError 10054", "WinError 10053")
-        def _filtered_exception_handler(context):
+        def _filtered_exception_handler(context: Dict[str, Any]) -> None:
             msg = context.get("message", "") + str(context.get("exception", ""))
             if any(s in msg for s in _SUPPRESS_EXC):
                 return  # swallow harmless Windows transport teardown noise
@@ -89,9 +91,10 @@ from src.ui_components import inject_global_css, render_navbar, render_section_h
 from src.alert_system import get_alert_system, AlertManager
 from src.cctv.inference import reset_ppe_buffer
 
+from src.cctv.frame_processor import FrameProcessor
+
 @st.cache_resource
-def get_frame_processor():
-    from src.cctv.frame_processor import FrameProcessor
+def get_frame_processor() -> FrameProcessor:
     return FrameProcessor(use_simulation=True)
 
 # Dashboard modular sub-components
@@ -120,6 +123,18 @@ from dashboard.components import (
 import dashboard.video
 importlib.reload(dashboard.video)
 from dashboard.video import stream_cctv_feed_fragment
+
+# Safety Intelligence & Digital Twin panels
+import dashboard.intelligence_ui
+importlib.reload(dashboard.intelligence_ui)
+from dashboard.intelligence_ui import render_intelligence_panels
+
+import dashboard.digital_twin
+importlib.reload(dashboard.digital_twin)
+from dashboard.digital_twin import render_zone_digital_twin_full
+
+from src.permit_intelligence import init_default_permits, render_permit_intelligence_panel
+from src.safety_intelligence import get_intelligence_orchestrator
 
 # ════════════════════════════════════════════════════════════════════════════════
 # 1. APPLICATION INITIALIZATION
@@ -226,9 +241,6 @@ if st.session_state.get('sim_stage') == 'injecting':
     </div>
     """, unsafe_allow_html=True)
 
-# Calculate telemetry metrics across all zones
-data_dict = calculate_telemetry(df, engine, alert_system)
-
 # Persist risk level so navbar status pill updates each rerun cycle
 st.session_state['last_risk_level'] = data_dict.get('STATUS', {}).get('level', 'LOW')
 
@@ -276,16 +288,51 @@ with col_right:
         'risk_engine': risk_engine_placeholder,
         'telemetry_trends': telemetry_trends_placeholder,
         'intelligence': intelligence_placeholder,
+        'critical_banner': critical_banner_placeholder,
     }
     from dashboard.components import render_right_panel_diagnostics
     render_right_panel_diagnostics(placeholders, data_dict, am, init_mode=True)
 
+    # ── Safety Intelligence Panels (Digital Twin, Copilot, XAI, etc.) ──
+    # Initialize default work permits once per session for SIMOPS analysis
+    if 'permits_initialized' not in st.session_state:
+        try:
+            init_default_permits()
+            st.session_state['permits_initialized'] = True
+        except Exception:
+            st.session_state['permits_initialized'] = True
+
+    # Feed the intelligence orchestrator with live telemetry so all agents
+    # have fresh data to reason over every rerun cycle.
+    try:
+        _orch = get_intelligence_orchestrator()
+        _sel_zone = st.session_state.get('cctv_zone_selector', 'Zone_A')
+        _live_dets = st.session_state.get('current_detections', [])
+        _telemetry = data_dict.get('latest', {})
+        if _telemetry or _live_dets:
+            _orch.ingest_live_frame(_sel_zone, _live_dets, _telemetry, am)
+    except Exception:
+        pass
+
+    # Render all intelligence panels into the intelligence placeholder slot
+    with intelligence_placeholder.container():
+        render_intelligence_panels()
+        # Smart Permit Intelligence (SIMOPS) panel
+        try:
+            render_permit_intelligence_panel()
+        except Exception:
+            pass
+
 # Render the top alert banner above the column layout — scoped to selected zone
 render_top_alert_banner(auto_banner_placeholder, am, selected_zone=st.session_state.get('cctv_zone_selector', None))
+
+# Render the critical incident banner (animated, auto-dismiss on resolution)
+render_critical_banner(critical_banner_placeholder, data_dict)
 
 render_sidebar(sidebar_placeholder, placeholders, data_dict, engine, am, alert_system)
 
 with col_center:
+    kpi_cols: Optional[Dict[str, Any]] = None
     # Top KPI Metric Cards (Only shown on operational dashboards: Live Monitor & Analytics)
     if active_tab in ('dashboard', 'analytics'):
         col1, col2, col3, col4 = st.columns(4)
@@ -297,8 +344,6 @@ with col_center:
         }
         render_kpi_grid(kpi_cols, data_dict)
         st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-    else:
-        kpi_cols = None
 
     if active_tab == 'dashboard':
         from src.config.ui_constants import SENSOR_ZONES, ZONE_LABELS
@@ -306,7 +351,7 @@ with col_center:
         if not selected_zone:
             selected_zone = SENSOR_ZONES[0]
 
-        def on_zone_change():
+        def on_zone_change() -> None:
             st.session_state.cctv_frame_index = 0
             from src.cctv.inference import reset_ppe_buffer
             reset_ppe_buffer()
@@ -350,15 +395,6 @@ with col_center:
 
         # Operational Overview SCADA status row (6 columns)
         st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
-        st.markdown("""
-        <style>
-        /* Tighten horizontal gaps between SCADA status cards */
-        div[data-testid="stHorizontalBlock"]:has(> div > div[data-testid="stMetric"]) > div {
-            padding-left: 4px !important;
-            padding-right: 4px !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
         col_scada1, col_scada2, col_scada3, col_scada4, col_scada5, col_scada6 = st.columns(6)
         scada_placeholders = {
             'plant_health': col_scada1.empty(),
@@ -386,7 +422,8 @@ with col_center:
             'zone_status': placeholders.get('zone_status'),
             'failsafes': placeholders.get('failsafes'),
             'db_logs': placeholders.get('db_logs'),
-            'kpi_cols': kpi_cols
+            'kpi_cols': kpi_cols,
+            'critical_banner': critical_banner_placeholder
         }
         dashboard_placeholders.update(placeholders)
 
@@ -487,8 +524,7 @@ if st.session_state.get('auto_refresh', False):
     </script>
     """, unsafe_allow_html=True)
 
-# Close wrapper tags
-st.markdown("</div>", unsafe_allow_html=True)
+# Close wrapper tags if any were opened (SCADA footer is self-contained)
 
 # Append SCADA Status Footer
 from datetime import datetime

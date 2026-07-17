@@ -20,12 +20,15 @@ import sqlite3
 import logging
 import hashlib
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.alert_coordinator import PersistenceLayer, AlertCoordinator
 
 logger = logging.getLogger("AlertEnhancements")
 
 # Singleton instance — populated lazily by get_enhancement_orchestrator()
-_enhancement_orchestrator = None
+_enhancement_orchestrator: Optional['AlertEnhancementOrchestrator'] = None
 
 
 # ==============================================================================
@@ -39,7 +42,7 @@ class RuleVersionRegistry:
     audits when rules evolve over time.
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any]) -> None:
         self.config = config
         self._version_cache: Optional[str] = None
 
@@ -73,11 +76,11 @@ class EnhancedPersistence:
     with IF NOT EXISTS semantics via try/except.
     """
 
-    def __init__(self, persistence_layer):
+    def __init__(self, persistence_layer: 'PersistenceLayer') -> None:
         self.persistence = persistence_layer
         self._migrate()
 
-    def _migrate(self):
+    def _migrate(self) -> None:
         """Add new columns and tables for enhancement features."""
         conn = self.persistence.get_connection()
         try:
@@ -416,7 +419,7 @@ class SystemMetricsProvider:
     - average resolution time
     """
 
-    def __init__(self, persistence_layer):
+    def __init__(self, persistence_layer: 'PersistenceLayer') -> None:
         self.persistence = persistence_layer
 
     def get_metrics(self) -> Dict[str, Any]:
@@ -550,7 +553,7 @@ class AlertEnhancementOrchestrator:
         audit = enhancer.get_audit_trail(incident_id)
     """
 
-    def __init__(self, coordinator):
+    def __init__(self, coordinator: 'AlertCoordinator') -> None:
         self.coordinator = coordinator
         self.persistence = EnhancedPersistence(coordinator.persistence)
         self.rule_registry = RuleVersionRegistry(coordinator.config)

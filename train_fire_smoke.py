@@ -4,7 +4,7 @@ import argparse
 import shutil
 from pathlib import Path
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train YOLOv8 on Fire & Smoke Dataset from Roboflow")
     parser.add_argument(
         "--api_key", 
@@ -50,7 +50,7 @@ def parse_args():
     )
     return parser.parse_args()
 
-def main():
+def main() -> None:
     args = parse_args()
     
     # Check for Roboflow API Key

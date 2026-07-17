@@ -3,7 +3,7 @@ import sys
 import shutil
 from pathlib import Path
 
-def main():
+def main() -> None:
     print("\n--- Environment Setup ---")
     try:
         from ultralytics import YOLO
