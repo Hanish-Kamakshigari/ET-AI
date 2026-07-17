@@ -9,10 +9,12 @@ from typing import Dict, List, Any, Optional
 import streamlit as _st
 from src.ui_components import clean_html
 
+from streamlit.delta_generator import DeltaGenerator
+
 class _StreamlitWrapper:
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> object:
         return getattr(_st, name)
-    def markdown(self, body: Any, *args: Any, **kwargs: Any) -> Any:
+    def markdown(self, body: str, *args: object, **kwargs: object) -> DeltaGenerator:
         if isinstance(body, str) and kwargs.get("unsafe_allow_html", False):
             body = clean_html(body)
         return _st.markdown(body, *args, **kwargs)
