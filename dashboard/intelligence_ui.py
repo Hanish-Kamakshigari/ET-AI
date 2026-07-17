@@ -10,9 +10,9 @@ import streamlit as _st
 from src.ui_components import clean_html
 
 class _StreamlitWrapper:
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         return getattr(_st, name)
-    def markdown(self, body, *args, **kwargs):
+    def markdown(self, body: Any, *args: Any, **kwargs: Any) -> Any:
         if isinstance(body, str) and kwargs.get("unsafe_allow_html", False):
             body = clean_html(body)
         return _st.markdown(body, *args, **kwargs)
