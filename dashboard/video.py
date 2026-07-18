@@ -1004,41 +1004,62 @@ def stream_cctv_feed_raw(
     if video_path and os.path.exists(video_path):
         frames = get_cached_video_frames(video_path)
         total_frames = len(frames)
-        
+
         if total_frames == 0:
             return
 
         import time
-        play_active = st.session_state.get('sim_play_active', False)
+        # Choose a SINGLE frame slot to avoid double-buffer swap flicker.
+        # Keeping one persistent slot means the camera container stays mounted
+        # and only its contents update in place — no recreation, no flicker.
+        frame_slot = frame_placeholder or frame_placeholder_1
+        # Clear the secondary slot once so stale frames don't linger.
+        if frame_placeholder_2:
+            try:
+                frame_placeholder_2.empty()
+            except Exception:
+                pass
+
         first_run = True
-        
-        while first_run or play_active:
+
+        while True:
+            # Live-read autoplay state every iteration so toggling the switch
+            # starts/stops playback immediately without a full rerun.
+            play_active = st.session_state.get('sim_play_active', False)
+
+            if (not play_active) and (not first_run):
+                # Autoplay stopped: stop advancing, keep the last frame on screen.
+                break
+
             first_run = False
-            
+
             frame_idx = tracker.get_index(selected_zone, total_frames)
             frame = frames[frame_idx]
-            
-            # Save frame index to session state for informational use elsewhere
-            st.session_state.cctv_frame_index = frame_idx
-            
+
+            # Only write to session_state when the value actually changes.
+            if st.session_state.get('cctv_frame_index') != frame_idx:
+                st.session_state.cctv_frame_index = frame_idx
+
             if play_active:
                 tracker.increment(selected_zone, 2, total_frames)
-                
+
             # Run YOLO or Simulated detection
             from src.cctv.inference import run_inference
             pil_img, w_count, viol_count, active_dets = run_inference(
-                frame, 
-                selected_zone, 
-                latest, 
-                current_frame=frame_idx, 
+                frame,
+                selected_zone,
+                latest,
+                current_frame=frame_idx,
                 draw_fallback_fn=draw_pil_overlays
             )
-            
+
+            # Cache latest detections/worker counts for the rest of the dashboard.
             st.session_state.current_detections = active_dets
             st.session_state.yolo_worker_counts[selected_zone] = w_count
             latest[f"{selected_zone}_worker_count"] = w_count
 
             # ── Feed live data to the Safety Intelligence Orchestrator ──────
+            # (cheap, no UI rendering — keeps alerts/telemetry in sync)
             try:
                 from src.safety_intelligence import get_intelligence_orchestrator
                 _orch = get_intelligence_orchestrator()
@@ -1050,26 +1071,17 @@ def stream_cctv_feed_raw(
                 )
             except Exception:
                 pass  # Intelligence layer is additive — never break the feed
-            
-            # 1. Render CCTV Frame and Status Bar first
-            if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
-                # Draw the frame using double buffering if available
-                if frame_placeholder_1 and frame_placeholder_2:
-                    if frame_idx % 2 == 0:
-                        frame_placeholder_1.image(pil_img, width='stretch')
-                        frame_placeholder_2.image(_TRANSPARENT_IMAGE, width='stretch')
-                    else:
-                        frame_placeholder_2.image(pil_img, width='stretch')
-                        frame_placeholder_1.image(_TRANSPARENT_IMAGE, width='stretch')
-                elif frame_placeholder:
-                    frame_placeholder.image(pil_img, width='stretch')
 
-                # Render Live telemetry stats at the bottom of the feed
+            # 1. Render CCTV Frame + Status Bar in place (camera-only updates;
+            #    no dashboard re-render, no st.rerun → smooth CCTV behaviour).
+            if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
+                if frame_slot:
+                    frame_slot.image(pil_img, width='stretch')
+
                 fps_val = 25.0 if play_active else 0.0
                 p_count = w_count
                 h_count = viol_count
-                
-                # Count safe zones
+
                 safe_zones_count = 6
                 active_alerts_dict = am.active_alerts if hasattr(am, 'active_alerts') else {}
                 active_alert_zones = {a.zone for a in active_alerts_dict.values()}
@@ -1088,24 +1100,19 @@ def stream_cctv_feed_raw(
                     </div>
                     """, unsafe_allow_html=True)
             else:
-                if frame_placeholder_1:
-                    frame_placeholder_1.empty()
-                if frame_placeholder_2:
-                    frame_placeholder_2.empty()
-                if frame_placeholder:
-                    frame_placeholder.empty()
+                if frame_slot:
+                    frame_slot.empty()
                 if status_bar_placeholder:
                     status_bar_placeholder.empty()
 
-            # 2. Evaluate alert conditions and handle transitions
+            # 2. Evaluate alert conditions and dispatch (no UI re-render here).
             alert_conditions = evaluate_alert_conditions(
                 detections=active_dets,
                 violations=viol_count,
                 zone=selected_zone,
                 telemetry=latest
             )
-            
-            alert_transition = False
+
             if alert_conditions["should_alert"]:
                 alert_key = f"alert_active_{selected_zone}"
                 current_incident = f"{selected_zone}_{alert_conditions['severity']}"
@@ -1114,7 +1121,6 @@ def stream_cctv_feed_raw(
                     st.session_state["_last_incident"] = current_incident
                     st.session_state[f"_safe_frames_{selected_zone}"] = 0
                     dispatch_alerts(alert_conditions)
-                    alert_transition = True
                 else:
                     st.session_state[f"_safe_frames_{selected_zone}"] = 0
             else:
@@ -1125,87 +1131,16 @@ def stream_cctv_feed_raw(
                         clear_alert_if_safe(selected_zone)
                         st.session_state[f"alert_active_{selected_zone}"] = False
                         st.session_state["_last_incident"] = None
-                        alert_transition = True
-                        
-            # 3. Update all dashboard components periodically or on alert transitions
-            should_update_ui = (not play_active) or (frame_idx % 10 == 0) or alert_transition
-            
-            if should_update_ui:
-                if data_dict is not None:
-                    try:
-                        from dashboard.data import load_data, init_engine, calculate_telemetry
-                        from dashboard.components import (
-                            render_alerts_panel,
-                            render_notifications_panel,
-                            render_zone_status_panel,
-                            render_failsafes_panel,
-                            render_db_logs_panel,
-                            render_kpi_grid,
-                            render_risk_analysis_row,
-                            render_decision_telemetry_row,
-                        )
-                        from dashboard.layout import render_top_alert_banner
-                        from dashboard.emergency_mode import render_critical_banner
-                        from dashboard.intelligence_ui import render_intelligence_panels
 
-                        df = load_data()
-                        engine = init_engine()
-                        updated_data_dict = calculate_telemetry(df, engine, alert_system)
-
-                        # Update top banners
-                        top_banner_ph = placeholders.get('top_banner')
-                        if top_banner_ph is not None:
-                            render_top_alert_banner(top_banner_ph, am, selected_zone=selected_zone)
-                        
-                        crit_banner_ph = placeholders.get('critical_banner')
-                        if crit_banner_ph is not None:
-                            render_critical_banner(crit_banner_ph, updated_data_dict)
-
-                        # Update center panel components
-                        render_risk_analysis_row(placeholders, updated_data_dict, selected_zone, active_dets)
-                        render_decision_telemetry_row(placeholders, updated_data_dict, selected_zone, active_dets)
-
-                        # Update safety intelligence panels
-                        intel_ph = placeholders.get('intelligence')
-                        if intel_ph is not None:
-                            with intel_ph.container():
-                                render_intelligence_panels()
-                                try:
-                                    from src.permit_intelligence import render_permit_intelligence_panel
-                                    render_permit_intelligence_panel()
-                                except Exception:
-                                    pass
-
-                        # Update right panel diagnostics
-                        render_alerts_panel(placeholders['alerts'], am, selected_zone=selected_zone)
-                        render_notifications_panel(placeholders['notifications'], updated_data_dict, selected_zone)
-                        
-                        if placeholders.get('zone_status'):
-                            render_zone_status_panel(placeholders['zone_status'], updated_data_dict)
-                        if placeholders.get('failsafes'):
-                            render_failsafes_panel(placeholders['failsafes'], updated_data_dict)
-                        if placeholders.get('db_logs'):
-                            render_db_logs_panel(placeholders['db_logs'], updated_data_dict)
-
-                        kpi_cols = placeholders.get('kpi_cols')
-                        if kpi_cols:
-                            render_kpi_grid(kpi_cols, updated_data_dict)
-                    except Exception as e:
-                        # Safe fallback to rerun if any helper fails
-                        st.rerun()
-                else:
-                    st.rerun()
-
-            # Render Warnings alerts below feed
+            # 3. Render contextual warning cards below the feed (camera-scoped only).
             alerts_list = []
             is_critical = (latest.get("max_risk_level") == "CRITICAL" or st.session_state.simulate_active)
             overpressure_active = (selected_zone == 'Zone_C' and frame_idx >= 95)
-            
-            # PPE Violation cards
+
             if selected_zone != 'Reactor_Area':
                 no_helmet_count = sum(1 for d in active_dets if d.label == 'no_helmet')
                 no_vest_count = sum(1 for d in active_dets if d.label == 'no_vest')
-                
+
                 if no_helmet_count > 0 or no_vest_count > 0:
                     msg = ""
                     if no_helmet_count > 0 and no_vest_count > 0:
@@ -1214,9 +1149,9 @@ def stream_cctv_feed_raw(
                         msg = f"Worker detected missing mandatory protective Hard Hat in {selected_zone_name}."
                     else:
                         msg = f"Worker detected missing mandatory High-Visibility safety Vest in {selected_zone_name}."
-                        
+
                     alerts_list.append(f"""
-                    <div style="background: rgba(255,255,255,0.03); 
+                    <div style="background: rgba(255,255,255,0.03);
                                 border-left: 4px solid #eab308;
                                 padding: 12px 16px;
                                 margin: 4px 0;
@@ -1229,10 +1164,10 @@ def stream_cctv_feed_raw(
                         <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">{msg}</div>
                     </div>
                     """)
-                    
+
             if overpressure_active:
                 alerts_list.append("""
-                <div style="background: rgba(255,255,255,0.03); 
+                <div style="background: rgba(255,255,255,0.03);
                             border-left: 4px solid #eab308;
                             padding: 12px 16px;
                             margin: 4px 0;
@@ -1245,10 +1180,10 @@ def stream_cctv_feed_raw(
                     <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">OVERPRESSURE WARNING — Gauge in red zone</div>
                 </div>
                 """)
-                
+
             if selected_zone == 'Reactor_Area':
                 alerts_list.append("""
-                <div style="background: rgba(255,255,255,0.03); 
+                <div style="background: rgba(255,255,255,0.03);
                             border-left: 4px solid #eab308;
                             padding: 12px 16px;
                             margin: 4px 0;
@@ -1261,9 +1196,9 @@ def stream_cctv_feed_raw(
                     <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">Bystander Flash Burns: The second worker is far too close to the welding arc without any eye or face protection.</div>
                 </div>
                 """)
-                
+
                 alerts_list.append("""
-                <div style="background: rgba(255,255,255,0.03); 
+                <div style="background: rgba(255,255,255,0.03);
                             border-left: 4px solid #eab308;
                             padding: 12px 16px;
                             margin: 4px 0;
@@ -1276,10 +1211,10 @@ def stream_cctv_feed_raw(
                     <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">Inadequate Fume Extraction: The visible "yellowish haze" indicates poor ventilation, leading to an unsafe build-up of toxic welding fumes.</div>
                 </div>
                 """)
-                
+
             if selected_zone == 'Storage_Area':
                 alerts_list.append("""
-                <div style="background: rgba(255,255,255,0.03); 
+                <div style="background: rgba(255,255,255,0.03);
                             border-left: 4px solid #eab308;
                             padding: 12px 16px;
                             margin: 4px 0;
@@ -1292,7 +1227,7 @@ def stream_cctv_feed_raw(
                     <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">More than 9 workers detected in the warehouse aisle under hazardous gas telemetry. Immediate shift rotation or aisle clearance required.</div>
                 </div>
                 """)
-                
+
             show_critical_alert = False
             if selected_zone == 'Zone_C':
                 show_critical_alert = is_critical
@@ -1302,11 +1237,11 @@ def stream_cctv_feed_raw(
                 show_critical_alert = False
             else:
                 show_critical_alert = is_critical or (selected_zone != 'Zone_C' and h_count > 0)
-                
+
             if show_critical_alert:
                 if selected_zone == 'Zone_C':
                     alerts_list.append("""
-                    <div style="background: rgba(255,255,255,0.03); 
+                    <div style="background: rgba(255,255,255,0.03);
                                 border-left: 4px solid #ef4444;
                                 padding: 12px 16px;
                                 margin: 4px 0;
@@ -1321,7 +1256,7 @@ def stream_cctv_feed_raw(
                     """)
                 else:
                     alerts_list.append("""
-                    <div style="background: rgba(255,255,255,0.03); 
+                    <div style="background: rgba(255,255,255,0.03);
                                 border-left: 4px solid #ef4444;
                                 padding: 12px 16px;
                                 margin: 4px 0;
@@ -1334,20 +1269,20 @@ def stream_cctv_feed_raw(
                         <div style="color: #a0b4c8; font-size: 0.9rem; line-height:1.4;">Uncontrolled volatile gas cloud detected in close proximity to active hot work permit. Evacuation required.</div>
                     </div>
                     """)
-                    
+
             if overpressure_active:
                 from src.cctv.object_detector import Detection
                 active_dets.append(Detection(label="overpressure", confidence=0.99, bbox=(0,0,0,0)))
-                
+
             am.update(active_dets, selected_zone)
-            
+
             if warnings_placeholder:
                 if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
                     if alerts_list:
                         warnings_placeholder.markdown("\n".join(alerts_list), unsafe_allow_html=True)
                     else:
                         warnings_placeholder.markdown(render_nominal_card(
-                            title="Zone Secure", 
+                            title="Zone Secure",
                             message=f"All telemetry and compliance factors in {selected_zone_name} are nominal."
                         ), unsafe_allow_html=True)
                 else:

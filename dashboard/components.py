@@ -722,12 +722,13 @@ def render_compact_alert_card_html(alert: Union[SafetyAlert, Dict[str, Any]]) ->
     from src.config.ui_constants import ZONE_LABELS
     zone_lbl = ZONE_LABELS.get(zone, zone).upper()
 
-    # 3. Extract message
+    # 3. Extract message (escape to prevent raw HTML/CSS leaking into the panel)
+    import html as _html
     message = ""
     if hasattr(alert, "message"):
-        message = alert.message
+        message = _html.escape(str(alert.message))
     elif isinstance(alert, dict) and "message" in alert:
-        message = alert["message"]
+        message = _html.escape(str(alert["message"]))
 
     # 4. Extract time
     time_str = ""
