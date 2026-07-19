@@ -255,7 +255,7 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) {{
   padding: 0 16px 0 0 !important;
 }}
 
-/* Sidebar column (1st child of layout block) - extended to full viewport height */
+/* Sidebar column (1st child of layout block) */
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:first-child {{
   width: 18% !important;
   min-width: 220px !important;
@@ -266,17 +266,6 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   background: linear-gradient(180deg, #070D1A 0%, #050811 100%) !important;
   padding: 10px !important;
   box-sizing: border-box !important;
-  min-height: 100vh !important;
-  height: 100vh !important;
-  position: sticky !important;
-  top: 0 !important;
-  overflow-y: auto !important;
-}}
-
-/* Sidebar content container for full height */
-.suraksha-sidebar-content {{
-  min-height: 100% !important;
-  height: 100% !important;
 }}
 
 /* Optimize sidebar widget spacing and expanders padding */
@@ -298,6 +287,8 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   box-sizing: border-box !important;
   margin-left: 0 !important;
   transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  height: calc(100vh - 94px) !important;
+  max-height: calc(100vh - 94px) !important;
 }}
 
 /* Force full-width fill at every level of the CCTV image's Streamlit DOM chain */
@@ -350,10 +341,39 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
    participate normally in the parent's align-items: stretch flex layout so left,
    center, and right always share the same height with no empty gaps beneath. */
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:first-child,
+div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:nth-child(2),
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:last-child {{
-  height: calc(100vh - 82px) !important;
-  max-height: calc(100vh - 82px) !important;
+  height: calc(100vh - 94px) !important;
+  max-height: calc(100vh - 94px) !important;
   overflow: hidden !important;
+}}
+
+/* Left, Center, and Right columns scroll independently */
+div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:first-child,
+div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:nth-child(2),
+div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:last-child {{
+  overflow-y: auto !important;
+}}
+
+/* Center column container - full height with scrollable content */
+.st-key-center_monitor_panel {{
+  height: 100% !important;
+  max-height: 100% !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}}
+
+/* The Streamlit vertical block inside center panel becomes the flex column */
+.st-key-center_monitor_panel > div[data-testid="stVerticalBlock"] {{
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  gap: 8px !important;
 }}
 
 .st-key-left_console_panel,

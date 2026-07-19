@@ -340,6 +340,18 @@ def render_safety_copilot() -> None:
     explanation: Optional[SafetyCopilotExplanation] = orch.get_copilot_explanation()
 
     if not explanation:
+        html = f"""
+        <div style="background:{_BG_GRADIENT}; border:1px solid #8b5cf6; border-radius:{_CARD_RADIUS};
+                    padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
+            <div style="color:#8b5cf6; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">
+                🤖 AI SAFETY COPILOT
+            </div>
+            <div style="color:{_ACCENT_GREEN}; font-size:10px;">
+                ✅ All systems nominal — no incident explanation required.
+            </div>
+        </div>
+        """
+        st.markdown(html, unsafe_allow_html=True)
         return
 
     # Enhanced root causes list
@@ -416,7 +428,13 @@ def render_dynamic_safety_scores() -> None:
     scores = orch.get_zone_scores()
 
     if not scores:
-        return
+        scores = {
+            'Zone_A': 100.0,
+            'Zone_B': 100.0,
+            'Zone_C': 100.0,
+            'Reactor_Area': 100.0,
+            'Storage_Area': 100.0
+        }
 
     score_items = ""
     for zone, score in scores.items():
@@ -460,6 +478,18 @@ def render_smart_alert_prioritization() -> None:
     alerts = orch.get_prioritized_alerts()
 
     if not alerts:
+        html = f"""
+        <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
+                    padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
+            <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">
+                🚨 SMART ALERT PRIORITIZATION
+            </div>
+            <div style="color:{_TEXT_DIM}; font-size:10px; font-style:italic;">
+                No active threats. Alert prioritization scanner standing by.
+            </div>
+        </div>
+        """
+        st.markdown(html, unsafe_allow_html=True)
         return
 
     alert_items = ""
@@ -503,6 +533,18 @@ def render_emergency_response_plan() -> None:
     plan: Optional[EmergencyResponsePlan] = orch.get_emergency_plan()
 
     if not plan:
+        html = f"""
+        <div style="background:{_BG_GRADIENT}; border:1px solid #1e3a5f; border-radius:{_CARD_RADIUS};
+                    padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
+            <div style="color:#94a3b8; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">
+                🆘 EMERGENCY RESPONSE ORCHESTRATOR
+            </div>
+            <div style="color:{_ACCENT_GREEN}; font-size:10px;">
+                ✅ No active emergency — response teams on standby
+            </div>
+        </div>
+        """
+        st.markdown(html, unsafe_allow_html=True)
         return
 
     sev_color = _severity_color(plan.severity)
@@ -585,6 +627,18 @@ def render_incident_intelligence() -> None:
     patterns = orch.get_incident_patterns()
 
     if not patterns:
+        html = f"""
+        <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
+                    padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
+            <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">
+                🔍 INCIDENT INTELLIGENCE
+            </div>
+            <div style="color:{_TEXT_DIM}; font-size:10px; font-style:italic;">
+                All plant operations nominal. No recurring incident patterns detected today.
+            </div>
+        </div>
+        """
+        st.markdown(html, unsafe_allow_html=True)
         return
 
     pattern_items = ""
@@ -752,11 +806,10 @@ def render_interactive_plant_twin() -> None:
 
 
 def render_center_column_panels(placeholders: Dict[str, Any]) -> None:
-    """Render Intelligence Timeline, Compound Risk Intelligence, Multi-Agent Pipeline, and Smart Permit Intelligence in center column."""
+    """Render Intelligence Timeline, Compound Risk Intelligence, and Multi-Agent Reasoning Pipeline in center column."""
     intelligence_timeline_placeholder = placeholders.get('intelligence_timeline')
     compound_risk_detail_placeholder = placeholders.get('compound_risk_detail')
     multi_agent_placeholder = placeholders.get('multi_agent')
-    smart_permit_placeholder = placeholders.get('smart_permit')
 
     # Intelligence Timeline
     if intelligence_timeline_placeholder:
@@ -768,21 +821,11 @@ def render_center_column_panels(placeholders: Dict[str, Any]) -> None:
         with compound_risk_detail_placeholder.container():
             render_compound_risk_intelligence()
 
-    # Multi-Agent Reasoning Pipeline (moved from right column)
+    # Multi-Agent Reasoning Pipeline (moved beneath AI decision engine)
     if multi_agent_placeholder:
         with multi_agent_placeholder.container():
             st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
             render_multi_agent_pipeline()
-
-    # Smart Permit Intelligence (moved from right column)
-    if smart_permit_placeholder:
-        with smart_permit_placeholder.container():
-            st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
-            try:
-                from src.permit_intelligence import render_permit_intelligence_panel
-                render_permit_intelligence_panel()
-            except Exception:
-                pass
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -977,6 +1020,18 @@ def render_explainable_ai_pipeline() -> None:
     risks = orch.get_compound_risks()
 
     if not risks:
+        html = f"""
+        <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
+                    padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
+            <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">
+                🔬 EXPLAINABLE AI — Decision Pipeline
+            </div>
+            <div style="color:{_TEXT_DIM}; font-size:10px; font-style:italic;">
+                All monitored zones nominal. Decision pipeline ready.
+            </div>
+        </div>
+        """
+        st.markdown(html, unsafe_allow_html=True)
         return
 
     top_risk = max(risks, key=lambda r: r.risk_score)
@@ -1051,6 +1106,18 @@ def render_smart_operator_guidance() -> None:
     plan: Optional[EmergencyResponsePlan] = orch.get_emergency_plan()
 
     if not plan:
+        html = f"""
+        <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
+                    padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
+            <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">
+                👷 SMART OPERATOR GUIDANCE
+            </div>
+            <div style="color:{_TEXT_DIM}; font-size:10px; font-style:italic;">
+                All zones nominal. Operator guidance standing by.
+            </div>
+        </div>
+        """
+        st.markdown(html, unsafe_allow_html=True)
         return
 
     sev_color = _severity_color(plan.severity)
@@ -1136,6 +1203,18 @@ def render_incident_story_mode() -> None:
     timeline = orch.get_incident_timeline()
 
     if not timeline or len(timeline) < 2:
+        html = f"""
+        <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
+                    padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
+            <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">
+                📖 INCIDENT STORY MODE — Operational Log
+            </div>
+            <div style="color:{_TEXT_DIM}; font-size:10px; font-style:italic;">
+                No safety incidents logged. All plant operations are normal.
+            </div>
+        </div>
+        """
+        st.markdown(html, unsafe_allow_html=True)
         return
 
     # Reverse to chronological order for story
@@ -1330,22 +1409,18 @@ def render_intelligence_panels() -> None:
     orch = get_intelligence_orchestrator()
     latest = orch.get_latest()
 
-    if not latest:
-        # No intelligence data yet — show standby state
-        st.markdown(f"""
-        <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
-                    padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
+    # Always render the safety intelligence header on startup
+    st.markdown(f"""
+    <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
+                padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
         <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">
             🧠 SAFETY INTELLIGENCE
         </div>
         <div style="color:{_ACCENT_GREEN}; font-size:10px;">
             ✅ All agents standing by — monitoring active
         </div>
-        </div>
-        """, unsafe_allow_html=True)
-        with _st.expander("🔌 SYSTEM DIAGNOSTICS", expanded=False):
-            render_system_diagnostics()
-        return
+    </div>
+    """, unsafe_allow_html=True)
 
     play_active = st.session_state.get('sim_play_active', False)
 
@@ -1373,18 +1448,20 @@ def render_intelligence_panels() -> None:
             panel_fn()
             st.markdown("</details>", unsafe_allow_html=True)
 
+        with _st.expander("🔌 SYSTEM DIAGNOSTICS", expanded=False):
+            render_system_diagnostics()
         return
 
+    # Autoplay is ON: render all panels expanded
     render_executive_command_center()
     render_executive_safety_intelligence()
     render_dynamic_safety_scores()
-    render_compound_risk_intelligence()
+    render_compound_risk_status_compact()  # Keep a compact status card near top of right column
     render_explainable_ai_pipeline()
     render_predictive_analytics()
     render_safety_copilot()
     render_emergency_response_plan()
     render_incident_intelligence()
     render_incident_story_mode()
-    # System Diagnostics - executive widget
     with _st.expander("🔌 SYSTEM DIAGNOSTICS", expanded=False):
         render_system_diagnostics()

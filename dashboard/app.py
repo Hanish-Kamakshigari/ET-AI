@@ -326,7 +326,8 @@ with col_right:
         _orch = get_intelligence_orchestrator()
         _sel_zone = st.session_state.get('cctv_zone_selector', 'Zone_A')
         _live_dets = st.session_state.get('current_detections', [])
-        _telemetry = data_dict.get('latest', {})
+        _telemetry_raw = data_dict.get('latest')
+        _telemetry = dict(_telemetry_raw) if _telemetry_raw is not None else {}
         if _telemetry or _live_dets:
             _orch.ingest_live_frame(_sel_zone, _live_dets, _telemetry, am)
     except Exception:

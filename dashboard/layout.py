@@ -397,6 +397,7 @@ def create_layout() -> Tuple[
 
     with col_center:
         st.markdown("<div class='suraksha-center-panel-flag'></div>", unsafe_allow_html=True)
+        center_wrap = st.container(key="center_monitor_panel")
 
     with col_right:
         st.markdown("<div class='suraksha-right-panel-flag'></div>", unsafe_allow_html=True)

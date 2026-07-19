@@ -26,6 +26,7 @@ from src.ui_components import (
     render_sparkline_svg,
     render_failsafe_row,
     render_scada_row,
+    clean_html,
 )
 
 
@@ -153,26 +154,8 @@ def render_zones_tab(
     zone_risks = data_dict.get("zone_risks", {})
     selected_zone = st.session_state.get("selected_zone", SENSOR_ZONES[0])
 
-    st.subheader("Plant Layout with Live Zone Colors")
-    st.caption("Select a zone to inspect CCTV, thresholds, active alerts, permits, and risk score.")
-
-    zone_columns = st.columns(3)
-    for idx, zone in enumerate(SENSOR_ZONES):
-        info = zone_risks.get(zone, {})
-        risk_level = (info.get("risk_level") or "LOW").upper()
-        color = _zone_color(risk_level)
-        with zone_columns[idx % 3]:
-            if st.button(
-                f"{ZONE_LABELS.get(zone, zone)}\n{risk_level}",
-                key=f"zone_map_{zone}",
-                use_container_width=True,
-            ):
-                st.session_state.selected_zone = zone
-                st.session_state.show_zone_details = True
-            st.markdown(
-                f"<div style='margin-top:-8px; height:8px; border-radius:999px; background:{color};'></div>",
-                unsafe_allow_html=True,
-            )
+    from dashboard.intelligence_ui import render_interactive_plant_twin
+    render_interactive_plant_twin()
 
     st.divider()
     st.subheader(f"{ZONE_LABELS.get(selected_zone, selected_zone)} Details")
@@ -922,7 +905,7 @@ def render_alerts_panel(placeholder: DeltaGenerator, am: AlertManager, selected_
                 {resolved_items_html}
             </div>
         </div>"""
-        placeholder.markdown(html, unsafe_allow_html=True)
+        placeholder.markdown(clean_html(html), unsafe_allow_html=True)
         return
 
     all_alerts = am.active_alerts
@@ -984,7 +967,7 @@ def render_alerts_panel(placeholder: DeltaGenerator, am: AlertManager, selected_
         )
         cards_html.append(extra_card)
 
-    placeholder.markdown("".join(cards_html), unsafe_allow_html=True)
+    placeholder.markdown(clean_html("".join(cards_html)), unsafe_allow_html=True)
 
 
 def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, Any], selected_zone: str, detections_list: List[Any]) -> None:
