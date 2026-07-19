@@ -389,11 +389,11 @@ def create_layout() -> Tuple[
 
     with col_sidebar:
         sidebar_cls = "suraksha-sidebar-expanded" if is_expanded else "suraksha-sidebar-collapsed"
-        st.markdown(f"<div class='suraksha-sidebar-content {sidebar_cls}'>", unsafe_allow_html=True)
+        # Render a self-closed hidden tag to identify this column in CSS
+        st.markdown(f"<div class='suraksha-sidebar-content {sidebar_cls}' style='display:none;'></div>", unsafe_allow_html=True)
         sidebar_wrap = st.container(key="left_console_panel")
         with sidebar_wrap:
             sidebar_placeholder = st.empty()
-        st.markdown("</div>", unsafe_allow_html=True)
 
     with col_center:
         st.markdown("<div class='suraksha-center-panel-flag'></div>", unsafe_allow_html=True)

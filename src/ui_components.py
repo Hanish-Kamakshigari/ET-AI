@@ -209,10 +209,23 @@ html, body, [class*="css"], .stApp {{
 header[data-testid="stHeader"] {{ display: none !important; }}
 /* Single canonical rule: position content with standard 16px margins, offsetting for floating navbar */
 .block-container {{
-  padding: 66px 16px 16px 16px !important;
+  padding: 52px 16px 28px 16px !important;
   max-width: 100% !important;
   margin: 0 !important;
   box-sizing: border-box !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+}}
+
+/* Root vertical block becomes a non-scrollable flex container */
+.block-container > div[data-testid="stVerticalBlock"] {{
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  gap: 0px !important;
 }}
 .stMarkdown {{ margin: 0 !important; }}
 section[data-testid="stSidebar"] > div {{ padding-top: 0 !important; }}
@@ -231,7 +244,8 @@ div[data-testid="stVerticalBlock"] > div {{ margin-top: 0px !important; gap: 4px
 div[data-testid="stHorizontalBlock"] {{ gap: 6px !important; align-items: stretch !important; }}
 
 /* Center column: enable vertical scroll so content isn't clipped at viewport bottom */
-div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:nth-child(2) {{
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:nth-of-type(2),
+div[data-testid="column"]:has(.suraksha-center-panel-flag) {{
   overflow-y: auto !important;
   overflow-x: hidden !important;
   padding-bottom: 36px !important;
@@ -243,7 +257,7 @@ button, select, div[role="button"], .stButton>button, [data-testid="stExpander"]
 }}
 
 /* 3-Column Layout CSS overrides */
-div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) {{
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) {{
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
@@ -253,18 +267,22 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) {{
   max-width: 100% !important;
   margin: 0 !important;
   padding: 0 16px 0 0 !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: 100% !important;
 }}
 
 /* Sidebar column (1st child of layout block) */
-div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:first-child {{
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:first-of-type,
+div[data-testid="column"]:has(.suraksha-sidebar-content) {{
   width: 18% !important;
   min-width: 220px !important;
   max-width: 18% !important;
   flex: 0 0 18% !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  border-right: 1px solid var(--border2) !important;
-  background: linear-gradient(180deg, #070D1A 0%, #050811 100%) !important;
-  padding: 10px !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0px !important;
   box-sizing: border-box !important;
 }}
 
@@ -278,7 +296,8 @@ div[data-testid="column"]:first-child [data-testid="stExpander"] details summary
 
 
 /* Center column (2nd child of layout block) - responsive, fills all remaining space */
-div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:nth-child(2) {{
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:nth-of-type(2),
+div[data-testid="column"]:has(.suraksha-center-panel-flag) {{
   flex: 1 1 54% !important;
   width: 54% !important;
   min-width: 0 !important;
@@ -287,8 +306,8 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   box-sizing: border-box !important;
   margin-left: 0 !important;
   transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  height: calc(100vh - 94px) !important;
-  max-height: calc(100vh - 94px) !important;
+  height: calc(100vh - 80px) !important;
+  max-height: calc(100vh - 80px) !important;
 }}
 
 /* Force full-width fill at every level of the CCTV image's Streamlit DOM chain */
@@ -324,15 +343,16 @@ div[data-testid="column"]:has(div[data-testid="stImage"]) {{
 }}
 
 /* Right column (3rd child of layout block) */
-div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:last-child {{
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:last-of-type,
+div[data-testid="column"]:has(.suraksha-right-panel-flag) {{
   width: 28% !important;
   min-width: 320px !important;
   max-width: 28% !important;
   flex: 0 0 28% !important;
   box-sizing: border-box !important;
-  padding: 10px !important;
-  background: linear-gradient(180deg, #070D1A 0%, #050811 100%) !important;
-  border-left: 1px solid var(--border2) !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0px !important;
 }}
 
 /* Equal-height columns: each sidebar column fills the viewport height below the
@@ -340,18 +360,24 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
    it (height:100%) and scrolls independently. No position:sticky — the columns
    participate normally in the parent's align-items: stretch flex layout so left,
    center, and right always share the same height with no empty gaps beneath. */
-div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:first-child,
-div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:nth-child(2),
-div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:last-child {{
-  height: calc(100vh - 94px) !important;
-  max-height: calc(100vh - 94px) !important;
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:first-of-type,
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:nth-of-type(2),
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:last-of-type,
+div[data-testid="column"]:has(.suraksha-sidebar-content),
+div[data-testid="column"]:has(.suraksha-center-panel-flag),
+div[data-testid="column"]:has(.suraksha-right-panel-flag) {{
+  height: 100% !important;
+  max-height: 100% !important;
   overflow: hidden !important;
 }}
 
 /* Left, Center, and Right columns scroll independently */
-div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:first-child,
-div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:nth-child(2),
-div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:last-child {{
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:first-of-type,
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:nth-of-type(2),
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:last-of-type,
+div[data-testid="column"]:has(.suraksha-sidebar-content),
+div[data-testid="column"]:has(.suraksha-center-panel-flag),
+div[data-testid="column"]:has(.suraksha-right-panel-flag) {{
   overflow-y: auto !important;
 }}
 
@@ -376,15 +402,28 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   gap: 8px !important;
 }}
 
-.st-key-left_console_panel,
-.st-key-right_diag_panel {{
-  height: 100% !important;
-  max-height: 100% !important;
+.st-key-left_console_panel {{
+  background: linear-gradient(180deg, #070D1A 0%, #050811 100%) !important;
+  border-right: 1px solid var(--border2) !important;
+  padding: 10px !important;
   box-sizing: border-box !important;
-  overflow: hidden !important;
-  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
   display: flex !important;
   flex-direction: column !important;
+  overflow-y: auto !important;
+}}
+
+.st-key-right_diag_panel {{
+  background: linear-gradient(180deg, #070D1A 0%, #050811 100%) !important;
+  border-left: 1px solid var(--border2) !important;
+  padding: 10px !important;
+  box-sizing: border-box !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow-y: auto !important;
 }}
 
 /* The Streamlit vertical block inside each panel becomes the flex column.
@@ -397,22 +436,6 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   min-height: 0 !important;
   height: 100% !important;
   gap: 8px !important;
-}}
-
-/* LEFT SIDEBAR: Recent Alerts expander fills remaining space (flex: 1) and its
-   inner content scrolls independently. Targeted via :has(summary text match). */
-.st-key-left_console_panel div[data-testid="stExpander"]:has(summary:has-text("Recent Alerts")) {{
-  flex: 1 1 auto !important;
-  min-height: 60px !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
-}}
-.st-key-left_console_panel div[data-testid="stExpander"]:has(summary:has-text("Recent Alerts")) > div {{
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
 }}
 
 /* LEFT SIDEBAR: Footer (version/build) pinned to bottom via margin-top: auto */
