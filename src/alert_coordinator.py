@@ -243,6 +243,174 @@ class RiskEvaluator:
         self.rules_config = config.get("rules", {})
         self.escalation_matrix = config.get("escalation_matrix", {})
 
+    def generate_osha_message_raw(
+        self,
+        title: str,
+        severity: str,
+        zone: str,
+        confidence: int,
+        root_cause: str,
+        consequences: List[str],
+        actions: List[str],
+        team: str
+    ) -> str:
+        # Import zone labels mapping
+        from src.config.ui_constants import ZONE_LABELS_MAP
+        zone_label = ZONE_LABELS_MAP.get(zone, zone).upper()
+        
+        conseq_html = " &bull; ".join(consequences)
+        actions_html = " &bull; ".join(actions)
+        
+        return f"""<div style="font-weight: 700; color: #fff; margin-bottom: 4px;">{title}</div>
+<div style="margin-top: 4px; display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; font-size: 10px; line-height: 1.35; font-family: Outfit, sans-serif;">
+  <span style="color: #64748b; font-weight: 600;">Root Cause:</span>
+  <span style="color: #cbd5e1;">{root_cause}</span>
+  
+  <span style="color: #64748b; font-weight: 600;">Consequences:</span>
+  <span style="color: #cbd5e1;">{conseq_html}</span>
+  
+  <span style="color: #64748b; font-weight: 600;">Actions:</span>
+  <span style="color: #cbd5e1;">{actions_html}</span>
+  
+  <span style="color: #64748b; font-weight: 600;">Response Team:</span>
+  <span style="color: #cbd5e1; font-weight: 700;">{team}</span>
+  
+  <span style="color: #64748b; font-weight: 600;">Confidence:</span>
+  <span style="color: #60a5fa; font-weight: 700;">{confidence}%</span>
+</div>"""
+
+    def generate_osha_message(
+        self,
+        rule_id: str,
+        severity: str,
+        zone: str,
+        detections: List[Any],
+        telemetry: Dict[str, Any],
+        permits: bool,
+        worker_count: int
+    ) -> str:
+        # Determine defaults
+        title = "SAFETY COMPLIANCE VIOLATION"
+        root_cause = "General safety hazard detected"
+        consequences = ["Potential worker injury", "Regulatory compliance infraction"]
+        actions = ["Monitor conditions", "Investigate hazard"]
+        team = "Site Safety Team"
+        
+        # Determine confidence
+        confidence_val = 95
+        if detections:
+            conf_list = [getattr(d, 'confidence', 0.8) for d in detections if getattr(d, 'confidence', 0.0) > 0.0]
+            if conf_list:
+                confidence_val = int(max(conf_list) * 100)
+
+        # Check for worker down / collapse event
+        labels = [getattr(d, 'label', '') for d in detections]
+        is_worker_down = any(l in ('person_down', 'motionless', 'collapse', 'worker_down') for l in labels)
+        
+        if is_worker_down:
+            title = "MEDICAL EMERGENCY"
+            root_cause = "Worker detected collapsed or lying motionless inside active sector"
+            consequences = ["Severe physical trauma", "Unconscious safety hazard", "Delayed rescue complications"]
+            actions = ["Dispatch medical response team immediately", "Clear and secure area for first responders", "Notify emergency services"]
+            team = "Emergency Medical Team (EMT)"
+            
+        # Match specific rule cases
+        elif rule_id == "FIRE_SMOKE":
+            title = "FIRE EMERGENCY"
+            root_cause = "Uncontrolled ignition source or active combustion detected on CCTV feed"
+            consequences = ["Severe thermal burns", "Toxic smoke inhalation", "Property destruction"]
+            actions = ["Sound evacuations siren", "Deploy Emergency Fire Brigade", "Activate deluge/suppression system"]
+            team = "Emergency Fire Brigade"
+            
+        elif rule_id in ("GAS_LEAK", "GAS_CRITICAL", "BAT4_GAS_LEAK"):
+            title = "CRITICAL GAS ESCAPE"
+            gas_ppm = telemetry.get(f"{zone}_gas_ppm", telemetry.get("gas_ppm", 0.0))
+            root_cause = f"Pressurized volatile/hazardous gas release monitored ({gas_ppm:.1f} ppm)"
+            consequences = ["Explosion/flammability hazard", "Toxic gas inhalation", "Asphyxiation risk"]
+            actions = ["Isolate main gas supply valve", "Maximize exhaust ventilation", "Evacuate personnel immediately"]
+            team = "HAZMAT Response Team"
+            
+        elif rule_id == "GAS_ELEVATED":
+            title = "ELEVATED HAZARDOUS GAS"
+            gas_ppm = telemetry.get(f"{zone}_gas_ppm", telemetry.get("gas_ppm", 0.0))
+            root_cause = f"Elevated hazardous gas concentration monitored ({gas_ppm:.1f} ppm)"
+            consequences = ["Increased toxicity risk", "Leak escalation potential"]
+            actions = ["Investigate source of gas release", "Deploy handheld detector", "Restrict zone entry"]
+            team = "EHS Safety Officer"
+
+        elif rule_id == "ZONE_INTRUSION":
+            title = "RESTRICTED ZONE INTRUSION"
+            root_cause = "Unauthorized personnel entry detected inside high-risk exclusion boundary"
+            consequences = ["Accidental exposure to process hazards", "Machinery contact danger"]
+            actions = ["Dispatch security to escort personnel out", "Halt local automated processes"]
+            team = "Plant Security Control"
+
+        elif rule_id == "TEMPERATURE_CRITICAL":
+            temp = telemetry.get(f"{zone}_temperature_c", telemetry.get("temperature", 0.0))
+            title = "CRITICAL TEMPERATURE THREAT"
+            root_cause = f"Processing equipment temperature breached safe limits ({temp:.1f}°C)"
+            consequences = ["Thermal stress mechanical failure", "Volatile material ignition", "System damage"]
+            actions = ["Initiate emergency coolant loops", "Perform controlled machinery shutdown"]
+            team = "Operations Maintenance Crew"
+
+        elif rule_id in ("OVERPRESSURE", "BAT6_HIGH_PRESSURE"):
+            pressure = telemetry.get(f"{zone}_pressure_bar", telemetry.get("pressure_bar", 0.0))
+            title = "CRITICAL OVERPRESSURE THREAT"
+            root_cause = f"Mechanical pressure in processing vessels exceeded design threshold ({pressure:.1f} bar)"
+            consequences = ["Mechanical rupture/explosion", "Projectiles hazard", "Material blowout"]
+            actions = ["Vent pressure release lines", "Evacuate non-essential personnel", "Isolate pressure vessel"]
+            team = "Pressure Systems Engineering Team"
+
+        elif rule_id == "REACTOR_WELDING_PROXIMITY":
+            title = "HIGH RISK SAFETY VIOLATION"
+            root_cause = "Worker near active welding/hot-work zone without respiratory protection shield"
+            consequences = ["Smoke and toxic fume inhalation", "Bystander flash burn risk", "Ocular injury"]
+            actions = ["Stop active welding process immediately", "Provide approved respiratory/shield PPE", "Verify hot work permit"]
+            team = "EHS Safety Officer"
+
+        elif rule_id == "STORAGE_OVERCROWDING":
+            title = "HAZARDOUS AREA OVERCROWDING"
+            root_cause = f"Warehouse aisle occupant count ({worker_count}) exceeds safe zone capacity"
+            consequences = ["Evacuation corridor congestion", "Safety response delay risks"]
+            actions = ["Restrict further warehouse entry", "Redistribute shift personnel to other sectors"]
+            team = "Warehouse Operations Lead"
+
+        elif rule_id in ("PPE_VIOLATION", "BAT5_PPE_VIOLATION"):
+            # Check what PPE was actually missing from detections (e.g. no_helmet, no_vest)
+            labels = [getattr(d, 'label', '') for d in detections]
+            missing_helmet = 'no_helmet' in labels
+            missing_vest = 'no_vest' in labels
+            
+            if missing_helmet and missing_vest:
+                title = "PPE COMPLIANCE VIOLATION"
+                root_cause = "Worker detected missing BOTH safety hard hat and high-visibility vest"
+                consequences = ["Severe head impact hazard", "Low visibility strike risk", "OSHA non-compliance"]
+                actions = ["Conduct immediate safety check", "Halt tasks until compliant", "Issue warning ticket"]
+                team = "Floor Supervisor"
+            elif missing_helmet:
+                title = "PPE COMPLIANCE VIOLATION"
+                root_cause = "Worker detected missing mandatory safety hard hat in active zone"
+                consequences = ["Severe head impact/injury hazard", "Falling objects risk"]
+                actions = ["Provide hard hat immediately", "Halt tasks until helmet is secured"]
+                team = "Floor Supervisor"
+            else:
+                title = "PPE COMPLIANCE VIOLATION"
+                root_cause = "Worker detected missing mandatory high-visibility vest in machinery area"
+                consequences = ["Operator low visibility risk", "Struck-by machinery hazard"]
+                actions = ["Enforce safety vest compliance", "Pause heavy equipment movement nearby"]
+                team = "Floor Supervisor"
+
+        return self.generate_osha_message_raw(
+            title=title,
+            severity=severity,
+            zone=zone,
+            confidence=confidence_val,
+            root_cause=root_cause,
+            consequences=consequences,
+            actions=actions,
+            team=team
+        )
+
     def evaluate(self, detections: List[Any], telemetry: Dict[str, Any], permits: bool, worker_count: int, maintenance_state: bool, zone: str) -> Dict[str, Any]:
         """
         Pure, deterministic risk evaluation. Returns matched rules, highest severity,
@@ -428,6 +596,15 @@ class RiskEvaluator:
             "STORAGE_OVERCROWDING": "Restrict further entry, notify supervisor, redistribute personnel, monitor evacuation routes."
         }
         for rule in matched_rules:
+            rule["message"] = self.generate_osha_message(
+                rule_id=rule["rule_id"],
+                severity=rule["severity"].name,
+                zone=zone,
+                detections=detections,
+                telemetry=telemetry,
+                permits=permits,
+                worker_count=worker_count
+            )
             act = action_map.get(rule["rule_id"])
             if act and act not in actions:
                 actions.append(act)
@@ -588,7 +765,7 @@ class TelegramChannel(NotificationChannel):
             if get_script_run_ctx() is not None:
                 import streamlit as st
                 try:
-                    st.session_state.sms_status = {
+                    st.session_state.telegram_status = {
                         "status": "DELIVERED ✓",
                         "color": "#22c55e",
                         "detail": f"Sent to Telegram Chat at {datetime.now().strftime('%H:%M:%S')}"
@@ -749,6 +926,22 @@ class NotificationDispatcher:
         target_channels = [ch.strip().upper() for ch in channels_str.split(",") if ch.strip()]
         incident_id = incident.get("incident_id")
         
+        # Initialize session state variables in main thread to guarantee immediate updates
+        import sys
+        if 'streamlit' in sys.modules:
+            try:
+                import streamlit as st
+                now_t = datetime.now().strftime("%H:%M:%S")
+                for ch_name in target_channels:
+                    key = f"{ch_name.lower()}_status"
+                    st.session_state[key] = {
+                        "status": "PENDING",
+                        "color": "#94a3b8",
+                        "detail": f"Queue initialized at {now_t}"
+                    }
+            except Exception:
+                pass
+        
         # Capture the current Streamlit context to pass to background threads
         from streamlit.runtime.scriptrunner import get_script_run_ctx
         ctx = get_script_run_ctx()
@@ -778,6 +971,19 @@ class NotificationDispatcher:
 
     def _safe_send(self, name: str, channel: NotificationChannel, incident: Dict[str, Any], ctx: Optional[Any] = None, dispatch_start: Optional[float] = None) -> None:
         incident_id = incident.get("incident_id")
+        
+        # Chronological dispatch order delay
+        delay_map = {
+            "SMS": 0.4,
+            "TELEGRAM": 0.4,
+            "EMAIL": 1.4,
+            "SIREN": 2.4,
+            "PHONE": 3.0,
+            "VOICE": 3.0
+        }
+        init_delay = delay_map.get(name.upper(), 0.5)
+        time.sleep(init_delay)
+
         if incident_id:
             self._update_status(incident_id, name, "Sending")
             
@@ -785,6 +991,23 @@ class NotificationDispatcher:
             if ctx is not None:
                 from streamlit.runtime.scriptrunner import add_script_run_ctx
                 add_script_run_ctx(ctx=ctx)
+            
+            # Transition state to SENDING...
+            import streamlit as st
+            now_t = datetime.now().strftime("%H:%M:%S")
+            key = f"{name.lower()}_status"
+            try:
+                st.session_state[key] = {
+                    "status": "SENDING...",
+                    "color": "#f97316",
+                    "detail": f"Dialing routing gateway at {now_t}"
+                }
+            except Exception:
+                pass
+
+            # Simulate network latency/transport duration
+            time.sleep(0.8)
+
             success = channel.send(incident)
             if success:
                 self.success_count += 1
@@ -801,9 +1024,25 @@ class NotificationDispatcher:
                             self.logger.error(f"Enhancer on_notification_sent failed: {ex}")
             else:
                 self.logger.error(f"Failed to dispatch to channel: {name}")
+                try:
+                    st.session_state[key] = {
+                        "status": "FAILED",
+                        "color": "#ef4444",
+                        "detail": f"Failed transmission at {datetime.now().strftime('%H:%M:%S')}"
+                    }
+                except Exception:
+                    pass
                 self._handle_failure(name, channel, incident, ctx, dispatch_start)
         except Exception as e:
             self.logger.error(f"Exception during notification dispatch on {name}: {e}")
+            try:
+                st.session_state[key] = {
+                    "status": "FAILED",
+                    "color": "#ef4444",
+                    "detail": f"Failed exception: {str(e)} at {datetime.now().strftime('%H:%M:%S')}"
+                }
+            except Exception:
+                pass
             self._handle_failure(name, channel, incident, ctx, dispatch_start)
 
     def _handle_failure(self, name: str, channel: NotificationChannel, incident: Dict[str, Any], ctx: Optional[Any] = None, dispatch_start: Optional[float] = None) -> None:
@@ -830,12 +1069,14 @@ class NotificationDispatcher:
             self.logger.info(f"Retrying notification {incident_id} on {name} (Attempt {new_retry}/3)")
             self._update_status(incident_id, name, "Pending", retry_count=new_retry)
             
-            # Re-submit to the executor after a short delay (1 second sleep)
             def retry_task() -> None:
                 time.sleep(1.0)
                 self._safe_send(name, channel, incident, ctx, dispatch_start)
                 
-            self.executor.submit(retry_task)
+            try:
+                self.executor.submit(retry_task)
+            except RuntimeError as re:
+                self.logger.warning(f"Could not schedule retry task during executor shutdown: {re}")
         else:
             self.logger.error(f"Max retries reached for notification {incident_id} on {name}")
             self._update_status(incident_id, name, "Failed")
@@ -1568,6 +1809,66 @@ class AlertCoordinator:
             delay = matrix.get("response_time", 60)
             
             if row_data is None:
+                # Format context-aware compound safety alert
+                raw_msg = risk_result.get("message", "")
+                if not ("<div" in raw_msg or "<span" in raw_msg):
+                    factors = risk_result.get("factors", [])
+                    comp_factors = risk_result.get("compound_factors", [])
+                    all_factors = list(set(factors + comp_factors))
+                    
+                    is_worker_down = any("down" in f.lower() or "motionless" in f.lower() or "collapse" in f.lower() for f in all_factors)
+                    
+                    if is_worker_down:
+                        title = "MEDICAL EMERGENCY"
+                        root_cause = "Worker collapse or person lying motionless detected inside sector"
+                        consequences = ["Severe physical trauma", "Unconscious safety hazard", "Delayed rescue complications"]
+                        actions = ["Dispatch medical response team immediately", "Clear and secure area for first responders", "Notify emergency services"]
+                        team = "Emergency Medical Team (EMT)"
+                    elif any("fire" in f.lower() or "smoke" in f.lower() for f in all_factors):
+                        title = "FIRE EMERGENCY"
+                        root_cause = f"Ignition source / smoke pattern detected with factors: {', '.join(all_factors)}"
+                        consequences = ["Severe thermal burns", "Toxic smoke inhalation", "Property destruction"]
+                        actions = ["Sound evacuations siren", "Deploy Emergency Fire Brigade", "Activate deluge/suppression system"]
+                        team = "Emergency Fire Brigade"
+                    elif any("gas" in f.lower() or "leak" in f.lower() for f in all_factors):
+                        title = "CRITICAL GAS ESCAPE"
+                        root_cause = f"Pressurized volatile/hazardous gas leak correlated with active factors: {', '.join(all_factors)}"
+                        consequences = ["Explosion/flammability hazard", "Toxic gas inhalation", "Asphyxiation risk"]
+                        actions = ["Isolate main gas supply valve", "Maximize exhaust ventilation", "Evacuate personnel immediately"]
+                        team = "HAZMAT Response Team"
+                    elif any("pressure" in f.lower() for f in all_factors):
+                        title = "CRITICAL OVERPRESSURE THREAT"
+                        root_cause = f"Pressure vessel/mechanical system exceeded design threshold. Factors: {', '.join(all_factors)}"
+                        consequences = ["Mechanical rupture/explosion", "Projectiles hazard", "Material blowout"]
+                        actions = ["Vent pressure release lines", "Evacuate non-essential personnel", "Isolate pressure vessel"]
+                        team = "Pressure Systems Engineering Team"
+                    elif any("helmet" in f.lower() or "vest" in f.lower() or "ppe" in f.lower() for f in all_factors):
+                        title = "PPE COMPLIANCE VIOLATION"
+                        root_cause = "Worker detected missing mandatory safety gear in active zone"
+                        consequences = ["Severe head impact hazard", "Strike-by machinery hazard", "OSHA non-compliance"]
+                        actions = ["Conduct immediate safety check", "Halt tasks until compliant", "Enforce PPE standards"]
+                        team = "Floor Supervisor"
+                    else:
+                        title = "COMPOUND RISK ALERT"
+                        root_cause = f"Correlated multi-channel safety anomaly: {', '.join(all_factors)}"
+                        consequences = ["Escalation risk", "Potential unsafe work environment"]
+                        actions = ["Verify Permit-to-Work credentials", "Deploy safety supervisor", "Review live telemetry trends"]
+                        team = "Site Safety Officer"
+                    
+                    confidence_val = int(risk_result.get("confidence", 0.95) * 100)
+                    msg = self.risk_evaluator.generate_osha_message_raw(
+                        title=title,
+                        severity=risk_level,
+                        zone=zone,
+                        confidence=confidence_val,
+                        root_cause=root_cause,
+                        consequences=consequences,
+                        actions=actions,
+                        team=team
+                    )
+                else:
+                    msg = raw_msg
+
                 incident_id = str(uuid.uuid4())
                 cursor.execute("""
                 INSERT INTO incidents (
@@ -1577,7 +1878,7 @@ class AlertCoordinator:
                 ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     incident_id, incident_key, zone, f"COMPOUND_{risk_level}",
-                    risk_level, risk_result.get("message", ""), now_str,
+                    risk_level, msg, now_str,
                     requires_ack, risk_score, ",".join(risk_result.get("factors", [])),
                     ",".join(risk_result.get("compound_factors", [])),
                     teams, channels, now_str

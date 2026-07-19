@@ -176,6 +176,28 @@ if not st.session_state.get('sim_play_active', False):
                 am.resolve_alert(_alert_id)
             except Exception:
                 pass
+        
+        # Reset notification channel statuses back to STANDBY
+        st.session_state.sms_status = {
+            "status": "STANDBY",
+            "color": "#64748b",
+            "detail": "Awaiting active threat alerts"
+        }
+        st.session_state.email_status = {
+            "status": "STANDBY",
+            "color": "#64748b",
+            "detail": "Awaiting active threat alerts"
+        }
+        st.session_state.telegram_status = {
+            "status": "STANDBY",
+            "color": "#64748b",
+            "detail": "Awaiting active threat alerts"
+        }
+        st.session_state.siren_status = {
+            "status": "STANDBY",
+            "color": "#64748b",
+            "detail": "Awaiting active threat alerts"
+        }
     except Exception:
         pass
 
@@ -199,6 +221,7 @@ from dashboard.emergency_mode import (
 
 # Calculate telemetry metrics across all zones
 data_dict = calculate_telemetry(df, engine, alert_system)
+st.session_state.zone_risks = data_dict.get('zone_risks', {})
 
 # Orchestrate emergency mode (injects CSS, toggles body class, audio, recovery)
 _emergency_zone = st.session_state.get('cctv_zone_selector', 'Zone_A')
@@ -252,33 +275,30 @@ st.session_state['last_risk_level'] = data_dict.get('STATUS', {}).get('level', '
     col_right
 ) = create_layout()
 
-# Render permanent Right Panel (Notification Channels & Live Alerts & Diagnostics)
+# Render permanent Right Panel (Notification Channels, Live Alerts, Diagnostics)
 with col_right:
     st.markdown(render_section_header("⚠️ ACTIVE COMPLIANCE WARNINGS"), unsafe_allow_html=True)
     warnings_placeholder = st.empty()
 
-    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("📢 NOTIFICATION CHANNELS"), unsafe_allow_html=True)
     notifications_placeholder = st.empty()
 
-    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("🔔 LIVE ALERTS"), unsafe_allow_html=True)
     alerts_placeholder = st.empty()
 
-    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("🧩 COMPOUND RISK ENGINE"), unsafe_allow_html=True)
     risk_engine_placeholder = st.empty()
 
-    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("📊 LIVE TELEMETRY"), unsafe_allow_html=True)
     telemetry_trends_placeholder = st.empty()
 
-    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("🧠 SAFETY INTELLIGENCE"), unsafe_allow_html=True)
     intelligence_placeholder = st.empty()
-
-    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
-    st.markdown(render_section_header("🔌 SYSTEM DIAGNOSTICS"), unsafe_allow_html=True)
 
     placeholders = {
         'alerts': alerts_placeholder,
@@ -290,8 +310,6 @@ with col_right:
         'intelligence': intelligence_placeholder,
         'critical_banner': critical_banner_placeholder,
     }
-    from dashboard.components import render_right_panel_diagnostics
-    render_right_panel_diagnostics(placeholders, data_dict, am, init_mode=True)
 
     # ── Safety Intelligence Panels (Digital Twin, Copilot, XAI, etc.) ──
     # Initialize default work permits once per session for SIMOPS analysis
@@ -317,11 +335,6 @@ with col_right:
     # Render all intelligence panels into the intelligence placeholder slot
     with intelligence_placeholder.container():
         render_intelligence_panels()
-        # Smart Permit Intelligence (SIMOPS) panel
-        try:
-            render_permit_intelligence_panel()
-        except Exception:
-            pass
 
 # Render the top alert banner above the column layout — scoped to selected zone
 render_top_alert_banner(auto_banner_placeholder, am, selected_zone=st.session_state.get('cctv_zone_selector', None))
@@ -343,7 +356,7 @@ with col_center:
             'm4': col4.empty()
         }
         render_kpi_grid(kpi_cols, data_dict)
-        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
 
     if active_tab == 'dashboard':
         from src.config.ui_constants import SENSOR_ZONES, ZONE_LABELS
@@ -366,7 +379,7 @@ with col_center:
         selected_zone = zone_sel
 
         selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper()
-        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
         st.markdown(f"""
         <div class='cctv-header'>
             <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
@@ -381,20 +394,34 @@ with col_center:
             
         cctv_status_placeholder = st.empty()
 
-        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
         # Compound Risk Engine & Live Telemetry moved to right sidebar for better column balance
         timeline_placeholder = st.empty()
 
-        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+        # Intelligence Timeline (moved from right column to center, always visible)
+        intelligence_timeline_placeholder = st.empty()
+
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+        # Compound Risk Intelligence detailed panel (moved from right to center)
+        compound_risk_detail_placeholder = st.empty()
+
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
         ai_decision_placeholder = st.empty()
 
-        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+        multi_agent_placeholder = st.empty()
+
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+        smart_permit_placeholder = st.empty()
+
+        st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)
         col_l3, col_r3 = st.columns([1.0, 1.0])
         zone_response_placeholder = col_l3.empty()
         incident_summary_placeholder = col_r3.empty()
 
         # Operational Overview SCADA status row (6 columns)
-        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)
         col_scada1, col_scada2, col_scada3, col_scada4, col_scada5, col_scada6 = st.columns(6)
         scada_placeholders = {
             'plant_health': col_scada1.empty(),
@@ -414,11 +441,15 @@ with col_center:
             'risk_engine': risk_engine_placeholder,
             'ai_decision': ai_decision_placeholder,
             'telemetry_trends': telemetry_trends_placeholder,
+            'multi_agent': multi_agent_placeholder,
+            'smart_permit': smart_permit_placeholder,
             'zone_response': zone_response_placeholder,
             'incident_summary': incident_summary_placeholder,
             'warnings': warnings_placeholder,
             'notifications': notifications_placeholder,
             'alerts': alerts_placeholder,
+            'intelligence_timeline': intelligence_timeline_placeholder,
+            'compound_risk_detail': compound_risk_detail_placeholder,
             'zone_status': placeholders.get('zone_status'),
             'failsafes': placeholders.get('failsafes'),
             'db_logs': placeholders.get('db_logs'),
@@ -441,6 +472,10 @@ with col_center:
         render_decision_telemetry_row(dashboard_placeholders, data_dict, selected_zone, current_detections)
         render_notifications_panel(notifications_placeholder, data_dict, selected_zone)
         render_alerts_panel(alerts_placeholder, am, selected_zone=selected_zone)
+
+        # Center column panels (Intelligence Timeline + Compound Risk Intelligence)
+        from dashboard.intelligence_ui import render_center_column_panels
+        render_center_column_panels(dashboard_placeholders)
 
         # Incident counters — read directly from session-scoped AlertManager.
         # No sim_on gate: active alerts should always be reflected in real time.

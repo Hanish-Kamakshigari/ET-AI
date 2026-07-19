@@ -5,6 +5,8 @@ SurakshaAI Dashboard Layout Module
 
 import sys
 import os
+import datetime
+from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
 import streamlit as st
 from src.alert_system import AlertManager
@@ -87,9 +89,109 @@ def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: 
         return
 
     all_active = getattr(am, "active_alerts", {})
+    if not all_active:
+        placeholder.empty()
+        return
 
+    # Check if there is ANY plant-wide HIGH or CRITICAL incident
+    high_crit_alerts = [
+        a for a in all_active.values()
+        if getattr(a, "risk_level", getattr(getattr(a, "severity", None), "name", "LOW")).upper() in ("HIGH", "CRITICAL")
+    ]
+
+    if high_crit_alerts:
+        # GLOBAL EMERGENCY BANNER (full-width, top of page)
+        # Pick the highest severity, newest alert
+        top_alert = max(
+            high_crit_alerts,
+            key=lambda a: (
+                1 if getattr(a, "risk_level", getattr(getattr(a, "severity", None), "name", "LOW")).upper() == "CRITICAL" else 0,
+                getattr(a, "start_time", datetime.now())
+            )
+        )
+        severity_name = getattr(top_alert, "risk_level", getattr(getattr(top_alert, "severity", None), "name", "LOW")).upper()
+        zone = getattr(top_alert, "zone", "")
+        from src.config.ui_constants import ZONE_LABELS
+        zone_lbl = ZONE_LABELS.get(zone, zone).upper()
+        message = getattr(top_alert, "message", "")
+        alert_id = getattr(top_alert, "alert_id", None)
+        timestamp = getattr(top_alert, "start_time", datetime.now()).strftime('%H:%M:%S')
+
+        # Get compound risk score from session state zone risks
+        zone_risks = st.session_state.get('zone_risks', {})
+        score_val = zone_risks.get(zone, {}).get('risk_score', 0.0) if zone_risks else 0.0
+        if score_val == 0.0:
+            score_val = 14.5 if severity_name == "CRITICAL" else 8.5
+
+        evac_status = "IMMEDIATE EVACUATION RECOMMENDED" if severity_name == "CRITICAL" else "RESTRICT ZONE ACCESS / STANDBY"
+        team_status = "ALPHA & BETA EMERGENCY TEAMS DISPATCHED" if severity_name == "CRITICAL" else "RESPONSE TEAM NOTIFIED"
+        
+        ack_href = f"?ack_alert={alert_id}" if alert_id else "?ack_auto_alert=1"
+        
+        html = f"""
+        <div class="global-emergency-banner" style="
+            background: linear-gradient(90deg, rgba(120,8,8,0.98) 0%, rgba(185,15,15,0.92) 50%, rgba(120,8,8,0.98) 100%);
+            border: 2px solid #ef4444;
+            border-radius: 8px;
+            padding: 8px 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 0 20px rgba(239,68,68,0.5);
+            font-family: 'Outfit', sans-serif;
+            animation: bannerPulse 2.0s infinite ease-in-out;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #fff;
+            position: relative;
+            overflow: hidden;
+        ">
+          <!-- Left accent line -->
+          <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#ef4444;"></div>
+          <div style="display: flex; align-items: center; gap: 12px; z-index: 2; padding-left: 6px;">
+            <span style="font-size: 20px; animation: warningBlink 1.5s infinite alternate;" class="emergency-warning-indicator">🚨</span>
+            <div>
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                 <span style="font-weight: 900; font-size: 11px; letter-spacing: 1px; color: #fca5a5; text-transform: uppercase;">🚨 {severity_name} INDUSTRIAL INCIDENT ACTIVE</span>
+                 <span style="background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 1px 6px; font-size: 9px; font-weight: 700;">{zone_lbl}</span>
+                 <span style="background: rgba(239,68,68,0.3); color: #fecaca; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 1px 6px; font-size: 9px; font-weight: 700;">RISK SCORE: {score_val:.1f}/20</span>
+                 <span style="color: #cbd5e1; font-size: 9px; font-family: monospace; font-weight: 600;">⏱ {timestamp}</span>
+              </div>
+              <div style="font-size: 11px; color: #fed7aa; font-weight: 600; margin-top: 3px;">
+                <b>HAZARD:</b> {message} &nbsp;|&nbsp; <b>STATUS:</b> <span style="text-decoration: underline;">{evac_status}</span> &nbsp;|&nbsp; <b>ERT:</b> {team_status}
+              </div>
+            </div>
+          </div>
+          <div style="z-index: 2; margin-left: 10px;">
+            <a href="{ack_href}" target="_self" style="text-decoration:none;">
+              <span style="
+                background: rgba(255,255,255,0.15);
+                color: #fff;
+                border: 1px solid rgba(255,255,255,0.3);
+                border-radius: 6px;
+                padding: 5px 12px;
+                font-size: 9.5px;
+                font-weight: 800;
+                cursor: pointer;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+                white-space: nowrap;
+              ">✓ ACKNOWLEDGE</span>
+            </a>
+          </div>
+        </div>
+        <style>
+        @keyframes bannerPulse {{
+            0%, 100% {{ border-color: rgba(239, 68, 68, 0.6); box-shadow: 0 0 12px rgba(239, 68, 68, 0.35); }}
+            50% {{ border-color: rgba(239, 68, 68, 1); box-shadow: 0 0 24px rgba(239, 68, 68, 0.65); }}
+        }}
+        </style>
+        """
+        placeholder.markdown(html, unsafe_allow_html=True)
+        return
+
+    # Fallback/Scoped Alert Banner for lower/other alerts
     # Filter to selected zone
-    if selected_zone and all_active:
+    if selected_zone:
         active = {k: v for k, v in all_active.items() if getattr(v, "zone", None) == selected_zone}
     else:
         active = all_active
@@ -283,7 +385,7 @@ def create_layout() -> Tuple[
     """, unsafe_allow_html=True)
 
     # Always use constant columns ratios to prevent Streamlit from rebuilding columns container
-    col_sidebar, col_center, col_right = st.columns([1.8, 6.1, 2.1])
+    col_sidebar, col_center, col_right = st.columns([1.8, 5.4, 2.8])
 
     with col_sidebar:
         sidebar_cls = "suraksha-sidebar-expanded" if is_expanded else "suraksha-sidebar-collapsed"

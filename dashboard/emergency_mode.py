@@ -10,6 +10,8 @@ from src.alert_system import AlertManager
 
 
 def is_emergency_active(data_dict: Dict[str, Any] = None) -> bool:
+    if not st.session_state.get('sim_play_active', False):
+        return False
     if data_dict:
         risk_state = data_dict.get('risk_state', '')
         status_level = data_dict.get('STATUS', {}).get('level', '')
@@ -20,6 +22,8 @@ def is_emergency_active(data_dict: Dict[str, Any] = None) -> bool:
 
 
 def get_emergency_level(data_dict: Dict[str, Any] = None) -> str:
+    if not st.session_state.get('sim_play_active', False):
+        return 'NORMAL'
     if data_dict:
         status_level = data_dict.get('STATUS', {}).get('level', '')
         risk_state = data_dict.get('risk_state', '')
@@ -124,8 +128,6 @@ body.emergency-resolving .stApp { animation: emergencyResolve 1.2s ease forwards
 @keyframes emergencyResolve { from { box-shadow: inset 0 0 160px rgba(239,68,68,0.08); } to { box-shadow: inset 0 0 0 rgba(239,68,68,0); } }
 .ambient-intensify { animation: ambientIntensify 2s ease-in-out infinite; }
 @keyframes ambientIntensify { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.06); } }
-.audio-mute-toggle { position: fixed; bottom: 36px; right: 16px; z-index: 999999; background: rgba(17,24,39,0.9); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 6px 10px; font-family: 'Outfit', sans-serif; font-size: 10px; color: #94a3b8; cursor: pointer; transition: all 0.2s ease; }
-.audio-mute-toggle:hover { border-color: rgba(0,212,255,0.3); color: #00d4ff; }
 </style>
 """
 
@@ -143,9 +145,18 @@ def toggle_emergency_mode(active: bool, resolving: bool = False) -> None:
 
 
 def render_critical_banner(placeholder: st.delta_generator.DeltaGenerator, data_dict: Dict[str, Any]) -> None:
-    if not is_emergency_active(data_dict):
+    # Gate: banner only visible when FSM has advanced to WARNING_ACTIVE or later states.
+    # This prevents the banner from firing the moment autoplay starts.
+    _BANNER_FSM_STATES = ('WARNING_ACTIVE', 'DISPATCHING', 'DELIVERED', 'INCIDENT_ACTIVE', 'ACKNOWLEDGED')
+    fsm_state = st.session_state.get('alert_fsm_state', 'NORMAL')
+    is_banner_eligible = fsm_state in _BANNER_FSM_STATES
+
+    if not is_emergency_active(data_dict) or not is_banner_eligible:
         if st.session_state.get('_banner_was_active', False):
-            placeholder.markdown('<div class="critical-incident-banner banner-resolving"><span style="color:#22c55e;font-size:12px;font-weight:700;">✅ INCIDENT RESOLVED — Returning to normal operations</span></div>', unsafe_allow_html=True)
+            if fsm_state == 'RESOLVED':
+                placeholder.markdown('<div class="critical-incident-banner banner-resolving"><span style="color:#22c55e;font-size:12px;font-weight:700;">✅ INCIDENT RESOLVED — Returning to normal operations</span></div>', unsafe_allow_html=True)
+            else:
+                placeholder.empty()
             st.session_state._banner_was_active = False
         else:
             placeholder.empty()
@@ -155,7 +166,6 @@ def render_critical_banner(placeholder: st.delta_generator.DeltaGenerator, data_
     affected_zone = get_affected_zone(data_dict)
     from src.config.ui_constants import ZONE_LABELS
     zone_label = ZONE_LABELS.get(affected_zone, affected_zone)
-    risk_state = data_dict.get('risk_state', 'HIGH')
     compound_score = data_dict.get('compound_risk_score', 0)
     latest = data_dict.get('latest', {})
     gas_val = float(latest.get(f"{affected_zone}_gas_ppm", 0))
@@ -169,6 +179,24 @@ def render_critical_banner(placeholder: st.delta_generator.DeltaGenerator, data_
     escalation_str = f"{escalation_secs // 60:02d}:{escalation_secs % 60:02d}"
     if level == 'CRITICAL': action, icon = "Immediate Evacuation Recommended", "🚨"
     else: action, icon = "Restrict Zone Access — Deploy Response Team", "⚠️"
+
+    # One-shot audio beep on banner first appearance — silent unless unmuted
+    audio_script = ""
+    muted = st.session_state.get('audio_muted', False)
+    was_played = st.session_state.get('_emergency_audio_played', False)
+    if level == 'CRITICAL' and not was_played and not muted:
+        st.session_state._emergency_audio_played = True
+        audio_script = """<script>
+        (function(){try{var ctx=new(window.AudioContext||window.webkitAudioContext)();var now=ctx.currentTime;
+        for(var i=0;i<3;i++){var t=now+i*0.6;var osc1=ctx.createOscillator();var gain1=ctx.createGain();
+        osc1.type="sawtooth";osc1.frequency.setValueAtTime(800,t);osc1.frequency.setValueAtTime(600,t+0.25);
+        gain1.gain.setValueAtTime(0.0001,t);gain1.gain.exponentialRampToValueAtTime(0.15,t+0.02);
+        gain1.gain.exponentialRampToValueAtTime(0.0001,t+0.5);osc1.connect(gain1).connect(ctx.destination);
+        osc1.start(t);osc1.stop(t+0.5);}setTimeout(function(){ctx.close();},2200);}catch(e){}})();
+        </script>"""
+    elif not level == 'CRITICAL' and was_played:
+        st.session_state._emergency_audio_played = False
+
     html = f"""
     <div class="critical-incident-banner">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;position:relative;z-index:1;">
@@ -187,7 +215,7 @@ def render_critical_banner(placeholder: st.delta_generator.DeltaGenerator, data_
                 <div style="color:#ef4444;font-size:18px;font-weight:800;font-family:monospace;font-variant-numeric:tabular-nums;">{escalation_str}</div>
             </div>
         </div>
-    </div>"""
+    </div>{audio_script}"""
     placeholder.markdown(html, unsafe_allow_html=True)
 
 
@@ -234,30 +262,6 @@ def render_camera_focus_style(placeholder: st.delta_generator.DeltaGenerator, ac
         placeholder.markdown('<style>.cctv-buffer-anchor{transform:scale(1.18);transform-origin:center center;transition:transform 0.5s cubic-bezier(0.16,1,0.3,1);}</style>', unsafe_allow_html=True)
     else:
         placeholder.markdown('<style>.cctv-buffer-anchor{transform:scale(1);transition:transform 0.5s ease;}</style>', unsafe_allow_html=True)
-
-
-def render_audio_warning(data_dict: Dict[str, Any]) -> None:
-    if 'audio_muted' not in st.session_state: st.session_state.audio_muted = False
-    muted = st.session_state.audio_muted
-    mute_label = "🔇 Muted" if muted else "🔊 Sound On"
-    st.markdown(f'<div class="audio-mute-toggle" onclick="document.getElementById(\'audio-mute-btn\').click();">{mute_label}</div>', unsafe_allow_html=True)
-    if st.button("Toggle Audio", key="audio_mute_btn", help="Mute/unmute emergency warning sound"):
-        st.session_state.audio_muted = not st.session_state.audio_muted
-        st.rerun()
-    is_critical = get_emergency_level(data_dict) == 'CRITICAL'
-    was_played = st.session_state.get('_emergency_audio_played', False)
-    if is_critical and not was_played and not muted:
-        st.session_state._emergency_audio_played = True
-        st.markdown("""<script>
-        (function(){try{var ctx=new(window.AudioContext||window.webkitAudioContext)();var now=ctx.currentTime;
-        for(var i=0;i<3;i++){var t=now+i*0.6;var osc1=ctx.createOscillator();var gain1=ctx.createGain();
-        osc1.type="sawtooth";osc1.frequency.setValueAtTime(800,t);osc1.frequency.setValueAtTime(600,t+0.25);
-        gain1.gain.setValueAtTime(0.0001,t);gain1.gain.exponentialRampToValueAtTime(0.15,t+0.02);
-        gain1.gain.exponentialRampToValueAtTime(0.0001,t+0.5);osc1.connect(gain1).connect(ctx.destination);
-        osc1.start(t);osc1.stop(t+0.5);}setTimeout(function(){ctx.close();},2200);}catch(e){}})();
-        </script>""", unsafe_allow_html=True)
-    elif not is_critical and was_played:
-        st.session_state._emergency_audio_played = False
 
 
 def render_live_timeline(events: List[Dict[str, Any]], is_resolved: bool = False) -> str:
@@ -416,15 +420,22 @@ def orchestrate_emergency_mode(
     selected_zone: str,
     detections_list: Optional[List[Any]] = None,
 ) -> None:
-    is_active = is_emergency_active(data_dict); was_active = st.session_state.get('_emergency_was_active', False)
+    """Orchestrates emergency mode CSS and body class toggling.
+    Audio is now handled inside render_critical_banner as a one-shot silent beep.
+    The Toggle Audio button has been removed; mute control lives in the SCADA status bar.
+    """
+    is_active = is_emergency_active(data_dict)
+    was_active = st.session_state.get('_emergency_was_active', False)
     inject_emergency_css()
     if is_active and not was_active:
-        toggle_emergency_mode(active=True); st.session_state._emergency_was_active = True
+        toggle_emergency_mode(active=True)
+        st.session_state._emergency_was_active = True
     elif is_active and was_active:
         toggle_emergency_mode(active=True)
     elif not is_active and was_active:
-        toggle_emergency_mode(active=True, resolving=True); st.session_state._emergency_was_active = False
+        toggle_emergency_mode(active=True, resolving=True)
+        st.session_state._emergency_was_active = False
         st.markdown('<script>setTimeout(function(){document.body.classList.remove("emergency-mode","emergency-resolving");},1200);</script>', unsafe_allow_html=True)
     else:
         toggle_emergency_mode(active=False)
-    render_audio_warning(data_dict)
+    # NOTE: render_audio_warning() removed — audio toggle button eliminated from UI.

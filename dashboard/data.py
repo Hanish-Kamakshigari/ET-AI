@@ -175,6 +175,16 @@ def init_state_defaults() -> None:
         'cctv_frame_index': 0,
         'video_played_this_run': False,
         'yolo_worker_counts': {},
+        'sms_status': {"status": "STANDBY", "color": "#64748b", "detail": "Awaiting active threat alerts"},
+        'email_status': {"status": "STANDBY", "color": "#64748b", "detail": "Awaiting active threat alerts"},
+        'telegram_status': {"status": "STANDBY", "color": "#64748b", "detail": "Awaiting active threat alerts"},
+        'siren_status': {"status": "STANDBY", "color": "#64748b", "detail": "Awaiting active threat alerts"},
+        # Alert Finite State Machine — drives banner gate and debounce
+        # States: NORMAL → DETECTING → WARNING_ACTIVE → DISPATCHING → DELIVERED → INCIDENT_ACTIVE → ACKNOWLEDGED → RESOLVED
+        'alert_fsm_state': 'NORMAL',
+        'alert_stable_frames': 0,     # consecutive frames the current detection has been stable
+        'alert_ui_hash': '',          # hash of last rendered UI state; panels only re-render on change
+        'audio_muted': False,         # global audio mute; persists across reruns
     }
     for k, v in _defaults.items():
         if k not in st.session_state:
@@ -208,6 +218,16 @@ def handle_url_actions(alert_system: AlertSystem, am: AlertManager) -> None:
         st.session_state.active_alert = None
         del st.query_params['ack_auto_alert']
         st.toast("✔ Alert Acknowledged", icon="🚨")
+        st.rerun()
+
+    if 'toggle_audio' in st.query_params:
+        st.session_state.audio_muted = not st.session_state.get('audio_muted', False)
+        del st.query_params['toggle_audio']
+        st.rerun()
+
+    if 'start_autoplay' in st.query_params:
+        st.session_state.sim_play_active = True
+        del st.query_params['start_autoplay']
         st.rerun()
 
 
@@ -249,8 +269,16 @@ def calculate_telemetry(df: pd.DataFrame, engine: CompoundRiskEngine, alert_syst
         st.session_state.prev_simulate_active = st.session_state.simulate_active
 
     _now = datetime.now()
-    _real_elapsed_min = (_now - st.session_state.scenario_start_time).total_seconds() / 60.0
-    _scenario_min = _real_elapsed_min + st.session_state.scenario_offset_min
+    play_active = st.session_state.get('sim_play_active', False)
+    frame_idx = st.session_state.get('cctv_frame_index', 0)
+    
+    if play_active and frame_idx >= 40:
+        _scenario_min = 20.0 + (frame_idx - 40) * 0.05
+    else:
+        _scenario_min = 5.0
+        
+    if st.session_state.get('compound_risk_active', False):
+        _scenario_min = max(_scenario_min, 20.0)
 
     # ── Battery-4 (Zone A) ──
     _za_gas_raw  = 4.5 + (_scenario_min * 1.2) + _rand.gauss(0, 0.4)
@@ -300,6 +328,7 @@ def calculate_telemetry(df: pd.DataFrame, engine: CompoundRiskEngine, alert_syst
 
     # Store in session state for Digital Twin access
     st.session_state['_last_telemetry'] = dict(latest)
+    st.session_state['_last_sync_time'] = _now.strftime('%H:%M:%S')
     latest.update({
         'Zone_A_gas_ppm': _za_gas, 'Zone_A_temperature_c': _za_temp, 'Zone_A_pressure_bar': _za_pressure,
         'Zone_A_worker_count': _za_workers, 'Zone_A_maintenance_active': _za_maint, 'Zone_A_permit_active': _za_permit,

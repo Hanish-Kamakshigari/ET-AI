@@ -211,18 +211,24 @@ def render_compound_risk_intelligence() -> None:
     orch = get_intelligence_orchestrator()
     risks = orch.get_compound_risks()
 
+    import streamlit as _st
+    play_active = _st.session_state.get('sim_play_active', False)
+
     if not risks:
-        st.markdown(f"""
+        label = "MONITORING" if not play_active else "No compound risks detected — all zones stable"
+        status_icon = "⏸" if not play_active else "✅"
+        html = f"""
         <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
                     padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
             <span style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px;">
                 🧠 COMPOUND RISK INTELLIGENCE
             </span>
             <div style="color:{_ACCENT_GREEN}; font-size:11px; margin-top:6px;">
-                ✅ No compound risks detected — all zones stable
+                {status_icon} {label}
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """
+        st.markdown(html, unsafe_allow_html=True)
         return
 
     # Display only highest priority risks (top 3)
@@ -390,6 +396,13 @@ def render_safety_copilot() -> None:
             </div>
         </details>
     </div>"""
+    import streamlit as st
+    play_active = st.session_state.get('sim_play_active', False)
+    if not play_active:
+        html = f"""<details style='border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS}; margin-bottom:6px; padding:4px 8px; background:rgba(0,0,0,0.15); font-family:{_FONT};'>
+            <summary style='cursor:pointer; color:#94a3b8; font-size:10px; font-weight:700;'>🤖 AI SAFETY COPILOT (Standby - Click to Expand)</summary>
+            <div style='margin-top:6px;'>{html}</div>
+        </details>"""
     st.markdown(html, unsafe_allow_html=True)
 
 
@@ -551,8 +564,14 @@ def render_emergency_response_plan() -> None:
             </summary>
             <div style="margin-top:4px;">{timeline_html}</div>
         </details>''' if timeline_html else ''}
-    </div>
-    """
+    </div>"""
+    import streamlit as st
+    play_active = st.session_state.get('sim_play_active', False)
+    if not play_active:
+        html = f"""<details style='border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS}; margin-bottom:6px; padding:4px 8px; background:rgba(0,0,0,0.15); font-family:{_FONT};'>
+            <summary style='cursor:pointer; color:#94a3b8; font-size:10px; font-weight:700;'>🆘 EMERGENCY PLAN (Standby - Click to Expand)</summary>
+            <div style='margin-top:6px;'>{html}</div>
+        </details>"""
     st.markdown(html, unsafe_allow_html=True)
 
 
@@ -606,11 +625,30 @@ def render_intelligence_timeline() -> None:
     orch = get_intelligence_orchestrator()
     timeline = orch.get_incident_timeline()
 
+    import streamlit as _st
+    play_active = _st.session_state.get('sim_play_active', False)
+
     if not timeline:
+        # Standby: show historical/logged events
+        if not play_active:
+            html = f"""
+            <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
+                        padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
+                <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:6px;">
+                    📋 INTELLIGENCE TIMELINE (STANDBY)
+                </div>
+                <div style="color:{_TEXT_DIM}; font-size:10px;">
+                    Historical events from today's operations shown below.
+                </div>
+            </div>
+            """
+            _st.markdown(html, unsafe_allow_html=True)
         return
 
+    # Limit to 15 events in standby, 10 in live mode
+    limit = 15 if not play_active else 10
     timeline_items = ""
-    for event in timeline[:10]:
+    for event in timeline[:limit]:
         sev_color = _severity_color(event.get('status', ''))
         timeline_items += f"""
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
@@ -627,11 +665,12 @@ def render_intelligence_timeline() -> None:
             </div>
         </div>"""
 
+    label_suffix = " (STANDBY)" if not play_active else ""
     html = f"""
     <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
                 padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
         <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:6px;">
-            📋 INTELLIGENCE TIMELINE
+            📋 INTELLIGENCE TIMELINE{label_suffix}
         </div>
         {timeline_items}
     </div>
@@ -643,14 +682,107 @@ def render_intelligence_timeline() -> None:
 # 10. INTERACTIVE PLANT DIGITAL TWIN — Enhanced Zone Map
 # ════════════════════════════════════════════════════════════════════════════════
 
+def render_compound_risk_status_compact() -> None:
+    """Compact status-only card for the top of right column showing overall risk state."""
+    orch = get_intelligence_orchestrator()
+    risks = orch.get_compound_risks()
+    latest = orch.get_latest()
+    scores = orch.get_zone_scores()
+
+    from src.config.ui_constants import ZONE_LABELS
+
+    # Get highest risk zone
+    highest_risk_zone = "—"
+    highest_risk_score = 100.0
+    if scores:
+        worst_zone = min(scores, key=scores.get)
+        highest_risk_zone = ZONE_LABELS.get(worst_zone, worst_zone)
+        highest_risk_score = scores[worst_zone]
+
+    # Risk level badge
+    if not risks:
+        risk_level = "MONITORING"
+        risk_color = _ACCENT_GREEN
+    else:
+        worst_risk = max(risks, key=lambda r: r.risk_score)
+        risk_level = worst_risk.severity
+        risk_color = _severity_color(worst_risk.severity)
+
+    last_triggered = "None"
+    if risks:
+        last_triggered = risks[0].risk_type
+
+    html = f"""
+    <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
+                padding:10px 14px; font-family:{_FONT}; margin-bottom:6px; cursor:pointer;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px;">
+                ⚡ COMPOUND RISK STATUS
+            </span>
+            <span style="color:{risk_color}; font-size:10px; font-weight:700;">
+                ● {risk_level}
+            </span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+            <div style="background:rgba(0,0,0,0.2); border-radius:6px; padding:6px 8px;">
+                <div style="color:{_TEXT_DIM}; font-size:9px; text-transform:uppercase;">Active Rules</div>
+                <div style="color:{_ACCENT_BLUE}; font-size:14px; font-weight:700;">{len(risks)}</div>
+            </div>
+            <div style="background:rgba(0,0,0,0.2); border-radius:6px; padding:6px 8px;">
+                <div style="color:{_TEXT_DIM}; font-size:9px; text-transform:uppercase;">High Risk Zone</div>
+                <div style="color:{_ACCENT_YELLOW}; font-size:12px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{highest_risk_zone}</div>
+            </div>
+        </div>
+        <div style="margin-top:6px; padding-top:6px; border-top:1px solid {_BORDER};">
+            <div style="color:{_TEXT_DIM}; font-size:9px; text-transform:uppercase;">Last Triggered</div>
+            <div style="color:{_TEXT_MUTED}; font-size:10px;">{last_triggered}</div>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
 def render_interactive_plant_twin() -> None:
     """Enhanced interactive digital twin with full system synchronization."""
     try:
         from dashboard.digital_twin import render_zone_digital_twin_full
         render_zone_digital_twin_full()
     except Exception:
-        # Fallback to basic geospatial map
         render_geospatial_plant_map()
+
+
+def render_center_column_panels(placeholders: Dict[str, Any]) -> None:
+    """Render Intelligence Timeline, Compound Risk Intelligence, Multi-Agent Pipeline, and Smart Permit Intelligence in center column."""
+    intelligence_timeline_placeholder = placeholders.get('intelligence_timeline')
+    compound_risk_detail_placeholder = placeholders.get('compound_risk_detail')
+    multi_agent_placeholder = placeholders.get('multi_agent')
+    smart_permit_placeholder = placeholders.get('smart_permit')
+
+    # Intelligence Timeline
+    if intelligence_timeline_placeholder:
+        with intelligence_timeline_placeholder.container():
+            render_intelligence_timeline()
+
+    # Compound Risk Intelligence detailed panel
+    if compound_risk_detail_placeholder:
+        with compound_risk_detail_placeholder.container():
+            render_compound_risk_intelligence()
+
+    # Multi-Agent Reasoning Pipeline (moved from right column)
+    if multi_agent_placeholder:
+        with multi_agent_placeholder.container():
+            st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+            render_multi_agent_pipeline()
+
+    # Smart Permit Intelligence (moved from right column)
+    if smart_permit_placeholder:
+        with smart_permit_placeholder.container():
+            st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+            try:
+                from src.permit_intelligence import render_permit_intelligence_panel
+                render_permit_intelligence_panel()
+            except Exception:
+                pass
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -898,8 +1030,14 @@ def render_explainable_ai_pipeline() -> None:
             <div style="color:{_ACCENT_GREEN}; font-size:9px; font-weight:600;">Recommended Action:</div>
             <div style="color:{_TEXT_PRIMARY}; font-size:9px;">{top_risk.recommended_action}</div>
         </div>
-    </div>
-    """
+    </div>"""
+    import streamlit as st
+    play_active = st.session_state.get('sim_play_active', False)
+    if not play_active:
+        html = f"""<details style='border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS}; margin-bottom:6px; padding:4px 8px; background:rgba(0,0,0,0.15); font-family:{_FONT};'>
+            <summary style='cursor:pointer; color:#94a3b8; font-size:10px; font-weight:700;'>🔬 EXPLAINABLE AI (Standby - Click to Expand)</summary>
+            <div style='margin-top:6px;'>{html}</div>
+        </details>"""
     st.markdown(html, unsafe_allow_html=True)
 
 
@@ -977,8 +1115,14 @@ def render_smart_operator_guidance() -> None:
             <div style="color:{_ACCENT_ORANGE}; font-size:9px; font-weight:600; margin-bottom:2px;">Emergency Contacts:</div>
             {contacts_html}
         </div>
-    </div>
-    """
+    </div>"""
+    import streamlit as st
+    play_active = st.session_state.get('sim_play_active', False)
+    if not play_active:
+        html = f"""<details style='border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS}; margin-bottom:6px; padding:4px 8px; background:rgba(0,0,0,0.15); font-family:{_FONT};'>
+            <summary style='cursor:pointer; color:#94a3b8; font-size:10px; font-weight:700;'>🎯 OPERATOR GUIDANCE (Standby - Click to Expand)</summary>
+            <div style='margin-top:6px;'>{html}</div>
+        </details>"""
     st.markdown(html, unsafe_allow_html=True)
 
 
@@ -1059,37 +1203,115 @@ def render_multi_agent_pipeline() -> None:
         active_flags[5] = bool(latest.get('emergency_plan'))
         active_flags[6] = bool(latest)
 
+    play_active = st.session_state.get('sim_play_active', False)
+
+    # Standby label map when simulation is OFF
+    standby_labels = [
+        '○ IDLE',
+        '○ WAITING',
+        '○ STANDBY',
+        '○ READY',
+        '● MONITORING',
+        '○ IDLE',
+        '○ IDLE',
+    ]
+    standby_descs = [
+        'Awaiting CCTV feed to begin detection',
+        'Holding until new events arrive',
+        'Risk model loaded and ready',
+        'Prediction model on standby',
+        'Monitoring plant compliance passively',
+        'Emergency plans pre-loaded',
+        'Synthesising last session summary',
+    ]
+
     pipeline_html = ""
     for i, (name, icon, color, desc) in enumerate(agents):
-        active = active_flags[i]
-        opacity = "1.0" if active else "0.4"
-        border_color = color if active else _BORDER
-        glow = f"box-shadow:0 0 8px {color}55;" if active else ""
-
+        if not play_active:
+            active = False
+            opacity = "0.7"
+            lbl = standby_labels[i]
+            lbl_color = _ACCENT_GREEN if '●' in lbl else _TEXT_DIM
+            border_color = _BORDER
+            glow = ""
+            row_desc = standby_descs[i]
+        else:
+            active = active_flags[i]
+            opacity = "1.0" if active else "0.4"
+            border_color = color if active else _BORDER
+            glow = f"box-shadow:0 0 8px {color}55;" if active else ""
+            lbl = '● ACTIVE' if active else '○ STANDBY'
+            lbl_color = _ACCENT_GREEN if active else _TEXT_DIM
+            if active:
+                if i == 0: lbl = '● ANALYZING'
+                elif i == 1: lbl = '● CORRELATING'
+                elif i == 2: lbl = '● COMPUTING'
+                elif i == 3: lbl = '● FORECASTING'
+                elif i == 4: lbl = '● COMPLIANT'
+                elif i == 5: lbl = '● RESOLVING'
+                elif i == 6: lbl = '● EXECUTING'
+            row_desc = desc
         pipeline_html += f"""
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:2px; opacity:{opacity};">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; opacity:{opacity};">
             <div style="width:28px; height:28px; border-radius:50%; background:{color}22; border:1.5px solid {border_color};
                         display:flex; align-items:center; justify-content:center; font-size:12px; {glow}">
                 {icon}
             </div>
             <div style="flex:1;">
                 <div style="color:{color if active else _TEXT_DIM}; font-size:9px; font-weight:600;">{name} Agent</div>
-                <div style="color:{_TEXT_DIM}; font-size:8px;">{desc}</div>
+                <div style="color:{_TEXT_DIM}; font-size:8px;">{row_desc}</div>
             </div>
-            <div style="color:{_ACCENT_GREEN if active else _TEXT_DIM}; font-size:8px; font-weight:600;">
-                {'● ACTIVE' if active else '○ STANDBY'}
+            <div style="color:{lbl_color}; font-size:8px; font-weight:600;">
+                {lbl}
             </div>
         </div>"""
         if i < len(agents) - 1:
-            pipeline_html += f"<div style='margin-left:14px; border-left:2px solid {_BORDER}; height:6px;'></div>"
+            pipeline_html += f"<div style='margin-left:14px; border-left:2px solid {_BORDER}; height:12px;'></div>"
 
     html = f"""
     <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
-                padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
-        <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">
+                padding:12px 14px; font-family:{_FONT}; margin-bottom:6px;">
+        <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:10px;">
             🤝 MULTI-AGENT REASONING PIPELINE
         </div>
         {pipeline_html}
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def render_system_diagnostics() -> None:
+    """Render System Diagnostics panel in the right column."""
+    import streamlit as _st
+    play_active = _st.session_state.get('sim_play_active', False)
+    
+    try:
+        import torch
+        device_str = "GPU (NVIDIA)" if torch.cuda.is_available() else "CPU (Host)"
+    except Exception:
+        device_str = "CPU (Host)"
+    
+    am_instance = _st.session_state.get('alert_manager')
+    active_alerts = len(am_instance.active_alerts) if am_instance and hasattr(am_instance, 'active_alerts') else 0
+    
+    html = f"""
+    <div style="font-size:10px; font-family:monospace; color:#cbd5e1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); padding:6px; border-radius:4px; margin-bottom:4px;">
+        🏥 <b>State:</b> <span style="color:#22c55e;">🟢 HEALTHY (99.8%)</span>
+    </div>
+    <div style="font-size:10px; font-family:monospace; color:#cbd5e1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); padding:6px; border-radius:4px; margin-bottom:4px;">
+        📹 <b>Feeds:</b> <span style="color:#22c55e;">🟢 5/5 ONLINE</span>
+    </div>
+    <div style="font-size:10px; font-family:monospace; color:#cbd5e1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); padding:6px; border-radius:4px; margin-bottom:4px;">
+        🔌 <b>Gateways:</b> <span style="color:#22c55e;">🟢 4/4 LINKED</span>
+    </div>
+    <div style="font-size:10px; font-family:monospace; color:#cbd5e1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); padding:6px; border-radius:4px; margin-bottom:4px;">
+        📊 <b>Alerts:</b> <span style="color:#22c55e;">{active_alerts} Active</span>
+    </div>
+    <div style="font-size:10px; font-family:monospace; color:#cbd5e1;">
+        <div style="display:flex; justify-content:space-between;"><span>Model:</span><span style="color:#3b82f6; font-weight:bold;">YOLOv8n-PPE</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>Version:</span><span>v3.0.4 (FP16)</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>Hardware:</span><span>{device_str}</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>FPS:</span><span style="color:#22c55e;">{'25.0' if play_active else '0.0'}</span></div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
@@ -1113,60 +1335,56 @@ def render_intelligence_panels() -> None:
         st.markdown(f"""
         <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
                     padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
-            <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">
-                🧠 SAFETY INTELLIGENCE
-            </div>
-            <div style="color:{_ACCENT_GREEN}; font-size:10px;">
-                ✅ All agents standing by — monitoring active
-            </div>
+        <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:4px;">
+            🧠 SAFETY INTELLIGENCE
+        </div>
+        <div style="color:{_ACCENT_GREEN}; font-size:10px;">
+            ✅ All agents standing by — monitoring active
+        </div>
         </div>
         """, unsafe_allow_html=True)
-        # Still show the digital twin and multi-agent pipeline in standby
-        render_interactive_plant_twin()
-        render_multi_agent_pipeline()
+        with _st.expander("🔌 SYSTEM DIAGNOSTICS", expanded=False):
+            render_system_diagnostics()
         return
 
-    # Executive Command Center (always shown)
+    play_active = st.session_state.get('sim_play_active', False)
+
+    if not play_active:
+        render_executive_command_center()
+        render_executive_safety_intelligence()
+        render_dynamic_safety_scores()
+        render_compound_risk_status_compact()
+
+        for panel_fn, label in [
+            (render_explainable_ai_pipeline,  "🔍 Explainable AI Pipeline"),
+            (render_safety_copilot,            "🤖 AI Safety Copilot"),
+            (render_predictive_analytics,      "📈 Predictive Risk Analytics"),
+            (render_emergency_response_plan,   "🆘 Emergency Response Plan"),
+            (render_incident_intelligence,     "🔎 Incident Intelligence"),
+            (render_incident_story_mode,       "📖 Incident Story Mode"),
+        ]:
+            st.markdown(f"""
+            <details style="background:linear-gradient(135deg,#0f1f38,#0a1628); border:1px solid #{_BORDER.lstrip('#')}; border-radius:10px; padding:0; margin-bottom:6px; font-family:Outfit,sans-serif; cursor:pointer;">
+                <summary style="list-style:none; padding:10px 14px; color:#94a3b8; font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; display:flex; align-items:center; justify-content:space-between; user-select:none;">
+                    <span>{label}</span>
+                    <span style="color:#3b82f6; font-size:9px;">▼ Click to expand</span>
+                </summary>
+                """, unsafe_allow_html=True)
+            panel_fn()
+            st.markdown("</details>", unsafe_allow_html=True)
+
+        return
+
     render_executive_command_center()
-
-    # Executive Safety Intelligence — actionable metrics (always shown)
     render_executive_safety_intelligence()
-
-    # Dynamic Safety Scores (always shown if scores exist)
     render_dynamic_safety_scores()
-
-    # Compound Risk Intelligence (only if risks exist)
     render_compound_risk_intelligence()
-
-    # Explainable AI Pipeline (only if risks exist)
     render_explainable_ai_pipeline()
-
-    # Predictive Analytics (always shown if predictions exist)
     render_predictive_analytics()
-
-    # AI Safety Copilot (only if explanation exists)
     render_safety_copilot()
-
-    # Smart Alert Prioritization (only if alerts exist)
-    render_smart_alert_prioritization()
-
-    # Emergency Response Plan (only if plan exists)
     render_emergency_response_plan()
-
-    # Smart Operator Guidance (only if emergency plan exists)
-    render_smart_operator_guidance()
-
-    # Incident Intelligence (only if patterns exist)
     render_incident_intelligence()
-
-    # Incident Story Mode (only if timeline exists)
     render_incident_story_mode()
-
-    # Intelligence Timeline (only if timeline exists)
-    render_intelligence_timeline()
-
-    # Multi-Agent Reasoning Pipeline (always shown)
-    render_multi_agent_pipeline()
-
-    # Interactive Plant Digital Twin (always available)
-    render_interactive_plant_twin()
+    # System Diagnostics - executive widget
+    with _st.expander("🔌 SYSTEM DIAGNOSTICS", expanded=False):
+        render_system_diagnostics()

@@ -207,10 +207,9 @@ html, body, [class*="css"], .stApp {{
 .stApp {{ background: var(--bg) !important; }}
 #MainMenu, footer {{ visibility: hidden; }}
 header[data-testid="stHeader"] {{ display: none !important; }}
-/* Single canonical rule: push all page content directly below the fixed 52px navbar.
-   No extra top padding/margin — content starts immediately under the navbar. */
+/* Single canonical rule: position content with standard 16px margins, offsetting for floating navbar */
 .block-container {{
-  padding: 52px 0 0 0 !important;
+  padding: 66px 16px 16px 16px !important;
   max-width: 100% !important;
   margin: 0 !important;
   box-sizing: border-box !important;
@@ -228,8 +227,15 @@ section[data-testid="stSidebar"] > div {{ padding-top: 0 !important; }}
 .main-content {{
   padding: 0px 18px 20px 18px;
 }}
-div[data-testid="stVerticalBlock"] > div {{ margin-top: 0px !important; gap: 14px !important; }}
-div[data-testid="stHorizontalBlock"] {{ gap: 14px !important; align-items: stretch !important; }}
+div[data-testid="stVerticalBlock"] > div {{ margin-top: 0px !important; gap: 4px !important; }}
+div[data-testid="stHorizontalBlock"] {{ gap: 6px !important; align-items: stretch !important; }}
+
+/* Center column: enable vertical scroll so content isn't clipped at viewport bottom */
+div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:nth-child(2) {{
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-bottom: 36px !important;
+}}
 
 /* Global transition for interactive elements and containers */
 button, select, div[role="button"], .stButton>button, [data-testid="stExpander"] {{
@@ -242,29 +248,40 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) {{
   flex-direction: row !important;
   flex-wrap: nowrap !important;
   align-items: stretch !important;
-  gap: 14px !important;
+  gap: 8px !important;
   width: 100% !important;
   max-width: 100% !important;
   margin: 0 !important;
   padding: 0 16px 0 0 !important;
 }}
 
-/* Sidebar column (1st child of layout block) */
+/* Sidebar column (1st child of layout block) - extended to full viewport height */
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:first-child {{
-  width: 19% !important;
+  width: 18% !important;
   min-width: 220px !important;
-  max-width: 19% !important;
-  flex: 0 0 19% !important;
+  max-width: 18% !important;
+  flex: 0 0 18% !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
   border-right: 1px solid var(--border2) !important;
   background: linear-gradient(180deg, #070D1A 0%, #050811 100%) !important;
-  padding: 14px !important;
+  padding: 10px !important;
   box-sizing: border-box !important;
+  min-height: 100vh !important;
+  height: 100vh !important;
+  position: sticky !important;
+  top: 0 !important;
+  overflow-y: auto !important;
+}}
+
+/* Sidebar content container for full height */
+.suraksha-sidebar-content {{
+  min-height: 100% !important;
+  height: 100% !important;
 }}
 
 /* Optimize sidebar widget spacing and expanders padding */
 div[data-testid="column"]:first-child [data-testid="stExpander"] {{
-    margin-bottom: 14px !important;
+    margin-bottom: 10px !important;
 }}
 div[data-testid="column"]:first-child [data-testid="stExpander"] details summary {{
     padding: 6px 10px !important;
@@ -273,11 +290,11 @@ div[data-testid="column"]:first-child [data-testid="stExpander"] details summary
 
 /* Center column (2nd child of layout block) - responsive, fills all remaining space */
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:nth-child(2) {{
-  flex: 1 1 53% !important;
-  width: 53% !important;
+  flex: 1 1 54% !important;
+  width: 54% !important;
   min-width: 0 !important;
   max-width: none !important;
-  padding: 14px 18px !important;
+  padding: 10px 14px !important;
   box-sizing: border-box !important;
   margin-left: 0 !important;
   transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
@@ -318,11 +335,11 @@ div[data-testid="column"]:has(div[data-testid="stImage"]) {{
 /* Right column (3rd child of layout block) */
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:last-child {{
   width: 28% !important;
-  min-width: 280px !important;
+  min-width: 320px !important;
   max-width: 28% !important;
   flex: 0 0 28% !important;
   box-sizing: border-box !important;
-  padding: 14px !important;
+  padding: 10px !important;
   background: linear-gradient(180deg, #070D1A 0%, #050811 100%) !important;
   border-left: 1px solid var(--border2) !important;
 }}
@@ -334,8 +351,8 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
    center, and right always share the same height with no empty gaps beneath. */
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:first-child,
 div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-testid="column"]:last-child {{
-  height: calc(100vh - 52px) !important;
-  max-height: calc(100vh - 52px) !important;
+  height: calc(100vh - 82px) !important;
+  max-height: calc(100vh - 82px) !important;
   overflow: hidden !important;
 }}
 
@@ -359,7 +376,7 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   flex: 1 1 auto !important;
   min-height: 0 !important;
   height: 100% !important;
-  gap: 14px !important;
+  gap: 8px !important;
 }}
 
 /* LEFT SIDEBAR: Recent Alerts expander fills remaining space (flex: 1) and its
@@ -473,11 +490,11 @@ div[data-testid="stHorizontalBlock"]:has(.suraksha-sidebar-content) > div[data-t
   text-transform: uppercase;
   letter-spacing: 1.5px;
   color: var(--muted);
-  margin-bottom: 12px;
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-bottom: 8px;
+  padding-bottom: 5px;
   border-bottom: 1px solid var(--border);
 }}
 
@@ -705,26 +722,27 @@ div[data-testid="stToast"] {{
 /* ── SURAKSHA NAVBAR ── */
 div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) {{
   position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
+  top: 16px !important;
+  left: 16px !important;
+  right: 16px !important;
   z-index: 999 !important;
-  height: 52px !important;
+  height: 38px !important;
   background: linear-gradient(90deg,
     rgba(5,11,22,0.97) 0%,
     rgba(11,21,38,0.96) 50%,
     rgba(5,11,22,0.97) 100%) !important;
   backdrop-filter: blur(20px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-  border-bottom: 1px solid rgba(59,130,246,0.18) !important;
+  border: 1px solid rgba(59,130,246,0.2) !important;
+  border-radius: 8px !important;
   box-shadow: 0 2px 24px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04) inset !important;
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
   padding: 0 24px !important;
   margin: 0 !important;
-  width: 100% !important;
-  max-width: 100% !important;
+  width: calc(100% - 32px) !important;
+  max-width: calc(100% - 32px) !important;
 }}
 
 div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="column"] {{
@@ -970,6 +988,13 @@ div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="
 .detection-entry:last-child {{
   border-bottom: none;
 }}
+@keyframes warningPulse {{
+  0% {{ border-color: rgba(239, 68, 68, 0.4); box-shadow: 0 0 8px rgba(239, 68, 68, 0.2); }}
+  100% {{ border-color: rgba(239, 68, 68, 1); box-shadow: 0 0 16px rgba(239, 68, 68, 0.55); }}
+}}
+.warning-pulse-active {{
+  animation: warningPulse 1.5s infinite alternate !important;
+}}
 </style>
 """
 
@@ -1013,7 +1038,9 @@ def render_navbar(risk_level: str = "LOW", active_tab: str = "dashboard") -> Non
         font-weight: 600 !important;
         text-transform: uppercase !important;
         letter-spacing: 0.5px !important;
-        padding: 6px 12px !important;
+        padding: 4px 10px !important;
+        line-height: 1.1 !important;
+        min-height: 24px !important;
         transition: all 0.2s ease !important;
     }
     div.stButton > button:hover {
@@ -1035,11 +1062,11 @@ def render_navbar(risk_level: str = "LOW", active_tab: str = "dashboard") -> Non
     
     with col_brand:
         st.markdown(f"""
-        <div class="suraksha-navbar-brand" style="display:flex; align-items:center; gap:8px; margin-top:4px;">
-          <div class="suraksha-navbar-logo" style="font-size:22px;">🛡️</div>
+        <div class="suraksha-navbar-brand" style="display:flex; align-items:center; gap:8px; margin-top:0px;">
+          <div class="suraksha-navbar-logo" style="font-size:18px;">🛡️</div>
           <div>
-            <div class="suraksha-navbar-title" style="font-weight:bold; font-size:14px; color:#fff; font-family:'Outfit',sans-serif; line-height:1.2;">SurakshaAI</div>
-            <div class="suraksha-navbar-subtitle" style="font-size:9.5px; color:#6b7d94; font-family:'Outfit',sans-serif; line-height:1.0;">Industrial Safety Platform</div>
+            <div class="suraksha-navbar-title" style="font-weight:bold; font-size:12px; color:#fff; font-family:'Outfit',sans-serif; line-height:1.1;">SurakshaAI</div>
+            <div class="suraksha-navbar-subtitle" style="font-size:8px; color:#6b7d94; font-family:'Outfit',sans-serif; line-height:1.0;">Industrial Safety Platform</div>
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1065,12 +1092,12 @@ def render_navbar(risk_level: str = "LOW", active_tab: str = "dashboard") -> Non
             
     with col_status:
         st.markdown(f"""
-        <div class="suraksha-navbar-status" style="display:flex; align-items:center; gap:10px; justify-content:flex-end; width:100%; margin-top:4px; font-family:'Outfit',sans-serif;">
-          <span style="background:rgba(0,212,255,0.12); border:1px solid rgba(0,212,255,0.3); border-radius:6px; color:#00d4ff; padding:5px 12px; font-size:10px; font-weight:bold; cursor:default;">🧠 AI Console</span>
-          <span class="suraksha-navbar-time" id="suraksha-clock" style="color:#6b7d94; font-family:monospace; font-size:11.5px; margin-top:2px;">{now_str}</span>
-          <div class="suraksha-navbar-divider" style="width:1px; height:12px; background:rgba(255,255,255,0.1); margin:0 2px;"></div>
-          <div class="suraksha-status-pill {pill_cls}" style="margin:0;">
-            <div class="suraksha-status-dot {pill_cls}"></div>
+        <div class="suraksha-navbar-status" style="display:flex; align-items:center; gap:8px; justify-content:flex-end; width:100%; margin-top:0px; font-family:'Outfit',sans-serif;">
+          <span style="background:rgba(0,212,255,0.12); border:1px solid rgba(0,212,255,0.3); border-radius:6px; color:#00d4ff; padding:3px 8px; font-size:9px; font-weight:bold; cursor:default;">🧠 AI Console</span>
+          <span class="suraksha-navbar-time" id="suraksha-clock" style="color:#6b7d94; font-family:monospace; font-size:10px; margin-top:0px;">{now_str}</span>
+          <div class="suraksha-navbar-divider" style="width:1px; height:10px; background:rgba(255,255,255,0.1); margin:0 1px;"></div>
+          <div class="suraksha-status-pill {pill_cls}" style="margin:0; padding:2px 8px; font-size:9px; gap:4px;">
+            <div class="suraksha-status-dot {pill_cls}" style="width:6px; height:6px;"></div>
             {pill_label}
           </div>
         </div>

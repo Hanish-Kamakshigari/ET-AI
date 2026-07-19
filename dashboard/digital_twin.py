@@ -214,13 +214,10 @@ def render_digital_twin_panel() -> None:
             "<div style='color:" + _ACCENT_ORANGE + "; font-size:9px; font-weight:600; margin-bottom:4px;'>SIMOPS Conflicts</div>" + \
             conflict_items + "</div>"
 
-    # Worker section
-    worker_section = ""
-    if worker_rows:
-        worker_section = "<details style='margin-bottom:6px;'>" + \
+        worker_section = "<details open style='margin-bottom:6px;'>" + \
             "<summary style='color:" + _TEXT_MUTED + "; font-size:9px; cursor:pointer;'>Workers (" + \
             str(twin.workers_at_risk) + " at risk)</summary>" + \
-            "<div style='max-height:100px; overflow-y:auto;'>" + worker_rows + "</div></details>"
+            "<div style='max-height:120px; overflow-y:auto;'>" + worker_rows + "</div></details>"
 
     # Permits section
     permits_list = ""
@@ -230,7 +227,7 @@ def render_digital_twin_panel() -> None:
     else:
         permits_list = "<div style='color:" + _TEXT_DIM + "; font-size:9px;'>No active permits</div>"
 
-    permits_section = "<details style='margin-bottom:6px;'>" + \
+    permits_section = "<details open style='margin-bottom:6px;'>" + \
         "<summary style='color:" + _TEXT_MUTED + "; font-size:9px; cursor:pointer;'>Permits (" + \
         str(twin.active_permits) + " active)</summary>" + \
         "<div style='margin-top:4px;'>" + permits_list + permit_conflicts_html + "</div></details>"
@@ -267,9 +264,9 @@ def render_digital_twin_panel() -> None:
         "<div style='color:" + risk_color + "; font-size:14px; font-weight:700;'>" + f"{twin.pressure:.1f}" + "</div>" + \
         "<div style='color:" + _TEXT_DIM + "; font-size:8px;'>Pressure (bar)</div></div></div>" + \
         worker_section + \
-        "<details style='margin-bottom:6px;'><summary style='color:" + _TEXT_MUTED + "; font-size:9px;'>Sensors (" + \
+        "<details open style='margin-bottom:6px;'><summary style='color:" + _TEXT_MUTED + "; font-size:9px;'>Sensors (" + \
         str(twin.active_sensors) + " active)</summary><div style='margin-top:4px;'>" + sensor_rows + "</div></details>" + \
-        "<details style='margin-bottom:6px;'><summary style='color:" + _TEXT_MUTED + "; font-size:9px;'>Equipment Status</summary>" + \
+        "<details open style='margin-bottom:6px;'><summary style='color:" + _TEXT_MUTED + "; font-size:9px;'>Equipment Status</summary>" + \
         "<div style='margin-top:4px;'>" + equipment_rows + "</div></details>" + \
         permits_section + emergency_section + "</div>"
 
@@ -281,11 +278,11 @@ def render_interactive_zone_map() -> None:
     from src.config.ui_constants import SENSOR_ZONES, ZONE_LABELS
 
     zone_positions = {
-        'Zone_A': {'x': 20, 'y': 30, 'label': 'Battery-4', 'icon': 'BAT'},
-        'Zone_B': {'x': 50, 'y': 25, 'label': 'Battery-5', 'icon': 'BAT'},
-        'Zone_C': {'x': 80, 'y': 30, 'label': 'Battery-6', 'icon': 'BAT'},
-        'Reactor_Area': {'x': 35, 'y': 65, 'label': 'Reactor', 'icon': 'RCT'},
-        'Storage_Area': {'x': 70, 'y': 70, 'label': 'Storage', 'icon': 'STG'},
+        'Zone_A': {'x': 20, 'y': 18, 'label': 'Battery-4', 'icon': 'BAT'},
+        'Zone_B': {'x': 50, 'y': 15, 'label': 'Battery-5', 'icon': 'BAT'},
+        'Zone_C': {'x': 80, 'y': 18, 'label': 'Battery-6', 'icon': 'BAT'},
+        'Reactor_Area': {'x': 35, 'y': 52, 'label': 'Reactor', 'icon': 'RCT'},
+        'Storage_Area': {'x': 70, 'y': 80, 'label': 'Storage', 'icon': 'STG'},
     }
 
     zone_risks = st.session_state.get('zone_risks', {})
@@ -320,7 +317,7 @@ def render_interactive_zone_map() -> None:
 
     html = "<details open><summary style='color:" + _TEXT_MUTED + "; font-size:11px; cursor:pointer; font-weight:600; margin-bottom:6px;'>Plant Layout</summary>" + \
         "<div style='background:" + _BG_GRADIENT + "; border:1px solid " + _BORDER + "; border-radius:" + _CARD_RADIUS + \
-        "; padding:12px; position:relative; height:180px; overflow:hidden;'>" + \
+        "; padding:12px; position:relative; height:250px; overflow:hidden;'>" + \
         "<div style='position:absolute; inset:0; opacity:0.1; background-image:linear-gradient(" + _BORDER + \
         " 1px, transparent 1px), linear-gradient(90deg, " + _BORDER + " 1px, transparent 1px); background-size:20px 20px;'></div>" + \
         zone_markers + \
@@ -339,11 +336,32 @@ def render_interactive_zone_map() -> None:
 
 def render_zone_digital_twin_full() -> None:
     """Full digital twin view with synchronization header."""
-    header_html = "<div style='background:" + _BG_GRADIENT + "; border:1px solid " + _BORDER + \
-        "; border-radius:" + _CARD_RADIUS + "; padding:12px 14px; font-family:" + _FONT + "; margin-bottom:8px;'>" + \
-        "<div style='color:" + _TEXT_MUTED + "; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:8px;'>" + \
-        "INTERACTIVE PLANT DIGITAL TWIN</div>" + \
-        "<div style='color:" + _TEXT_DIM + "; font-size:10px; margin-bottom:8px;'>Select a zone below to synchronize all systems</div></div>"
-    st.markdown(header_html, unsafe_allow_html=True)
+    import streamlit as _st
+    play_active = _st.session_state.get('sim_play_active', False)
+    last_sync_str = _st.session_state.get('_last_sync_time', '--:--:--')
+
+    sync_badge = (
+        f"<span style='background:rgba(34,197,94,0.1); color:#22c55e; border:1px solid rgba(34,197,94,0.3); "
+        f"border-radius:4px; padding:2px 8px; font-size:8px; font-weight:800;'>● LIVE SYNC</span>"
+        if play_active else
+        f"<span style='background:rgba(245,158,11,0.1); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); "
+        f"border-radius:4px; padding:2px 8px; font-size:8px; font-weight:800;'>⏸ CACHED — Last Updated {last_sync_str}</span>"
+    )
+    subtitle = (
+        "Select a zone below to synchronize all live systems"
+        if play_active else
+        "Displaying last recorded sensor values — start Autoplay to sync live telemetry"
+    )
+
+    header_html = (
+        "<div style='background:" + _BG_GRADIENT + "; border:1px solid " + _BORDER +
+        "; border-radius:" + _CARD_RADIUS + "; padding:12px 14px; font-family:" + _FONT + "; margin-bottom:8px;'>" +
+        "<div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;'>" +
+        "<div style='color:" + _TEXT_MUTED + "; font-size:11px; font-weight:600; letter-spacing:1px;'>INTERACTIVE PLANT DIGITAL TWIN</div>" +
+        sync_badge +
+        "</div>" +
+        "<div style='color:" + _TEXT_DIM + "; font-size:10px;'>" + subtitle + "</div></div>"
+    )
+    _st.markdown(header_html, unsafe_allow_html=True)
     render_interactive_zone_map()
     render_digital_twin_panel()

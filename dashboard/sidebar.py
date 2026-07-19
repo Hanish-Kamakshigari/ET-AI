@@ -313,6 +313,24 @@ def render_sidebar(
                 )
                 placeholders['recent_alerts'] = recent_alerts_slot
 
+            # Smart Operator Guidance panel (moved from right to left)
+            with st.expander("👷 Smart Operator Guidance", expanded=False):
+                try:
+                    from dashboard.intelligence_ui import render_smart_operator_guidance
+                    guidance_placeholder = st.empty()
+                    render_smart_operator_guidance()
+                except Exception:
+                    pass
+
+            # Smart Alert Prioritization panel (moved from right to left)
+            with st.expander("🚨 Smart Alert Prioritization", expanded=False):
+                try:
+                    from dashboard.intelligence_ui import render_smart_alert_prioritization
+                    alerts_priority_placeholder = st.empty()
+                    render_smart_alert_prioritization()
+                except Exception:
+                    pass
+
             # 10. Footer
             st.markdown("""
             <div style="font-size:9px; color:#64748b; font-family:monospace; margin-top:9px; border-top:1px solid rgba(255,255,255,0.06); padding-top:6px;">
