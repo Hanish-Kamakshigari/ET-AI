@@ -459,15 +459,6 @@ div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-test
     border-radius: 4px !important;
 }}
 
-/* Collapsed Responsive Layout Utilities */
-.suraksha-sidebar-collapsed .hide-collapsed {{
-  display: none !important;
-}}
-
-.suraksha-sidebar-expanded .show-collapsed {{
-  display: none !important;
-}}
-
 /* GLASS CARD BASE */
 .glass-card {{
   background: linear-gradient(145deg, rgba(17,24,39,0.95) 0%, rgba(11,21,38,0.9) 100%);

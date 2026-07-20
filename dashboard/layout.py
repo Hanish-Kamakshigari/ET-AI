@@ -367,30 +367,9 @@ def create_layout() -> Tuple[
         sim_banner_placeholder.markdown(html, unsafe_allow_html=True)
 
     # Main layout: permanent sidebar + content
-    if 'sidebar_expanded' not in st.session_state:
-        st.session_state.sidebar_expanded = True
-
-    is_expanded = st.session_state.sidebar_expanded
-    sidebar_width = "300px" if is_expanded else "70px"
-    right_width = "350px"
-
-    # Inject dynamic css custom property for sidebar transition
-    st.markdown(f"""
-    <style>
-    :root {{
-        --sidebar-width: {sidebar_width} !important;
-        --right-width: {right_width} !important;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-
-    # Always use constant columns ratios to prevent Streamlit from rebuilding columns container
     col_sidebar, col_center, col_right = st.columns([1.8, 5.4, 2.8])
 
     with col_sidebar:
-        sidebar_cls = "suraksha-sidebar-expanded" if is_expanded else "suraksha-sidebar-collapsed"
-        # Render a self-closed hidden tag to identify this column in CSS
-        st.markdown(f"<div class='suraksha-sidebar-content {sidebar_cls}' style='display:none;'></div>", unsafe_allow_html=True)
         sidebar_wrap = st.container(key="left_console_panel")
         with sidebar_wrap:
             sidebar_placeholder = st.empty()
