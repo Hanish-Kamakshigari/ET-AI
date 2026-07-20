@@ -227,15 +227,15 @@ header[data-testid="stHeader"] {{ display: none !important; }}
 }}
 
 /* Ensure the layout columns wrapper element-container stretches to fill vertical space */
-.block-container > div[data-testid="stVerticalBlock"] > div.element-container:not(:first-child) {{
-  flex: 1 1 auto !important;
+.block-container > div[data-testid="stVerticalBlock"] > div.element-container:has([data-testid="stHorizontalBlock"]) {{
+  flex: 1 1 0% !important;
   min-height: 0 !important;
-  height: 100% !important;
   display: flex !important;
   flex-direction: column !important;
 }}
 
-.block-container > div[data-testid="stVerticalBlock"] > div.element-container:first-child {{
+/* All other element-containers in the root block (e.g. banners) should not stretch */
+.block-container > div[data-testid="stVerticalBlock"] > div.element-container:not(:has([data-testid="stHorizontalBlock"])) {{
   flex: 0 0 auto !important;
   height: auto !important;
 }}
@@ -404,9 +404,12 @@ div[data-testid="column"] > div[data-testid="stVerticalBlock"] {{
   gap: 0px !important;
 }}
 
-div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div.element-container:has(.st-key-left_console_panel),
-div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div.element-container:has(.st-key-right_diag_panel),
-div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div.element-container:has(.st-key-center_monitor_panel) {{
+div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-left_console_panel),
+div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-left_console_panel) > div,
+div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-right_diag_panel),
+div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-right_diag_panel) > div,
+div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-center_monitor_panel),
+div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-center_monitor_panel) > div {{
   display: flex !important;
   flex-direction: column !important;
   flex: 1 1 auto !important;
@@ -414,14 +417,18 @@ div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div.element-con
   min-height: 0 !important;
 }}
 
-/* Left, Center, and Right columns scroll independently */
-div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:first-of-type,
+/* Center column scrolls independently */
 div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:nth-of-type(2),
+div[data-testid="column"]:has(.suraksha-center-panel-flag) {{
+  overflow-y: auto !important;
+}}
+
+/* Left and Right columns hide overflow so their inner panels handle scrolling */
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:first-of-type,
 div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:last-of-type,
 div[data-testid="column"]:has(.suraksha-sidebar-content),
-div[data-testid="column"]:has(.suraksha-center-panel-flag),
 div[data-testid="column"]:has(.suraksha-right-panel-flag) {{
-  overflow-y: auto !important;
+  overflow: hidden !important;
 }}
 
 /* Center column container - full height with scrollable content */
