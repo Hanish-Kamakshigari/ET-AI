@@ -20,6 +20,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.config.ui_constants import ZONE_LABELS
 from src.ui_components import Colors, render_nominal_card
 from src.alert_system import evaluate_alert_conditions, dispatch_alerts, clear_alert_if_safe
+from src.video_downloader import get_video
 
 _TRANSPARENT_IMAGE = Image.new("RGBA", (16, 9), (0, 0, 0, 0))
 
@@ -950,12 +951,13 @@ def _zone_video_path(zone: str) -> str | None:
         "Reactor_Area": "Reactor_Block.mp4",
         "Storage_Area": "Storage_Block.mp4",
     }
+
     filename = footage_files.get(zone)
-    if not filename:
+
+    if filename is None:
         return None
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    candidate = os.path.join(project_root, "footage", filename)
-    return candidate if os.path.exists(candidate) else None
+
+    return get_video(filename)
 
 
 @st.fragment
