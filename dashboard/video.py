@@ -20,7 +20,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.config.ui_constants import ZONE_LABELS
 from src.ui_components import Colors, render_nominal_card
 from src.alert_system import evaluate_alert_conditions, dispatch_alerts, clear_alert_if_safe
-from src.video_downloader import get_video
+from src.utils.video_downloader import get_video
 
 _TRANSPARENT_IMAGE = Image.new("RGBA", (16, 9), (0, 0, 0, 0))
 

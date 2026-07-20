@@ -29,9 +29,12 @@ def get_video(filename: str) -> Optional[str]:
         return None
 
     try:
-        print(f"Downloading {filename}...")
+        print(f"Downloading {filename}")
+        print(f"URL = {url}")
 
-        r = requests.get(url, stream=True, timeout=60)
+        r = requests.get(url, stream=True)
+
+        print(r.status_code)
         r.raise_for_status()
 
         with open(local_path, "wb") as f:
