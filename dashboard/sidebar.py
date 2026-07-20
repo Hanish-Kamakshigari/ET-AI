@@ -217,7 +217,7 @@ def render_sidebar(
             sim_status_color = "#22c55e" if sim_status_lbl == "PLAYING" else "#f97316"
             current_scen = "Nominal Shift / PPE" if st.session_state.get('sim_stage') == 'normal' else "Active Incident Triggered"
 
-            with st.expander("⏱️ Scenario Timeline", expanded=False):
+            with st.expander("⏱️ Scenario Timeline", expanded=True):
                 st.markdown(f"""
                 <div style="font-size:11px; display:flex; justify-content:space-between; margin-top:2px;">
                     <span>Scenario: <b>{current_scen}</b></span>
@@ -228,21 +228,84 @@ def render_sidebar(
                 </div>
                 """, unsafe_allow_html=True)
 
-            # 8. SCADA Gateway Status
-            with st.expander("🔌 SCADA Gateways", expanded=False):
-                st.markdown("""
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px; font-size:10px; font-family:monospace;">
-                    <div>📡 MQTT: <b style="color:#22c55e;">ON</b></div>
-                    <div>🔌 OPC UA: <b style="color:#22c55e;">ON</b></div>
-                    <div>🗄️ Database: <b style="color:#22c55e;">ON</b></div>
-                    <div>☁️ Cloud Sync: <b style="color:#22c55e;">ON</b></div>
+            # 8. System Diagnostics
+            with st.expander("🔌 System Diagnostics", expanded=True):
+                try:
+                    import torch
+                    device_str = "GPU" if torch.cuda.is_available() else "CPU"
+                except Exception:
+                    device_str = "CPU"
+                
+                ph_level = STATUS.get('level', 'LOW')
+                ph_color = STATUS.get('color', '#22c55e')
+                sync_time_str = now_time.strftime("%H:%M:%S")
+                num_active_alerts = len(am.active_alerts)
+                fps_str = "25.0 FPS" if st.session_state.get('sim_play_active', False) else "0.0 FPS"
+                
+                st.markdown(f"""
+                <div style="font-family: monospace; font-size: 10px; color: #cbd5e1; line-height: 1.6;">
+                    <div style="display: flex; align-items: baseline;">
+                        <span>🟢 Plant Health</span>
+                        <span style="flex-grow: 1; border-bottom: 1px dotted #475569; margin: 0 4px; position: relative; top: -3px;"></span>
+                        <span style="color: {ph_color}; font-weight: bold;">{ph_level}</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; margin-top: 2px;">
+                        <span>🟢 Sensors</span>
+                        <span style="flex-grow: 1; border-bottom: 1px dotted #475569; margin: 0 4px; position: relative; top: -3px;"></span>
+                        <span style="color: #22c55e; font-weight: bold;">24/24 Online</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; margin-top: 2px;">
+                        <span>🟢 CCTV Feeds</span>
+                        <span style="flex-grow: 1; border-bottom: 1px dotted #475569; margin: 0 4px; position: relative; top: -3px;"></span>
+                        <span style="color: #22c55e; font-weight: bold;">5/5 Online</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; margin-top: 2px;">
+                        <span>🟢 SCADA Gateways</span>
+                        <span style="flex-grow: 1; border-bottom: 1px dotted #475569; margin: 0 4px; position: relative; top: -3px;"></span>
+                        <span style="color: #22c55e; font-weight: bold;">4/4 Linked</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; margin-top: 2px;">
+                        <span>🟢 Database</span>
+                        <span style="flex-grow: 1; border-bottom: 1px dotted #475569; margin: 0 4px; position: relative; top: -3px;"></span>
+                        <span style="color: #60a5fa; font-weight: bold;">SQLite OK</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; margin-top: 2px;">
+                        <span>🟢 AI Model</span>
+                        <span style="flex-grow: 1; border-bottom: 1px dotted #475569; margin: 0 4px; position: relative; top: -3px;"></span>
+                        <span style="color: #60a5fa; font-weight: bold;">YOLOv8n ({device_str})</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; margin-top: 2px;">
+                        <span>🟢 Model Speed</span>
+                        <span style="flex-grow: 1; border-bottom: 1px dotted #475569; margin: 0 4px; position: relative; top: -3px;"></span>
+                        <span style="color: #22c55e; font-weight: bold;">{fps_str}</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; margin-top: 2px;">
+                        <span>🟢 Active Alerts</span>
+                        <span style="flex-grow: 1; border-bottom: 1px dotted #475569; margin: 0 4px; position: relative; top: -3px;"></span>
+                        <span style="color: {'#ef4444' if num_active_alerts > 0 else '#22c55e'}; font-weight: bold;">{num_active_alerts} Active</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; margin-top: 2px;">
+                        <span>🟢 Last Sync</span>
+                        <span style="flex-grow: 1; border-bottom: 1px dotted #475569; margin: 0 4px; position: relative; top: -3px;"></span>
+                        <span style="color: #f59e0b; font-weight: bold;">{sync_time_str}</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; margin-top: 2px;">
+                        <span>🟢 Runtime</span>
+                        <span style="flex-grow: 1; border-bottom: 1px dotted #475569; margin: 0 4px; position: relative; top: -3px;"></span>
+                        <span style="color: #22c55e; font-weight: bold;">Healthy</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06); color: #64748b; font-size: 8.5px;">
+                        <span>Build Version</span>
+                        <span style="flex-grow: 1; border-bottom: 1px dotted #334155; margin: 0 4px; position: relative; top: -3px;"></span>
+                        <span>v3.0.4 (#9104)</span>
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
 
             st.markdown("""<div style="height:1px;background:rgba(255,255,255,0.06);margin:5px 0 7px 0;"></div>""", unsafe_allow_html=True)
 
             # 9. SCADA Sub-panels (Zone Status, Plant Failsafes, Database Logs) wrapped in st.expander
-            with st.expander("📊 Zone Status", expanded=False):
+            with st.expander("📊 Zone Status", expanded=True):
                 zone_status_slot = st.empty()
                 render_zone_status_panel(zone_status_slot, data_dict)
                 placeholders['zone_status'] = zone_status_slot
@@ -341,59 +404,203 @@ def render_sidebar(
             """, unsafe_allow_html=True)
 
         else:
-            # Expand button at the top
-            if st.button("▶", key="sidebar_expand_btn", use_container_width=True, help="Expand Console"):
-                st.session_state.sidebar_expanded = True
-
-            st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
-
-            # Center-aligned icon dock styles and markup
+            # ── Enterprise Navigation Rail (collapsed state) ──────────────────
             total_rules = len(engine.compound_rules) if hasattr(engine, 'compound_rules') else 0
             is_autoplay = st.session_state.get('sim_play_active', False)
-            
+            num_active_alerts = len(am.active_alerts)
+            risk_level = STATUS.get('level', 'LOW')
+
+            # Status dot colors derived from live plant state
+            _status_dot   = '#ef4444' if risk_level == 'CRITICAL' else '#f59e0b' if risk_level in ('HIGH','MEDIUM') else '#22c55e'
+            _autoplay_dot = '#22c55e' if is_autoplay else '#475569'
+            _alert_dot    = '#ef4444' if num_active_alerts > 0 else '#22c55e'
+            _zone_dot     = _status_dot
+            _rules_dot    = '#3b82f6' if total_rules > 0 else '#475569'
+
+            # Active camera zone badge
+            _active_zone = st.session_state.get('cctv_zone_selector', 'Zone_A')
+            _zone_short  = {
+                'Zone_A': 'Z-A', 'Zone_B': 'Z-B', 'Zone_C': 'Z-C',
+                'Reactor_Area': 'RCT', 'Storage_Area': 'STO'
+            }.get(_active_zone, 'Z?')
+
+            # Rail CSS — scoped class names to avoid collisions
             st.markdown(f"""
             <style>
-            .collapsed-icon-dock {{
+            .sai-rail {{
                 display: flex;
                 flex-direction: column;
-                align-items: center;
-                gap: 9px;
+                align-items: stretch;
                 width: 100%;
+                padding: 0;
+                gap: 0;
             }}
-            .collapsed-icon-item {{
-                font-size: 20px;
-                cursor: pointer;
-                transition: transform 0.2s ease, background-color 0.2s ease;
+            .sai-rail-header {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 6px 4px 6px 6px;
+                border-bottom: 1px solid rgba(255,255,255,0.06);
+                margin-bottom: 4px;
+            }}
+            .sai-rail-logo {{
+                font-size: 16px;
+                font-weight: 800;
+                color: #3b82f6;
+                font-family: 'Outfit', sans-serif;
+                letter-spacing: -0.5px;
+                line-height: 1;
+            }}
+            .sai-nav-item {{
+                display: flex;
+                align-items: center;
+                gap: 0;
+                padding: 5px 4px;
+                border-radius: 6px;
+                cursor: default;
+                transition: background 0.15s ease;
+                margin: 1px 2px;
+                position: relative;
+            }}
+            .sai-nav-item:hover {{
+                background: rgba(59,130,246,0.08);
+            }}
+            .sai-dot {{
+                width: 5px;
+                height: 5px;
+                border-radius: 50%;
+                flex-shrink: 0;
+                margin-right: 5px;
+            }}
+            .sai-nav-icon {{
+                font-size: 18px;
+                width: 32px;
+                height: 32px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                width: 44px;
-                height: 44px;
-                border-radius: 8px;
-                background: rgba(255, 255, 255, 0.02);
-                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 6px;
+                background: rgba(255,255,255,0.025);
+                border: 1px solid rgba(255,255,255,0.05);
+                flex-shrink: 0;
+                transition: background 0.15s, border-color 0.15s;
             }}
-            .collapsed-icon-item:hover {{
-                transform: scale(1.15);
-                background: rgba(255, 255, 255, 0.07);
-                border-color: rgba(255, 255, 255, 0.15);
+            .sai-nav-item:hover .sai-nav-icon {{
+                background: rgba(59,130,246,0.12);
+                border-color: rgba(59,130,246,0.25);
+            }}
+            .sai-rail-divider {{
+                height: 1px;
+                background: rgba(255,255,255,0.06);
+                margin: 5px 4px;
+            }}
+            .sai-rail-status {{
+                padding: 6px 6px 4px 6px;
+                margin-top: 2px;
+            }}
+            .sai-status-row {{
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                padding: 3px 4px;
+                border-radius: 5px;
+                background: rgba(255,255,255,0.02);
+                border: 1px solid rgba(255,255,255,0.04);
+                margin-bottom: 3px;
+            }}
+            .sai-status-label {{
+                font-size: 7.5px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.4px;
+                font-family: monospace;
+            }}
+            .sai-cam-badge {{
+                font-size: 7px;
+                font-weight: 800;
+                color: #f59e0b;
+                font-family: monospace;
+                background: rgba(245,158,11,0.1);
+                border: 1px solid rgba(245,158,11,0.25);
+                border-radius: 3px;
+                padding: 1px 3px;
             }}
             </style>
-            <div class="collapsed-icon-dock">
-                <div class="collapsed-icon-item" title="Dashboard Status (100% Nominal)">🛡️</div>
-                <div class="collapsed-icon-item" title="Compound Rules Scanned ({total_rules} Active)">🧩</div>
-                <div class="collapsed-icon-item" title="Simulation Controls (Autoplay Active: {'YES' if is_autoplay else 'NO'})">▶️</div>
-                <div class="collapsed-icon-item" title="Scenario Timeline">⏱️</div>
-                <div class="collapsed-icon-item" title="Zone Status Overview">📍</div>
-                <div class="collapsed-icon-item" title="Plant Failsafes Status">⚙️</div>
-                <div class="collapsed-icon-item" title="Database Logging Active">🗄️</div>
-                <div class="collapsed-icon-item" title="SCADA Gateways Online">🔌</div>
+            <div class="sai-rail">
+
+                <!-- Identity header with integrated expand trigger area -->
+                <div class="sai-rail-header">
+                    <div class="sai-rail-logo" title="SurakshaAI Industrial Safety Console">🛡️</div>
+                    <div class="sai-cam-badge" title="Active Camera: {_active_zone}">{_zone_short}</div>
+                </div>
+
+                <!-- Navigation items with status indicators -->
+                <div class="sai-nav-item" title="System Status — {risk_level}">
+                    <div class="sai-dot" style="background:{_status_dot};"></div>
+                    <div class="sai-nav-icon">🛡️</div>
+                </div>
+                <div class="sai-nav-item" title="Compound Rules — {total_rules} Active">
+                    <div class="sai-dot" style="background:{_rules_dot};"></div>
+                    <div class="sai-nav-icon">🧩</div>
+                </div>
+                <div class="sai-nav-item" title="Simulation — {'PLAYING' if is_autoplay else 'PAUSED'}">
+                    <div class="sai-dot" style="background:{_autoplay_dot};"></div>
+                    <div class="sai-nav-icon">▶️</div>
+                </div>
+                <div class="sai-nav-item" title="Scenario Timeline">
+                    <div class="sai-dot" style="background:#22c55e;"></div>
+                    <div class="sai-nav-icon">⏱️</div>
+                </div>
+
+                <div class="sai-rail-divider"></div>
+
+                <div class="sai-nav-item" title="Zone Status Overview — Risk: {risk_level}">
+                    <div class="sai-dot" style="background:{_zone_dot};"></div>
+                    <div class="sai-nav-icon">📊</div>
+                </div>
+                <div class="sai-nav-item" title="Plant Failsafes — All Online">
+                    <div class="sai-dot" style="background:#22c55e;"></div>
+                    <div class="sai-nav-icon">⚙️</div>
+                </div>
+                <div class="sai-nav-item" title="Database Logs — SQLite Active">
+                    <div class="sai-dot" style="background:#22c55e;"></div>
+                    <div class="sai-nav-icon">🗄️</div>
+                </div>
+                <div class="sai-nav-item" title="SCADA Gateways — 4/4 Linked">
+                    <div class="sai-dot" style="background:#22c55e;"></div>
+                    <div class="sai-nav-icon">🔌</div>
+                </div>
+                <div class="sai-nav-item" title="Active Alerts — {num_active_alerts} Alert(s)">
+                    <div class="sai-dot" style="background:{_alert_dot};"></div>
+                    <div class="sai-nav-icon">🚨</div>
+                </div>
+
+                <div class="sai-rail-divider"></div>
+
+                <!-- Bottom system status block -->
+                <div class="sai-rail-status">
+                    <div class="sai-status-row" title="Plant Health: {risk_level}">
+                        <div class="sai-dot" style="background:{_status_dot}; width:6px; height:6px;"></div>
+                        <span class="sai-status-label" style="color:{_status_dot};">{risk_level[:3]}</span>
+                    </div>
+                    <div class="sai-status-row" title="Active Alerts: {num_active_alerts}">
+                        <span class="sai-status-label" style="color:{'#ef4444' if num_active_alerts > 0 else '#475569'};">{'ALT' if num_active_alerts > 0 else '---'}</span>
+                        <span class="sai-status-label" style="color:{'#ef4444' if num_active_alerts > 0 else '#22c55e'};">{num_active_alerts}</span>
+                    </div>
+                    <div class="sai-status-row" title="Operator #08 | v3.0.4">
+                        <span class="sai-status-label" style="color:#475569;">OP8</span>
+                    </div>
+                </div>
+
             </div>
             """, unsafe_allow_html=True)
-            
-            st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
 
-            # Export Report download button at the bottom
+            # Expand button — minimal, below rail
+            if st.button("▶", key="sidebar_expand_btn", use_container_width=True, help="Expand SurakshaAI Console"):
+                st.session_state.sidebar_expanded = True
+
+            # Export Report icon button
             st.download_button(
                 "📄",
                 data=report,

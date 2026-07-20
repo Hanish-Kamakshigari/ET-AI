@@ -408,7 +408,6 @@ def render_safety_copilot() -> None:
             </div>
         </details>
     </div>"""
-    import streamlit as st
     play_active = st.session_state.get('sim_play_active', False)
     if not play_active:
         html = f"""<details style='border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS}; margin-bottom:6px; padding:4px 8px; background:rgba(0,0,0,0.15); font-family:{_FONT};'>
@@ -607,7 +606,6 @@ def render_emergency_response_plan() -> None:
             <div style="margin-top:4px;">{timeline_html}</div>
         </details>''' if timeline_html else ''}
     </div>"""
-    import streamlit as st
     play_active = st.session_state.get('sim_play_active', False)
     if not play_active:
         html = f"""<details style='border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS}; margin-bottom:6px; padding:4px 8px; background:rgba(0,0,0,0.15); font-family:{_FONT};'>
@@ -1086,7 +1084,6 @@ def render_explainable_ai_pipeline() -> None:
             <div style="color:{_TEXT_PRIMARY}; font-size:9px;">{top_risk.recommended_action}</div>
         </div>
     </div>"""
-    import streamlit as st
     play_active = st.session_state.get('sim_play_active', False)
     if not play_active:
         html = f"""<details style='border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS}; margin-bottom:6px; padding:4px 8px; background:rgba(0,0,0,0.15); font-family:{_FONT};'>
@@ -1183,7 +1180,6 @@ def render_smart_operator_guidance() -> None:
             {contacts_html}
         </div>
     </div>"""
-    import streamlit as st
     play_active = st.session_state.get('sim_play_active', False)
     if not play_active:
         html = f"""<details style='border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS}; margin-bottom:6px; padding:4px 8px; background:rgba(0,0,0,0.15); font-family:{_FONT};'>
@@ -1359,42 +1355,6 @@ def render_multi_agent_pipeline() -> None:
     st.markdown(html, unsafe_allow_html=True)
 
 
-def render_system_diagnostics() -> None:
-    """Render System Diagnostics panel in the right column."""
-    import streamlit as _st
-    play_active = _st.session_state.get('sim_play_active', False)
-    
-    try:
-        import torch
-        device_str = "GPU (NVIDIA)" if torch.cuda.is_available() else "CPU (Host)"
-    except Exception:
-        device_str = "CPU (Host)"
-    
-    am_instance = _st.session_state.get('alert_manager')
-    active_alerts = len(am_instance.active_alerts) if am_instance and hasattr(am_instance, 'active_alerts') else 0
-    
-    html = f"""
-    <div style="font-size:10px; font-family:monospace; color:#cbd5e1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); padding:6px; border-radius:4px; margin-bottom:4px;">
-        🏥 <b>State:</b> <span style="color:#22c55e;">🟢 HEALTHY (99.8%)</span>
-    </div>
-    <div style="font-size:10px; font-family:monospace; color:#cbd5e1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); padding:6px; border-radius:4px; margin-bottom:4px;">
-        📹 <b>Feeds:</b> <span style="color:#22c55e;">🟢 5/5 ONLINE</span>
-    </div>
-    <div style="font-size:10px; font-family:monospace; color:#cbd5e1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); padding:6px; border-radius:4px; margin-bottom:4px;">
-        🔌 <b>Gateways:</b> <span style="color:#22c55e;">🟢 4/4 LINKED</span>
-    </div>
-    <div style="font-size:10px; font-family:monospace; color:#cbd5e1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); padding:6px; border-radius:4px; margin-bottom:4px;">
-        📊 <b>Alerts:</b> <span style="color:#22c55e;">{active_alerts} Active</span>
-    </div>
-    <div style="font-size:10px; font-family:monospace; color:#cbd5e1;">
-        <div style="display:flex; justify-content:space-between;"><span>Model:</span><span style="color:#3b82f6; font-weight:bold;">YOLOv8n-PPE</span></div>
-        <div style="display:flex; justify-content:space-between;"><span>Version:</span><span>v3.0.4 (FP16)</span></div>
-        <div style="display:flex; justify-content:space-between;"><span>Hardware:</span><span>{device_str}</span></div>
-        <div style="display:flex; justify-content:space-between;"><span>FPS:</span><span style="color:#22c55e;">{'25.0' if play_active else '0.0'}</span></div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
-
 
 # ════════════════════════════════════════════════════════════════════════════════
 # MASTER RENDER — All Intelligence Panels
@@ -1447,9 +1407,6 @@ def render_intelligence_panels() -> None:
                 """, unsafe_allow_html=True)
             panel_fn()
             st.markdown("</details>", unsafe_allow_html=True)
-
-        with _st.expander("🔌 SYSTEM DIAGNOSTICS", expanded=False):
-            render_system_diagnostics()
         return
 
     # Autoplay is ON: render all panels expanded
@@ -1463,5 +1420,3 @@ def render_intelligence_panels() -> None:
     render_emergency_response_plan()
     render_incident_intelligence()
     render_incident_story_mode()
-    with _st.expander("🔌 SYSTEM DIAGNOSTICS", expanded=False):
-        render_system_diagnostics()

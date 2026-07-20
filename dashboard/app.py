@@ -421,17 +421,7 @@ with col_center:
         zone_response_placeholder = col_l3.empty()
         incident_summary_placeholder = col_r3.empty()
 
-        # Operational Overview SCADA status row (6 columns)
-        st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)
-        col_scada1, col_scada2, col_scada3, col_scada4, col_scada5, col_scada6 = st.columns(6)
-        scada_placeholders = {
-            'plant_health': col_scada1.empty(),
-            'sensor_status': col_scada2.empty(),
-            'network_status': col_scada3.empty(),
-            'database_status': col_scada4.empty(),
-            'ai_model_status': col_scada5.empty(),
-            'sync_time': col_scada6.empty()
-        }
+
 
         dashboard_placeholders = {
             'cctv_frame_1': cctv_frame_placeholder_1,
@@ -465,8 +455,7 @@ with col_center:
             render_decision_telemetry_row,
             render_notifications_panel,
             render_alerts_panel,
-            render_incident_summary_html,
-            render_operational_overview
+            render_incident_summary_html
         )
         current_detections = st.session_state.get('current_detections', [])
         render_risk_analysis_row(dashboard_placeholders, data_dict, selected_zone, current_detections)
@@ -488,8 +477,7 @@ with col_center:
             unsafe_allow_html=True
         )
 
-        # Render bottom SCADA operational overview row
-        render_operational_overview(scada_placeholders, data_dict)
+
 
         from dashboard.video import stream_cctv_feed_fragment
         stream_cctv_feed_fragment(

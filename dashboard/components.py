@@ -1222,7 +1222,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
 
     if play_active:
         ai_decision_html = (
-            f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); {ai_border} border-radius:12px; padding:12px 14px; min-height:220px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">'
+            f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); {ai_border} border-radius:12px; padding:12px 14px; min-height:260px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">'
             f'<div style="color:#94a3b8; font-size:10px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">AI DECISION ENGINE</div>'
             f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; flex-grow:1; align-content:space-between;">'
             f'<div style="display:flex; flex-direction:column; gap:4px; justify-content:space-between;">'
@@ -1244,7 +1244,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         )
     else:
         ai_decision_html = (
-            f'<div style="background:linear-gradient(135deg,#0b1528,#050b14); border: 1px solid #1e3a5f; border-radius:12px; padding:14px 16px; min-height:280px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column; justify-content:space-between;">'
+            f'<div style="background:linear-gradient(135deg,#0b1528,#050b14); border: 1px solid #1e3a5f; border-radius:12px; padding:14px 16px; min-height:320px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column; justify-content:space-between;">'
             f'<div style="color:#94a3b8; font-size:10px; font-weight:600; letter-spacing:1px; margin-bottom:8px; display:flex; justify-content:space-between;">'
             f'<span>🤖 AI DECISION ENGINE — STANDBY INTELLIGENCE</span>'
             f'<span style="color:#22c55e;">STATUS: MONITORING</span>'
@@ -1267,24 +1267,68 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         )
     placeholders['ai_decision'].markdown(ai_decision_html, unsafe_allow_html=True)
 
-    if 'telemetry_history_gas' not in st.session_state:
-        st.session_state.telemetry_history_gas = [current_gas] * 15
+    # ── Rolling history buffers (20-point ring) — updated every render tick ──
+    _MAX_HISTORY = 20
+    for _key, _val in [
+        ('telemetry_history_gas',   current_gas),
+        ('telemetry_history_temp',  current_temp),
+        ('telemetry_history_press', current_press),
+    ]:
+        if _key not in st.session_state:
+            st.session_state[_key] = [_val] * _MAX_HISTORY
+        else:
+            st.session_state[_key].append(_val)
+            if len(st.session_state[_key]) > _MAX_HISTORY:
+                st.session_state[_key] = st.session_state[_key][-_MAX_HISTORY:]
 
-    temp_gauge_svg = render_gauge_svg(current_temp, 0, 120, "Temp (°C)", "#10ac84", 88, 95)
+    # ── Sparkline stroke colors respond to current readings ──
+    _gas_stroke   = "#ef4444" if current_gas  > 35 else "#f59e0b" if current_gas  > 20 else "#ff9f43"
+    _temp_stroke  = "#ef4444" if current_temp > 95 else "#f59e0b" if current_temp > 88 else "#10ac84"
+    _press_stroke = "#ef4444" if current_press > 80 else "#f59e0b" if current_press > 60 else "#2e86de"
+
+    temp_gauge_svg  = render_gauge_svg(current_temp,  0, 120, "Temp (°C)",   "#10ac84", 88, 95)
     press_gauge_svg = render_gauge_svg(current_press, 0, 100, "Press (bar)", "#2e86de", 60, 80)
-    gas_spark_svg = render_sparkline_svg(st.session_state.telemetry_history_gas, stroke_color="#ff9f43", height=45)
+    gas_spark_svg   = render_sparkline_svg(st.session_state.telemetry_history_gas,   stroke_color=_gas_stroke,   height=36)
+    temp_spark_svg  = render_sparkline_svg(st.session_state.telemetry_history_temp,  stroke_color=_temp_stroke,  height=36)
+
+    # ── Sensor summary row — always shows live values ──
+    _now_str      = st.session_state.get('_last_sync_time', datetime.now().strftime('%H:%M:%S'))
+    _worker_count = current_workers
+    _temp_c       = f"{current_temp:.1f}°C"
+    _gas_ppm      = f"{current_gas:.1f} ppm"
+    _press_bar    = f"{current_press:.2f} bar"
+    _temp_col     = "#ef4444" if current_temp > 95 else "#f59e0b" if current_temp > 88 else "#22c55e"
+    _gas_col      = "#ef4444" if current_gas  > 35 else "#f59e0b" if current_gas  > 20 else "#22c55e"
+    _press_col    = "#ef4444" if current_press > 80 else "#f59e0b" if current_press > 60 else "#22c55e"
+
+    sensor_row_html = (
+        f'<div style="display:grid; grid-template-columns:repeat(5,1fr); gap:4px; margin-bottom:6px;">'
+        f'<div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); border-radius:6px; padding:4px 6px; text-align:center;">'
+        f'<div style="font-size:7.5px; color:#64748b; text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Temp</div>'
+        f'<div style="font-size:11px; font-weight:800; color:{_temp_col}; font-family:monospace;">{_temp_c}</div></div>'
+        f'<div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); border-radius:6px; padding:4px 6px; text-align:center;">'
+        f'<div style="font-size:7.5px; color:#64748b; text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Gas</div>'
+        f'<div style="font-size:11px; font-weight:800; color:{_gas_col}; font-family:monospace;">{_gas_ppm}</div></div>'
+        f'<div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); border-radius:6px; padding:4px 6px; text-align:center;">'
+        f'<div style="font-size:7.5px; color:#64748b; text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Press</div>'
+        f'<div style="font-size:11px; font-weight:800; color:{_press_col}; font-family:monospace;">{_press_bar}</div></div>'
+        f'<div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); border-radius:6px; padding:4px 6px; text-align:center;">'
+        f'<div style="font-size:7.5px; color:#64748b; text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Workers</div>'
+        f'<div style="font-size:11px; font-weight:800; color:#cbd5e1; font-family:monospace;">{_worker_count}</div></div>'
+        f'<div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); border-radius:6px; padding:4px 6px; text-align:center;">'
+        f'<div style="font-size:7.5px; color:#64748b; text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Updated</div>'
+        f'<div style="font-size:9px; font-weight:700; color:#f59e0b; font-family:monospace;">{_now_str}</div></div>'
+        f'</div>'
+    )
 
     telemetry_border = f"border: 1px solid {risk_color}; box-shadow: 0 0 14px {risk_color}33;" if is_emergency else "border: 1px solid #1e3a5f;"
-    _last_sync_str = st.session_state.get('_last_sync_time', '--:--:--')
-    telemetry_header_suffix = (
-        "" if play_active else
-        f" <span style=\"color:#f59e0b; font-size:8.5px; font-weight:600;\">⏸ Last Updated {_last_sync_str}</span>"
-    )
+    _sync_label = f" <span style='color:#f59e0b; font-size:8.5px; font-weight:600;'>🕐 {_now_str}</span>"
 
     telemetry_html = f"""
     <div style="background:linear-gradient(135deg,#0f1f38,#0a1628); {telemetry_border} border-radius:12px; padding:12px 14px; min-height:220px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">
         <div>
-            <div style="color:#94a3b8; font-size:10px; font-weight:600; letter-spacing:1px; margin-bottom:6px;">LIVE TELEMETRY{telemetry_header_suffix}</div>
+            <div style="color:#94a3b8; font-size:10px; font-weight:600; letter-spacing:1px; margin-bottom:6px;">LIVE TELEMETRY{_sync_label}</div>
+            {sensor_row_html}
             <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
                 <div style="flex:1; background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.03); border-radius:8px; padding:2px; text-align:center;">
                     {temp_gauge_svg}
@@ -1295,12 +1339,25 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
             </div>
         </div>
         <div style="margin-top:auto;">
-            <div style="font-size:9.5px; color:#ff9f43; font-weight:700; margin-bottom:2px; display:flex; justify-content:space-between; letter-spacing:0.5px;">
-                <span>GAS LEVEL TREND</span>
-                <span style="font-family:monospace;">Current: {current_gas:.1f} ppm</span>
-            </div>
-            <div style="background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.03); border-radius:8px; padding:2px 4px;">
-                {gas_spark_svg}
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                <div>
+                    <div style="font-size:8.5px; color:{_gas_stroke}; font-weight:700; margin-bottom:2px; display:flex; justify-content:space-between; letter-spacing:0.5px;">
+                        <span>⛽ GAS TREND</span>
+                        <span style="font-family:monospace;">{current_gas:.1f} ppm</span>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.03); border-radius:6px; padding:2px 4px;">
+                        {gas_spark_svg}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:8.5px; color:{_temp_stroke}; font-weight:700; margin-bottom:2px; display:flex; justify-content:space-between; letter-spacing:0.5px;">
+                        <span>🌡️ TEMP TREND</span>
+                        <span style="font-family:monospace;">{current_temp:.1f}°C</span>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.03); border-radius:6px; padding:2px 4px;">
+                        {temp_spark_svg}
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1364,7 +1421,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
 
     if play_active:
         zone_response_html = (
-            f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); {zone_response_border} border-radius:12px; padding:12px 14px; min-height:220px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">'
+            f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); {zone_response_border} border-radius:12px; padding:12px 14px; min-height:260px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">'
             f'<div style="color:#94a3b8; font-size:10px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">ZONE RESPONSE & ACTIONS</div>'
             f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; font-size:10px; line-height:1.3; margin-bottom:8px; flex-grow:1;">'
             f'<div><span style="color:#94a3b8; font-weight:600; font-size:8.5px; display:block; margin-bottom:1px;">Affected Zone</span><span style="color:#fff; font-weight:700;">{ZONE_LABELS.get(selected_zone, selected_zone)}</span></div>'
@@ -1380,7 +1437,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         )
     else:
         zone_response_html = (
-            f'<div style="background:linear-gradient(135deg,#0b1528,#050b14); border: 1px solid #1e3a5f; border-radius:12px; padding:12px 14px; min-height:280px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column; justify-content:space-between;">'
+            f'<div style="background:linear-gradient(135deg,#0b1528,#050b14); border: 1px solid #1e3a5f; border-radius:12px; padding:12px 14px; min-height:320px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column; justify-content:space-between;">'
             f'<div style="color:#94a3b8; font-size:10px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">ZONE RESPONSE & ACTIONS</div>'
             f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; font-size:10px; line-height:1.3; margin-bottom:8px; flex-grow:1; align-content:center;">'
             f'<div><span style="color:#94a3b8; font-weight:600; font-size:8.5px; display:block; margin-bottom:1px;">Zone Status</span><span style="color:#22c55e; font-weight:700;">🟢 SECURED / NOMINAL</span></div>'
@@ -1674,7 +1731,7 @@ def render_incident_summary_html(open_incidents: int, closed_incidents: int, tod
     """Renders a beautiful industrial SCADA incident summary card"""
     import streamlit as st
     play_active = st.session_state.get('sim_play_active', False)
-    min_height = "220px" if play_active else "280px"
+    min_height = "260px" if play_active else "320px"
     padding = "12px 14px" if play_active else "16px 18px"
     gap = "8px" if play_active else "12px"
     
