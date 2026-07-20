@@ -213,23 +213,18 @@ header[data-testid="stHeader"] {{ display: none !important; }}
   max-width: 100% !important;
   margin: 0 !important;
   box-sizing: border-box !important;
-  height: 100vh !important;
-  max-height: 100vh !important;
 }}
 
-/* Root vertical block becomes a non-scrollable flex container */
+/* Root vertical block becomes a flex container */
 .block-container > div[data-testid="stVerticalBlock"] {{
   display: flex !important;
   flex-direction: column !important;
-  height: 100% !important;
-  max-height: 100% !important;
   gap: 0px !important;
 }}
 
 /* Ensure the layout columns wrapper element-container stretches to fill vertical space */
 .block-container > div[data-testid="stVerticalBlock"] > div.element-container:has([data-testid="stHorizontalBlock"]) {{
-  flex: 1 1 0% !important;
-  min-height: 0 !important;
+  flex: 1 1 auto !important;
   display: flex !important;
   flex-direction: column !important;
 }}
@@ -259,8 +254,7 @@ div[data-testid="stHorizontalBlock"] {{ gap: 6px !important; align-items: stretc
 /* Center column: enable vertical scroll so content isn't clipped at viewport bottom */
 div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:nth-of-type(2),
 div[data-testid="column"]:has(.suraksha-center-panel-flag) {{
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
+  overflow: visible !important;
   padding-bottom: 36px !important;
 }}
 
@@ -281,8 +275,7 @@ div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-test
   margin: 0 !important;
   padding: 0 16px 0 0 !important;
   flex: 1 1 auto !important;
-  min-height: 0 !important;
-  height: 100% !important;
+  height: auto !important;
 }}
 
 /* Sidebar column (1st child of layout block) */
@@ -319,8 +312,8 @@ div[data-testid="column"]:has(.suraksha-center-panel-flag) {{
   box-sizing: border-box !important;
   margin-left: 0 !important;
   transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  height: calc(100vh - 80px) !important;
-  max-height: calc(100vh - 80px) !important;
+  min-height: 100% !important;
+  height: auto !important;
 }}
 
 /* Force full-width fill at every level of the CCTV image's Streamlit DOM chain */
@@ -368,134 +361,89 @@ div[data-testid="column"]:has(.suraksha-right-panel-flag) {{
   padding: 0px !important;
 }}
 
-/* Equal-height columns: each sidebar column fills the viewport height below the
-   fixed 52px navbar. The column is the height container; the inner panel fills
-   it (height:100%) and scrolls independently. No position:sticky — the columns
-   participate normally in the parent's align-items: stretch flex layout so left,
-   center, and right always share the same height with no empty gaps beneath. */
-div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:first-of-type,
-div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:nth-of-type(2),
-div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:last-of-type,
-div[data-testid="column"]:has(.suraksha-sidebar-content),
-div[data-testid="column"]:has(.suraksha-center-panel-flag),
-div[data-testid="column"]:has(.suraksha-right-panel-flag) {{
-  height: 100% !important;
-  max-height: 100% !important;
-}}
-
-
-/* Column child elements height stretching chain */
-div[data-testid="column"] {{
+/* Top-level columns participate in equal-height flex layout and overflow visible */
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"] {{
   display: flex !important;
   flex-direction: column !important;
-  height: 100% !important;
-  max-height: 100% !important;
-  min-height: 0 !important;
+  min-height: 100% !important;
+  height: auto !important;
+  overflow: visible !important;
 }}
 
-div[data-testid="column"] > div[data-testid="stVerticalBlock"] {{
+/* Column child vertical blocks stretch to match column height */
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"] > div[data-testid="stVerticalBlock"] {{
   display: flex !important;
   flex-direction: column !important;
   flex: 1 1 auto !important;
-  height: 100% !important;
-  max-height: 100% !important;
-  min-height: 0 !important;
+  min-height: 100% !important;
+  height: auto !important;
   overflow: visible !important;
   gap: 0px !important;
 }}
 
-div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-left_console_panel),
-div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-left_console_panel) > div,
-div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-right_diag_panel),
-div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-right_diag_panel) > div,
-div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-center_monitor_panel),
-div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-center_monitor_panel) > div {{
+/* Propagate stretching through Streamlit container wrapper levels down to keyed panels */
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-left_console_panel),
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-left_console_panel) > div,
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-right_diag_panel),
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-right_diag_panel) > div,
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-center_monitor_panel),
+div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"] > div[data-testid="stVerticalBlock"] > div:has(.st-key-center_monitor_panel) > div {{
   display: flex !important;
   flex-direction: column !important;
   flex: 1 1 auto !important;
-  height: 100% !important;
-  min-height: 0 !important;
+  min-height: 100% !important;
+  height: auto !important;
 }}
 
-/* Center column scrolls independently */
-div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:nth-of-type(2),
-div[data-testid="column"]:has(.suraksha-center-panel-flag) {{
-  overflow-y: auto !important;
-}}
-
-/* Left and Right columns hide overflow so their inner panels handle scrolling */
-div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:first-of-type,
-div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-testid="stHorizontalBlock"]) > div[data-testid="column"]:last-of-type,
-div[data-testid="column"]:has(.suraksha-sidebar-content),
-div[data-testid="column"]:has(.suraksha-right-panel-flag) {{
-  overflow: hidden !important;
-}}
-
-/* Center column container - full height with scrollable content */
-.st-key-center_monitor_panel {{
-  height: 100% !important;
-  max-height: 100% !important;
+/* Shared styles for keyed layout panels */
+.st-key-left_console_panel,
+.st-key-center_monitor_panel,
+.st-key-right_diag_panel {{
+  flex: 1 1 auto !important;
+  min-height: 100% !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: visible !important;
   box-sizing: border-box !important;
-  width: 100% !important;
-  display: flex !important;
-  flex-direction: column !important;
-}}
-
-/* The Streamlit vertical block inside center panel becomes the flex column */
-.st-key-center_monitor_panel > div[data-testid="stVerticalBlock"] {{
-  display: flex !important;
-  flex-direction: column !important;
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  height: 100% !important;
-  gap: 8px !important;
 }}
 
 .st-key-left_console_panel {{
   background: linear-gradient(180deg, #070D1A 0%, #050811 100%) !important;
   border-right: 1px solid var(--border2) !important;
   padding: 10px !important;
-  box-sizing: border-box !important;
-  height: 100% !important;
-  min-height: 100% !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow-y: auto !important;
 }}
 
 .st-key-right_diag_panel {{
   background: linear-gradient(180deg, #070D1A 0%, #050811 100%) !important;
   border-left: 1px solid var(--border2) !important;
   padding: 10px !important;
-  box-sizing: border-box !important;
-  height: 100% !important;
-  min-height: 100% !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow-y: auto !important;
 }}
 
-/* The Streamlit vertical block inside each panel becomes the flex column.
-   This is the actual flex container that distributes space among children. */
+.st-key-center_monitor_panel {{
+  width: 100% !important;
+}}
+
+/* The Streamlit vertical block inside each panel becomes the flex column */
 .st-key-left_console_panel > div[data-testid="stVerticalBlock"],
 .st-key-right_diag_panel > div[data-testid="stVerticalBlock"],
 .st-key-center_monitor_panel > div[data-testid="stVerticalBlock"] {{
   display: flex !important;
   flex-direction: column !important;
   flex: 1 1 auto !important;
-  min-height: 0 !important;
-  height: 100% !important;
+  min-height: 100% !important;
+  height: auto !important;
   gap: 8px !important;
 }}
 
 /* LEFT SIDEBAR: Footer (version/build) pinned to bottom via margin-top: auto */
-.st-key-left_console_panel > div[data-testid="stVerticalBlock"] > div:last-child {{
+.st-key-left_console_panel div[data-testid="stVerticalBlock"] > div:last-child {{
   margin-top: auto !important;
   flex-shrink: 0 !important;
 }}
 
 /* RIGHT SIDEBAR: Last diagnostics section fills remaining height */
-.st-key-right_diag_panel > div[data-testid="stVerticalBlock"] > div:last-child {{
+.st-key-right_diag_panel div[data-testid="stVerticalBlock"] > div:last-child {{
   flex: 1 1 auto !important;
   min-height: 0 !important;
 }}

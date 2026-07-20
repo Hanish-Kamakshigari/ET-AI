@@ -403,5 +403,5 @@ def create_layout() -> Tuple[
         st.markdown("<div class='suraksha-right-panel-flag'></div>", unsafe_allow_html=True)
         right_wrap = st.container(key="right_diag_panel")
 
-    return auto_banner_placeholder, sim_banner_placeholder, sidebar_placeholder, col_center, right_wrap
+    return auto_banner_placeholder, sim_banner_placeholder, sidebar_placeholder, center_wrap, right_wrap
 
