@@ -5,7 +5,11 @@ SurakshaAI Dashboard CCTV Video Streaming and Inference Module
 
 import sys
 import os
-import cv2
+import types
+try:
+    import cv2
+except ImportError:  # opencv-python-headless not installed in this environment
+    cv2: types.ModuleType | None = None
 import time
 from datetime import datetime
 import numpy as np
