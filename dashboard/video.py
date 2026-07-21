@@ -929,12 +929,14 @@ def get_frame_tracker() -> FrameTracker:
 
 
 @st.cache_resource
-def get_video_capture(video_path: str) -> Optional[cv2.VideoCapture]:
+def get_video_capture(video_path: str) -> Optional[Any]:
     """Cache a lightweight VideoCapture object instead of all frames.
     
     This avoids loading the entire video into RAM, which can exceed
     Streamlit Cloud memory limits and cause startup failures.
     """
+    if cv2 is None:
+        return None
     if not video_path or not os.path.exists(video_path):
         return None
     cap = cv2.VideoCapture(video_path)
@@ -945,6 +947,8 @@ def get_video_capture(video_path: str) -> Optional[cv2.VideoCapture]:
 
 def get_video_frame_count(video_path: str) -> int:
     """Return total frame count for a video file without loading frames."""
+    if cv2 is None:
+        return 0
     if not video_path or not os.path.exists(video_path):
         return 0
     cap = cv2.VideoCapture(video_path)
@@ -1053,7 +1057,7 @@ def stream_cctv_feed_raw(
         from src.cctv.inference import reset_ppe_buffer
         reset_ppe_buffer()
 
-    if video_path and os.path.exists(video_path):
+    if cv2 is not None and video_path and os.path.exists(video_path):
         total_frames = get_video_frame_count(video_path)
 
         if total_frames == 0:
