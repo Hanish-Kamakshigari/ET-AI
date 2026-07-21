@@ -21,20 +21,21 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 def get_video(filename: str) -> Optional[str]:
     local_path = os.path.join(CACHE_DIR, filename)
 
+    print(f"Looking for: {local_path}")
+
     if os.path.exists(local_path):
+        print(f"Found cached video: {local_path}")
         return local_path
 
+    print(f"Downloading {filename}...")
     url = VIDEO_URLS.get(filename)
     if url is None:
         return None
 
     try:
-        print(f"Downloading {filename}")
-        print(f"URL = {url}")
-
         r = requests.get(url, stream=True)
 
-        print(r.status_code)
+        print(f"Status: {r.status_code}")
         r.raise_for_status()
 
         with open(local_path, "wb") as f:
@@ -42,6 +43,7 @@ def get_video(filename: str) -> Optional[str]:
                 if chunk:
                     f.write(chunk)
 
+        print(f"Saved to {local_path}")
         return local_path
 
     except Exception as e:
