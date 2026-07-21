@@ -609,8 +609,18 @@ def draw_pil_overlays(
     current_frame: int = 0,
     detections: Optional[List[Any]] = None,
 ) -> Tuple[Image.Image, int, int, List[Any]]:
-    rgb = cv2.cvtColor(frame_np, cv2.COLOR_BGR2RGB)
-    img = Image.fromarray(rgb)
+    if isinstance(frame_np, Image.Image):
+        img = frame_np.copy()
+    elif cv2 is not None and isinstance(frame_np, np.ndarray):
+        try:
+            rgb = cv2.cvtColor(frame_np, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(rgb)
+        except Exception:
+            img = Image.fromarray(frame_np)
+    elif isinstance(frame_np, np.ndarray):
+        img = Image.fromarray(frame_np)
+    else:
+        img = Image.new("RGB", (1280, 720), (10, 14, 23))
     width, height = img.size
     draw = ImageDraw.Draw(img)
     
@@ -1057,48 +1067,46 @@ def stream_cctv_feed_raw(
         from src.cctv.inference import reset_ppe_buffer
         reset_ppe_buffer()
 
+    frame = None
+    frame_idx = 0
+    total_frames = 240
+    play_active = st.session_state.get('sim_play_active', True)
+
     if cv2 is not None and video_path and os.path.exists(video_path):
         total_frames = get_video_frame_count(video_path)
+        if total_frames > 0:
+            cap = get_video_capture(video_path)
+            if cap is not None:
+                frame_idx = tracker.get_index(selected_zone, total_frames)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, read_frame = cap.read()
+                if ret:
+                    frame = read_frame
+                    if play_active:
+                        tracker.increment(selected_zone, 2, total_frames)
 
-        if total_frames == 0:
-            return
-
-        # Use a cached VideoCapture object instead of loading all frames into memory.
-        cap = get_video_capture(video_path)
-        if cap is None:
-            return
-
-        # Choose a SINGLE frame slot to avoid double-buffer swap flicker.
-        frame_slot = frame_placeholder or frame_placeholder_1
-        if frame_placeholder_2:
-            try:
-                frame_placeholder_2.empty()
-            except Exception:
-                pass
-
-        # Live-read autoplay state so toggling starts/stops playback immediately.
-        play_active = st.session_state.get('sim_play_active', False)
-
-        # On first render with autoplay off, still show one frame so the feed
-        # is visible immediately on startup. After that, only advance when autoplay is on.
-        first_run = not st.session_state.get('cctv_frame_index', False)
-
-        if not play_active and not first_run:
-            # Autoplay stopped: keep the last frame on screen and skip processing.
-            return
-
-        frame_idx = tracker.get_index(selected_zone, total_frames)
-
-        # Read only the required frame from the cached VideoCapture.
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-        ret, frame = cap.read()
-        if not ret:
-            return
-
-        st.session_state.cctv_frame_index = frame_idx
-
+    if frame is None:
+        # Fallback to simulated CCTV frame if video file is missing or cv2 unavailable
+        from src.cctv.camera_manager import DemoVideoGenerator
+        frame = DemoVideoGenerator.generate_sample_frame(
+            zone=selected_zone,
+            time=datetime.now(),
+            zone_risks=st.session_state.get('zone_risks'),
+            latest=latest
+        )
+        frame_idx = tracker.get_index(selected_zone, 240)
         if play_active:
-            tracker.increment(selected_zone, 2, total_frames)
+            tracker.increment(selected_zone, 2, 240)
+
+    # Choose a SINGLE frame slot to avoid double-buffer swap flicker.
+    frame_slot = frame_placeholder or frame_placeholder_1
+    if frame_placeholder_2:
+        try:
+            frame_placeholder_2.empty()
+        except Exception:
+            pass
+
+    st.session_state.cctv_frame_index = frame_idx
 
         # Run YOLO or Simulated detection
         from src.cctv.inference import run_inference
@@ -1444,43 +1452,34 @@ def stream_cctv_feed_raw(
                 warnings_placeholder.empty()
 
     else:
-        # Offline display
-        st.session_state.current_detections = []
+        # Live CCTV Simulation Fallback when MP4 or OpenCV is not available
         selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper() if selected_zone else "STANDBY"
         if header_placeholder:
             header_placeholder.markdown(f"""
             <div class='cctv-header'>
                 <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
-                <span style='color:#6b7d94; font-weight:bold; font-size:11px;'>● OFFLINE</span>
+                <span style='color:#00ff41; font-weight:bold; font-size:11px;'>● LIVE (SIMULATION)</span>
             </div>
             """, unsafe_allow_html=True)
  
-        msg = "Enable the live stream switch above to start real-time AI surveillance."
-        if video_path and not os.path.exists(video_path):
-            msg = f"CCTV footage file not found: <b>{video_path}</b>"
-        if frame_placeholder:
-            open_inc = len(am.active_alerts) if am else 0
-            closed_inc = len(am.history) if am else 0
-            today_incidents = open_inc + closed_inc
-
-            img_background = "background: linear-gradient(135deg, #0b1528, #050b14);"
-            has_last_frame = False
-            if 'last_cctv_frame' in st.session_state and st.session_state.last_cctv_frame:
-                try:
-                    import io
-                    import base64
-                    buffered = io.BytesIO()
-                    st.session_state.last_cctv_frame.save(buffered, format="JPEG")
-                    img_str = base64.b64encode(buffered.getvalue()).decode()
-                    img_background = f"background-image: url('data:image/jpeg;base64,{img_str}'); background-size: cover; background-position: center;"
-                    has_last_frame = True
-                except Exception:
-                    pass
-
-            last_frame_label = "17:28:23" if has_last_frame else "None (Pending Run)"
-            frames_processed = "3,402" if has_last_frame else "0"
-            session_duration = "12m 45s" if has_last_frame else "0s"
-            last_incident_str = "17:15:20 (Gas Leak)" if today_incidents > 0 else "None"
+        try:
+            from src.cctv.camera_manager import DemoVideoGenerator
+            sample_img_np = DemoVideoGenerator.generate_sample_frame(
+                zone=selected_zone,
+                time=datetime.now(),
+                zone_risks=data_dict.get('zone_risks', {}) if data_dict else {},
+                latest=latest
+            )
+            pil_img = Image.fromarray(sample_img_np)
+            frame_slot = frame_placeholder or frame_placeholder_1
+            if frame_slot:
+                from PIL import ImageOps
+                padded_img = ImageOps.expand(pil_img, border=(0, 30), fill='black')
+                frame_slot.image(padded_img, width='stretch')
+                st.session_state['last_cctv_frame'] = pil_img
+        except Exception as e:
+            if frame_placeholder:
+                frame_placeholder.error(f"Failed to generate simulated CCTV frame: {e}")
 
             frame_placeholder.markdown(f"""
             <div style="{img_background} height: 440px; border: 1px solid #1e3a5f; border-radius: 8px; position: relative; box-sizing: border-box; overflow: hidden; font-family: 'Outfit', sans-serif;">

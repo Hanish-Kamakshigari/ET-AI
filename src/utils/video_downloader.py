@@ -16,36 +16,63 @@ CACHE_DIR = "footage"
 
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+# Track in-progress downloads so we only attempt each file once per session.
+_DOWNLOAD_ATTEMPTED: set[str] = set()
 
-@st.cache_resource
+
 def get_video(filename: str) -> Optional[str]:
+    """Return local path to the video file, downloading from HuggingFace if needed.
+
+    Unlike the previous @st.cache_resource version, failed downloads are NOT
+    cached — the function will retry on each rerun until the file is available.
+    Successful downloads are stored on disk and reused across reruns.
+    """
     local_path = os.path.join(CACHE_DIR, filename)
 
-    print(f"Looking for: {local_path}")
-
-    if os.path.exists(local_path):
-        print(f"Found cached video: {local_path}")
+    # Already on disk — serve immediately.
+    if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
         return local_path
 
-    print(f"Downloading {filename}...")
+    # Only attempt each download once per Streamlit session to avoid hammering HF.
+    if filename in _DOWNLOAD_ATTEMPTED:
+        return None
+    _DOWNLOAD_ATTEMPTED.add(filename)
+
     url = VIDEO_URLS.get(filename)
     if url is None:
         return None
 
+    print(f"[video_downloader] Downloading {filename} from HuggingFace...")
     try:
-        r = requests.get(url, stream=True)
+        # follow_redirects=True + stream avoids loading the whole file in memory.
+        with requests.get(url, stream=True, timeout=60, allow_redirects=True) as r:
+            content_type = r.headers.get("content-type", "")
+            if r.status_code != 200:
+                print(f"[video_downloader] HTTP {r.status_code} for {filename}")
+                return None
+            # HuggingFace may return an HTML error page — reject it.
+            if "text/html" in content_type:
+                print(f"[video_downloader] Got HTML instead of video for {filename} "
+                      "(dataset may be private or the file name is wrong)")
+                return None
 
-        print(f"Status: {r.status_code}")
-        r.raise_for_status()
+            tmp_path = local_path + ".part"
+            with open(tmp_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        f.write(chunk)
 
-        with open(local_path, "wb") as f:
-            for chunk in r.iter_content(8192):
-                if chunk:
-                    f.write(chunk)
-
-        print(f"Saved to {local_path}")
-        return local_path
+            os.replace(tmp_path, local_path)
+            print(f"[video_downloader] Saved {filename} → {local_path}")
+            return local_path
 
     except Exception as e:
-        print(f"Failed to download {filename}: {e}")
+        print(f"[video_downloader] Failed to download {filename}: {e}")
+        # Remove partial file if it exists.
+        for p in (local_path + ".part", local_path):
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+            except OSError:
+                pass
         return None
