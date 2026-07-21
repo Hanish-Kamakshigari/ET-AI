@@ -149,8 +149,12 @@ st.set_page_config(
 
 # Initialize Session State
 init_state_defaults()
-if st.session_state.get('autoplay_sim_toggle') != st.session_state.get('sim_play_active'):
-    st.session_state.autoplay_sim_toggle = st.session_state.get('sim_play_active', False)
+
+if 'rerun_counter' not in st.session_state:
+    st.session_state.rerun_counter = 0
+st.session_state.rerun_counter += 1
+
+print(f"[DEBUG_AUTOPLAY] Rerun #{st.session_state.rerun_counter}: sim_play_active={st.session_state.get('sim_play_active')}")
 
 # Load plant database csv
 df = load_data()

@@ -1052,7 +1052,7 @@ def _zone_video_path(zone: str) -> str | None:
     return get_video(filename)
 
 
-@st.fragment
+@st.fragment(run_every=0.15)
 def stream_cctv_feed_fragment(
     placeholders: Dict[str, Any],
     data_dict: Dict[str, Any],
