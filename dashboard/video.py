@@ -957,16 +957,61 @@ def get_video_capture(video_path: str) -> Optional[Any]:
 
 def get_video_frame_count(video_path: str) -> int:
     """Return total frame count for a video file without loading frames."""
-    if cv2 is None:
-        return 0
     if not video_path or not os.path.exists(video_path):
         return 0
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        return 0
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.release()
-    return total
+    if cv2 is not None:
+        try:
+            cap = cv2.VideoCapture(video_path)
+            if cap.isOpened():
+                total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                cap.release()
+                if total > 0:
+                    return total
+        except Exception:
+            pass
+    try:
+        import imageio
+        reader = imageio.get_reader(video_path)
+        meta = reader.get_meta_data()
+        total = meta.get('nframes', 240)
+        return int(total) if total > 0 and total != float('inf') else 240
+    except Exception:
+        return 240
+
+
+def read_mp4_frame(video_path: str, frame_idx: int) -> Tuple[Optional[np.ndarray], int]:
+    """Reads a single frame from an MP4 video file using cv2 or imageio fallback."""
+    if not video_path or not os.path.exists(video_path):
+        return None, 0
+
+    if cv2 is not None:
+        try:
+            cap = get_video_capture(video_path)
+            if cap is not None and cap.isOpened():
+                total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                if total > 0:
+                    target_idx = frame_idx % total
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, target_idx)
+                    ret, frame = cap.read()
+                    if ret and frame is not None:
+                        return frame, total
+        except Exception:
+            pass
+
+    try:
+        import imageio
+        reader = imageio.get_reader(video_path)
+        meta = reader.get_meta_data()
+        total = meta.get('nframes', 240)
+        if total == float('inf') or total <= 0:
+            total = 240
+        target_idx = frame_idx % int(total)
+        frame_rgb = reader.get_data(target_idx)
+        return frame_rgb, int(total)
+    except Exception as e:
+        print(f"[video_reader] ImageIO fallback error for {video_path}: {e}")
+
+    return None, 0
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -1072,21 +1117,14 @@ def stream_cctv_feed_raw(
     total_frames = 240
     play_active = st.session_state.get('sim_play_active', True)
 
-    if cv2 is not None and video_path and os.path.exists(video_path):
-        total_frames = get_video_frame_count(video_path)
-        if total_frames > 0:
-            cap = get_video_capture(video_path)
-            if cap is not None:
-                frame_idx = tracker.get_index(selected_zone, total_frames)
-                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-                ret, read_frame = cap.read()
-                if ret:
-                    frame = read_frame
-                    if play_active:
-                        tracker.increment(selected_zone, 2, total_frames)
+    if video_path and os.path.exists(video_path):
+        frame_idx = tracker.get_index(selected_zone, 240)
+        frame, total_frames = read_mp4_frame(video_path, frame_idx)
+        if frame is not None and play_active:
+            tracker.increment(selected_zone, 2, total_frames if total_frames > 0 else 240)
 
     if frame is None:
-        # Fallback to simulated CCTV frame if video file is missing or cv2 unavailable
+        # Secondary fallback to simulated CCTV frame if video file is missing
         from src.cctv.camera_manager import DemoVideoGenerator
         frame = DemoVideoGenerator.generate_sample_frame(
             zone=selected_zone,

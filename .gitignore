@@ -11,10 +11,11 @@ runs/
 models/
 *.pt
 
-# Datasets and Media Footage (Large files)
+# Datasets and Media Footage
 data/battery5_ppe/
 Construction-Site-Safety-1/
-footage/
+!footage/
+!footage/*.mp4
 
 # Temporary Local Outputs
 .vscode/settings.json
