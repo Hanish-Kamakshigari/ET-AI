@@ -1489,3 +1489,56 @@ def stream_cctv_feed_raw(
         else:
             warnings_placeholder.empty()
 
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # AUTO-RERUN FOR SMOOTH PLAYBACK (driven by Autoplay Simulation toggle)
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # When Autoplay = ON: schedule next fragment rerun at ~25 FPS * speed multiplier
+    # When Autoplay = OFF: do not auto-rerun; frame index stays frozen
+    # Uses JavaScript setTimeout -> hidden checkbox click for non-blocking, Streamlit-Cloud-safe playback
+    # ═══════════════════════════════════════════════════════════════════════════════
+    if play_active and st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
+        # Base ~25 FPS = 40ms per frame; speed multipliers: 1x=40ms, 2x=20ms, 4x=10ms
+        speed = st.session_state.get('sim_play_speed', '1x')
+        speed_multiplier = {'1x': 1, '2x': 2, '4x': 4}.get(speed, 1)
+        base_delay_ms = 40  # ~25 FPS base
+        delay_ms = max(10, base_delay_ms // speed_multiplier)  # clamp minimum to 10ms (100 FPS cap)
+
+        # Hidden checkbox widget - when its value changes, the fragment re-runs.
+        # We give it a unique key per zone and hide it via CSS.
+        rerun_key = f"_cctv_rerun_trigger_{selected_zone}"
+        _ = st.checkbox(" ", key=rerun_key, value=False, label_visibility="collapsed")
+
+        # Inject JavaScript that toggles the checkbox after the computed delay.
+        # Toggling a widget value inside a fragment triggers a fragment re-run.
+        st.markdown(f"""
+        <script>
+        (function() {{
+            if (window._suraksha_cctv_timer) clearTimeout(window._suraksha_cctv_timer);
+            window._suraksha_cctv_timer = setTimeout(function() {{
+                // Find the hidden checkbox by its test ID (derived from key)
+                const checkbox = document.querySelector('input[data-testid="stCheckbox"][aria-label="{rerun_key}"]');
+                if (checkbox) {{
+                    checkbox.click();  // Toggle checkbox -> widget change -> fragment rerun
+                }} else {{
+                    // Fallback: try to find by key attribute
+                    const fallback = document.querySelector('[data-testid="stCheckbox"] input[id*="{rerun_key}"]');
+                    if (fallback) fallback.click();
+                }}
+            }}, {delay_ms});
+        }})();
+        </script>
+        <style>
+        /* Hide the autoplay trigger checkbox visually */
+        input[data-testid="stCheckbox"][aria-label="{rerun_key}"] {{
+            position: absolute !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            width: 1px !important;
+            height: 1px !important;
+        }}
+        input[data-testid="stCheckbox"][aria-label="{rerun_key}"] + div {{
+            display: none !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+
