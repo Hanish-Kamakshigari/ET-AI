@@ -172,6 +172,10 @@ def init_state_defaults() -> None:
         'alert_log': [],
         'recovering': False,
         'sim_play_active': False,  # Feed will render only a single frame until the play control is toggled True
+        'autoplay_sim_toggle': False,
+        'current_detections': [],
+        'zone_risks': {},
+        'latest': {},
         'cctv_frame_index': 0,
         'video_played_this_run': False,
         'yolo_worker_counts': {},
@@ -227,6 +231,7 @@ def handle_url_actions(alert_system: AlertSystem, am: AlertManager) -> None:
 
     if 'start_autoplay' in st.query_params:
         st.session_state.sim_play_active = True
+        st.session_state.autoplay_sim_toggle = True
         del st.query_params['start_autoplay']
         st.rerun()
 

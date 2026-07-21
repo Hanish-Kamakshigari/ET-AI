@@ -926,6 +926,8 @@ class NotificationDispatcher:
         target_channels = [ch.strip().upper() for ch in channels_str.split(",") if ch.strip()]
         incident_id = incident.get("incident_id")
         
+        print(f"[DIAGNOSTIC] NotificationDispatcher.dispatch: incident_id={incident_id}, channels={target_channels}, status={incident.get('status')}")
+        
         # Initialize session state variables in main thread to guarantee immediate updates
         import sys
         if 'streamlit' in sys.modules:
@@ -971,6 +973,8 @@ class NotificationDispatcher:
 
     def _safe_send(self, name: str, channel: NotificationChannel, incident: Dict[str, Any], ctx: Optional[Any] = None, dispatch_start: Optional[float] = None) -> None:
         incident_id = incident.get("incident_id")
+        
+        print(f"[DIAGNOSTIC] NotificationDispatcher._safe_send: channel={name}, incident_id={incident_id}")
         
         # Chronological dispatch order delay
         delay_map = {
@@ -2149,7 +2153,7 @@ def get_current_telemetry(zone: Optional[str] = None) -> Dict[str, Any]:
         if get_script_run_ctx() is not None:
             import streamlit as st
             if 'latest' in st.session_state:
-                return st.session_state.latest
+                return dict(st.session_state.latest)
     return {}
 
 # ==============================================================================

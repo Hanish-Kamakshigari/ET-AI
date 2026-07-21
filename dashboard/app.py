@@ -149,6 +149,8 @@ st.set_page_config(
 
 # Initialize Session State
 init_state_defaults()
+if st.session_state.get('autoplay_sim_toggle') != st.session_state.get('sim_play_active'):
+    st.session_state.autoplay_sim_toggle = st.session_state.get('sim_play_active', False)
 
 # Load plant database csv
 df = load_data()
@@ -157,6 +159,7 @@ df = load_data()
 engine = init_engine()
 alert_system = init_alerts(engine, df)
 frame_processor = get_frame_processor()
+print(f"[DIAGNOSTIC] FrameProcessor initialized: use_simulation={frame_processor.detector.use_simulation}, model_loaded={frame_processor.detector.model is not None}")
 # Session-scoped AlertManager — persists across reruns within a session
 # but does NOT leak across sessions/users like @st.cache_resource would.
 if 'alert_manager' not in st.session_state:
@@ -222,6 +225,7 @@ from dashboard.emergency_mode import (
 # Calculate telemetry metrics across all zones
 data_dict = calculate_telemetry(df, engine, alert_system)
 st.session_state.zone_risks = data_dict.get('zone_risks', {})
+st.session_state.latest = data_dict.get('latest', {})
 
 # Orchestrate emergency mode (injects CSS, toggles body class, audio, recovery)
 _emergency_zone = st.session_state.get('cctv_zone_selector', 'Zone_A')

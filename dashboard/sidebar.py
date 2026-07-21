@@ -114,18 +114,24 @@ def render_sidebar(
         """, unsafe_allow_html=True)
 
         # 4. Autoplay Simulation
-        play_active = st.toggle("Autoplay Simulation", value=st.session_state.get('sim_play_active', False), key="autoplay_sim_toggle")
-        if play_active != st.session_state.get('sim_play_active', False):
-            # --- Clear all active alerts on every toggle (ON or OFF) ---
-            # This ensures: before autoplay starts → no stale alerts shown;
-            # after autoplay stops → no lingering alerts from previous run.
+        current_sim_state = st.session_state.get('sim_play_active', False)
+        if st.session_state.get('autoplay_sim_toggle') != current_sim_state:
+            st.session_state['autoplay_sim_toggle'] = current_sim_state
+
+        play_active = st.toggle("Autoplay Simulation", value=current_sim_state, key="autoplay_sim_toggle")
+        if play_active != current_sim_state:
+            st.session_state.sim_play_active = play_active
+            st.session_state.autoplay_sim_toggle = play_active
+            print(f"[DIAGNOSTIC] Autoplay state updated: sim_play_active={st.session_state.sim_play_active}")
+            if play_active:
+                st.session_state.scenario_start_time = datetime.now()
+                print(f"[DIAGNOSTIC] Autoplay ON: scenario_start_time reset to {st.session_state.scenario_start_time}")
             try:
                 from src.alert_system import clear_alert_if_safe
                 all_zones = ["Zone_A", "Zone_B", "Zone_C", "Reactor_Area", "Storage_Area"]
                 for z in all_zones:
                     clear_alert_if_safe(z, update_cooldown=False)
                     st.session_state[f"alert_active_{z}"] = False
-                # Resolve any remaining active alerts via am.resolve_alert
                 for alert_id in list(am.active_alerts.keys()):
                     try:
                         am.resolve_alert(alert_id)
@@ -134,8 +140,6 @@ def render_sidebar(
                 st.session_state["_last_incident"] = None
             except Exception:
                 pass
-            # -------------------------------------------------------
-            st.session_state.sim_play_active = play_active
 
         speed_options = ["1x", "2x", "4x"]
         current_speed = st.session_state.get('sim_play_speed', '1x')
@@ -189,6 +193,7 @@ def render_sidebar(
             if st.button("🛑 Stop Sim", key="qa_stop_sim", use_container_width=True):
                 from src.alert_system import clear_alert_if_safe
                 st.session_state.sim_play_active = False
+                st.session_state.autoplay_sim_toggle = False
                 st.session_state.sim_stage = 'normal'
                 st.session_state.compound_risk_active = False
                 for z in ["Zone_A", "Zone_B", "Zone_C", "Reactor_Area", "Storage_Area"]:

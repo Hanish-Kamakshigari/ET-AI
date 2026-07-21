@@ -237,6 +237,10 @@ header[data-testid="stHeader"] {{ display: none !important; }}
 
 .stMarkdown {{ margin: 0 !important; }}
 section[data-testid="stSidebar"] > div {{ padding-top: 0 !important; }}
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+section[data-testid="stSidebar"] div.element-container:last-child {{
+  padding-bottom: 120px !important;
+}}
 
 /* SCROLLBAR */
 ::-webkit-scrollbar {{ width: 5px; height: 5px; }}
@@ -246,7 +250,7 @@ section[data-testid="stSidebar"] > div {{ padding-top: 0 !important; }}
 
 /* LAYOUT UTILITIES */
 .main-content {{
-  padding: 0px 18px 20px 18px;
+  padding: 0px 18px 110px 18px;
 }}
 div[data-testid="stVerticalBlock"] > div {{ margin-top: 0px !important; gap: 4px !important; }}
 div[data-testid="stHorizontalBlock"] {{ gap: 6px !important; align-items: stretch !important; }}

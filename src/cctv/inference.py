@@ -229,12 +229,14 @@ def get_yolo_model(model_type: str, zone: Optional[str] = None) -> Optional[Any]
     # Try importing YOLO from ultralytics
     try:
         from ultralytics import YOLO
+        print(f"[DIAGNOSTIC] ultralytics imported successfully")
     except ImportError:
-        print("[WARNING] ultralytics not installed, cannot load YOLO models.")
+        print(f"[DIAGNOSTIC] ultralytics NOT installed")
         return None
 
     cache_key = model_type
     if _models.get(cache_key) is not None:
+        print(f"[DIAGNOSTIC] YOLO model {model_type} loaded from cache")
         return _models[cache_key]
 
     if model_type == "fire_smoke":
@@ -277,11 +279,12 @@ def get_yolo_model(model_type: str, zone: Optional[str] = None) -> Optional[Any]
         if os.path.exists(p_s):
             try:
                 _models["stock"] = YOLO(p_s)
-                print(f"[SUCCESS] Loaded stock YOLOv8 model from {p_s}")
+                print(f"[SUCCESS] Loaded stock YOLO8 model from {p_s}")
                 return _models["stock"]
             except Exception as e:
                 print(f"[WARNING] Stock YOLO model could not be loaded: {e}. System will use simulation fallback.")
 
+    print(f"[DIAGNOSTIC] get_yolo_model({model_type}): model not available, returning None")
     return None
 
 
@@ -345,8 +348,11 @@ def run_inference(
     fire_model = get_yolo_model("fire_smoke")
     stock_model = get_yolo_model("stock")
     
+    print(f"[DIAGNOSTIC] Zone={selected_zone}, Frame={current_frame}, stock_model={'AVAILABLE' if stock_model is not None else 'MISSING'}, fire_model={'AVAILABLE' if fire_model is not None else 'MISSING'}")
+    
     # If stock model is not present, use the simulation fallback
     if stock_model is None:
+        print(f"[DIAGNOSTIC] Using fallback simulation for zone={selected_zone}")
         if draw_fallback_fn is not None:
             # Simulation fallback runs standalone when stock_model is unavailable.
             pil_img, w_count, viol_count, active_dets = draw_fallback_fn(
@@ -355,6 +361,7 @@ def run_inference(
                 latest_telemetry, 
                 current_frame=current_frame
             )
+            print(f"[DIAGNOSTIC] Fallback result: workers={w_count}, violations={viol_count}, detections={len(active_dets)}")
             return pil_img, w_count, viol_count, active_dets
         else:
             # Fallback if no simulation drawing function was passed
@@ -395,6 +402,7 @@ def run_inference(
         # 1b. Use stock YOLO (yolov8n.pt) for reliable person detection (class 0)
         if stock_model is not None:
             stock_results = stock_model(frame_np, conf=0.35, iou=0.4, verbose=False)
+            print(f"[DIAGNOSTIC] YOLO detection: zone={selected_zone}, frame={current_frame}, results={len(stock_results)}")
             if len(stock_results) > 0:
                 for box in stock_results[0].boxes:
                     if int(box.cls[0]) == 0:  # class 0 = person
@@ -402,6 +410,7 @@ def run_inference(
                         xyxy = box.xyxy[0].tolist()
                         x1, y1, x2, y2 = map(int, xyxy)
                         people.append((x1, y1, x2, y2, conf))
+                print(f"[DIAGNOSTIC] YOLO person detections: {len(people)}")
                         
         # 1c. For Zone_A (Battery-4): filter out any ghost person detections (smoke plume).
         # Real workers are only detected in two specific regions:

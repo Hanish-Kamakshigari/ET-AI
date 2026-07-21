@@ -297,6 +297,8 @@ def evaluate_alert_conditions(
     worker_count = tel_copy.get(f"{zone}_worker_count", tel_copy.get("worker_count", 0))
     maintenance_state = tel_copy.get(f"{zone}_maintenance_active", tel_copy.get("maintenance_active", 0)) == 1
     
+    print(f"[DIAGNOSTIC] evaluate_alert_conditions: zone={zone}, violations={violations}, worker_count={worker_count}, permits={permits}, detections={len(detections)}")
+    
     evaluation = coordinator.risk_evaluator.evaluate(
         detections=detections,
         telemetry=tel_copy,
@@ -312,6 +314,8 @@ def evaluate_alert_conditions(
     summary = " | ".join(messages)
     channels = [ch.lower() for ch in evaluation["notification_channels"]]
     
+    print(f"[DIAGNOSTIC] evaluate_alert_conditions result: should_alert={should_alert}, severity={severity}, matched_rules={len(evaluation['matched_rules'])}")
+    
     return {
         "should_alert": should_alert,
         "severity": severity,
@@ -325,7 +329,9 @@ def evaluate_alert_conditions(
 
 def dispatch_alerts(alert_payload: Dict[str, Any]) -> None:
     coordinator = get_alert_coordinator()
+    print(f"[DIAGNOSTIC] dispatch_alerts called: severity={alert_payload.get('severity')}, zone={alert_payload.get('zone')}, channels={alert_payload.get('channels')}")
     coordinator.dispatch_payload_alert(alert_payload)
+    print(f"[DIAGNOSTIC] dispatch_payload_alert completed")
 
 
 def clear_alert_if_safe(zone: str, update_cooldown: bool = True) -> None:

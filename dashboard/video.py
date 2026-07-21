@@ -724,6 +724,10 @@ def draw_pil_overlays(
         kf_key = 'Battery_4' if selected_zone == 'Zone_A' else selected_zone
         workers = WORKER_KEYFRAMES.get(kf_key, WORKER_KEYFRAMES['Reactor_Area'])
         
+        # Ensure scenario_start_time is initialized
+        if 'scenario_start_time' not in st.session_state or st.session_state.scenario_start_time is None:
+            st.session_state.scenario_start_time = datetime.now()
+        
         # Calculate dynamic scenario offsets
         _now = datetime.now()
         _real_elapsed_min = (_now - st.session_state.scenario_start_time).total_seconds() / 60.0
@@ -760,9 +764,18 @@ def draw_pil_overlays(
             wx1 = bx1 * scale_x; wy1 = by1 * scale_y
             wx2 = bx2 * scale_x; wy2 = by2 * scale_y
             
-            # PPE Compliance Flags
+            # PPE Compliance Flags - use worker definition values
             has_helmet = w_def.get('has_helmet', True)
-            has_vest = True
+            ppe_str = w_def.get('ppe', '')
+            # Determine vest status: check explicit has_vest, or infer from ppe string
+            # If 'NO_' prefix is in ppe string, it indicates missing item
+            if 'has_vest' in w_def:
+                has_vest = w_def['has_vest']
+            elif 'NO_hiviz_vest' in ppe_str or 'no_vest' in ppe_str:
+                has_vest = False
+            else:
+                has_vest = 'vest' in ppe_str.lower() or 'hiviz' in ppe_str.lower() or 'coverall' in ppe_str.lower()
+            ppe_violation = w_def.get('ppe_violation', False)
             
             # Simulated conditions
             if selected_zone == 'Zone_B':
@@ -778,7 +791,11 @@ def draw_pil_overlays(
                     continue
                 if idx == 2 and _scenario_min < 28:
                     continue
-                    
+            
+            # Track violations from worker definition
+            if ppe_violation:
+                violations_count += 1
+            
             visible_workers_count += 1
             
             # Bounding box offsets
@@ -787,10 +804,10 @@ def draw_pil_overlays(
             hx1, hy1, hx2, hy2 = px1 + (pw * 0.25), py1, px1 + (pw * 0.75), py1 + (ph * 0.2)
             vx1, vy1, vx2, vy2 = px1 + (pw * 0.15), py1 + (ph * 0.25), px1 + (pw * 0.85), py1 + (ph * 0.75)
             
-            # Custom labels
+            # Custom labels - use worker definition values
             p_lbl = f"Worker-W{idx+1} 94%"
             h_lbl = w_def.get('helmet_label', 'Hard Hat ✓')
-            v_lbl = 'Reflective Vest ✓'
+            v_lbl = w_def.get('vest_label', 'Reflective Vest ✓')
             
             if selected_zone == 'Reactor_Area':
                 if idx == 0:
@@ -804,14 +821,12 @@ def draw_pil_overlays(
                 if idx == 6:
                     has_vest = False
                     v_lbl = "⚠ NO HIVIZ VEST"
-                    violations_count += 1
             elif selected_zone == 'Zone_B':
                 p_lbl = f"Worker-W{idx+1} 90%"
-                if idx in (2, 3):
-                    has_helmet = False
+                # Use has_helmet from worker definition
+                if not has_helmet:
                     h_lbl = "⚠ NO HELMET"
-                    violations_count += 1
-                    
+            
             draw_labeled_worker(draw, font, px1, py1, px2, py2, hx1, hy1, hx2, hy2, vx1, vy1, vx2, vy2, p_lbl, h_lbl, v_lbl, has_helmet=has_helmet)
             
             from src.cctv.object_detector import Detection
@@ -820,10 +835,12 @@ def draw_pil_overlays(
                 active_detections.append(Detection(label='helmet', confidence=0.92, bbox=[hx1, hy1, hx2-hx1, hy2-hy1]))
             else:
                 active_detections.append(Detection(label='no_helmet', confidence=0.92, bbox=[hx1, hy1, hx2-hx1, hy2-hy1]))
+                violations_count += 1
             if has_vest:
                 active_detections.append(Detection(label='vest', confidence=0.91, bbox=[vx1, vy1, vx2-vx1, vy2-vy1]))
             else:
                 active_detections.append(Detection(label='no_vest', confidence=0.91, bbox=[vx1, vy1, vx2-vx1, vy2-vy1]))
+                violations_count += 1
 
         # Draw overlays (Reactor/Storage/Zone A)
         if selected_zone == 'Reactor_Area':
@@ -1115,13 +1132,18 @@ def stream_cctv_feed_raw(
     frame = None
     frame_idx = 0
     total_frames = 240
-    play_active = st.session_state.get('sim_play_active', True)
+    play_active = st.session_state.get('sim_play_active', False)
+    
+    print(f"[DIAGNOSTIC] stream_cctv_feed_raw: zone={selected_zone}, play_active={play_active}, video_path={video_path}, video_exists={os.path.exists(video_path) if video_path else False}")
 
     if video_path and os.path.exists(video_path):
         frame_idx = tracker.get_index(selected_zone, 240)
         frame, total_frames = read_mp4_frame(video_path, frame_idx)
+        print(f"[DIAGNOSTIC] Video read: frame_idx={frame_idx}, total_frames={total_frames}, frame_loaded={frame is not None}")
         if frame is not None and play_active:
             tracker.increment(selected_zone, 2, total_frames if total_frames > 0 else 240)
+            new_idx = tracker.get_index(selected_zone, 240)
+            print(f"[DIAGNOSTIC] Tracker incremented: new_idx={new_idx}")
 
     if frame is None:
         # Secondary fallback to simulated CCTV frame if video file is missing
@@ -1236,10 +1258,13 @@ def stream_cctv_feed_raw(
         alert_key = f"alert_active_{selected_zone}"
         current_incident = f"{selected_zone}_{severity}"
 
+        print(f"[DIAGNOSTIC] FSM transition: fsm={fsm}, stable={stable}, severity={severity}, zone={selected_zone}")
+
         if fsm == 'NORMAL':
             if stable >= 3:
                 st.session_state['alert_fsm_state'] = 'DETECTING'
                 st.session_state[f"_safe_frames_{selected_zone}"] = 0
+                print(f"[DIAGNOSTIC] FSM: NORMAL -> DETECTING")
 
         elif fsm == 'DETECTING':
             if stable >= 6:
@@ -1247,6 +1272,7 @@ def stream_cctv_feed_raw(
                 st.session_state[alert_key] = True
                 st.session_state["_last_incident"] = current_incident
                 st.session_state[f"_safe_frames_{selected_zone}"] = 0
+                print(f"[DIAGNOSTIC] FSM: DETECTING -> WARNING_ACTIVE")
 
         elif fsm == 'WARNING_ACTIVE':
             if not st.session_state.get(alert_key, False) or st.session_state.get("_last_incident") != current_incident:
@@ -1254,18 +1280,22 @@ def stream_cctv_feed_raw(
                 st.session_state["_last_incident"] = current_incident
                 dispatch_alerts(alert_conditions)
                 st.session_state['alert_fsm_state'] = 'DISPATCHING'
+                print(f"[DIAGNOSTIC] FSM: WARNING_ACTIVE -> DISPATCHING, dispatch_alerts called")
             else:
                 siren_st = st.session_state.get('siren_status', {})
                 if siren_st.get('status') in ('ACTIVE', 'ACTIVE 🔊'):
                     st.session_state['alert_fsm_state'] = 'DELIVERED'
+                    print(f"[DIAGNOSTIC] FSM: WARNING_ACTIVE -> DELIVERED")
 
         elif fsm == 'DISPATCHING':
             siren_st = st.session_state.get('siren_status', {})
             if siren_st.get('status') in ('ACTIVE', 'ACTIVE 🔊', 'DELIVERED'):
                 st.session_state['alert_fsm_state'] = 'DELIVERED'
+                print(f"[DIAGNOSTIC] FSM: DISPATCHING -> DELIVERED")
 
         elif fsm == 'DELIVERED':
             st.session_state['alert_fsm_state'] = 'INCIDENT_ACTIVE'
+            print(f"[DIAGNOSTIC] FSM: DELIVERED -> INCIDENT_ACTIVE")
 
         elif fsm in ('INCIDENT_ACTIVE', 'ACKNOWLEDGED'):
             if fsm == 'INCIDENT_ACTIVE':
@@ -1276,6 +1306,7 @@ def stream_cctv_feed_raw(
                 )
                 if any_acked:
                     st.session_state['alert_fsm_state'] = 'ACKNOWLEDGED'
+                    print(f"[DIAGNOSTIC] FSM: INCIDENT_ACTIVE -> ACKNOWLEDGED")
 
         st.session_state[f"_safe_frames_{selected_zone}"] = 0
 
@@ -1296,11 +1327,12 @@ def stream_cctv_feed_raw(
             elif fsm in ('DETECTING', 'WARNING_ACTIVE'):
                 st.session_state['alert_fsm_state'] = 'NORMAL'
 
-    # Debounce guard
+    # Debounce & telemetry state hash guard
     active_alert_count = len(am.active_alerts)
     siren_state_val = st.session_state.get('siren_status', {}).get('status', 'STANDBY')
     current_fsm = st.session_state.get('alert_fsm_state', 'NORMAL')
-    new_ui_hash = f"{active_alert_count}|{siren_state_val}|{current_fsm}|{selected_zone}"
+    det_metrics_hash = f"{w_count}_{viol_count}_{len(active_dets)}_{frame_idx}"
+    new_ui_hash = f"{active_alert_count}|{siren_state_val}|{current_fsm}|{selected_zone}|{det_metrics_hash}"
     ui_state_changed = (new_ui_hash != st.session_state.get('alert_ui_hash', ''))
     if ui_state_changed:
         st.session_state['alert_ui_hash'] = new_ui_hash
@@ -1323,6 +1355,14 @@ def stream_cctv_feed_raw(
                 notifications_p = placeholders.get('notifications')
                 if notifications_p:
                     render_notifications_panel(notifications_p, data_dict, selected_zone)
+            except Exception:
+                pass
+
+            try:
+                from dashboard.components import render_alerts_panel
+                alerts_p = placeholders.get('alerts')
+                if alerts_p:
+                    render_alerts_panel(alerts_p, am, selected_zone=selected_zone)
             except Exception:
                 pass
 
@@ -1476,6 +1516,13 @@ def stream_cctv_feed_raw(
         active_dets.append(Detection(label="overpressure", confidence=0.99, bbox=(0,0,0,0)))
 
     am.update(active_dets, selected_zone)
+    print(f"[DIAGNOSTIC] am.update called: zone={selected_zone}, detections={len(active_dets)}, active_alerts={len(am.active_alerts)}")
+
+    # Force immediate refresh of alert UI if state changed
+    current_fsm = st.session_state.get('alert_fsm_state', 'NORMAL')
+    if current_fsm in ('DISPATCHING', 'DELIVERED', 'INCIDENT_ACTIVE'):
+        ui_hash = f"{len(am.active_alerts)}|{st.session_state.get('siren_status', {}).get('status', 'STANDBY')}|{current_fsm}|{selected_zone}"
+        st.session_state['alert_ui_hash'] = ui_hash
 
     if warnings_placeholder:
         if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
@@ -1512,14 +1559,17 @@ def stream_cctv_feed_raw(
         # Toggling a widget value inside a fragment triggers a fragment re-run.
         st.markdown(f"""
         <script>
+        console.log('[DIAGNOSTIC] Autoplay JS: zone={selected_zone}, play_active={play_active}, delay_ms={delay_ms}');
         (function() {{
             if (window._suraksha_cctv_timer) clearTimeout(window._suraksha_cctv_timer);
             window._suraksha_cctv_timer = setTimeout(function() {{
                 // Find the hidden checkbox by its test ID (derived from key)
                 const checkbox = document.querySelector('input[data-testid="stCheckbox"][aria-label="{rerun_key}"]');
                 if (checkbox) {{
+                    console.log('[DIAGNOSTIC] Autoplay JS: Found checkbox, clicking to trigger rerun');
                     checkbox.click();  // Toggle checkbox -> widget change -> fragment rerun
                 }} else {{
+                    console.log('[DIAGNOSTIC] Autoplay JS: Checkbox not found, trying fallback');
                     // Fallback: try to find by key attribute
                     const fallback = document.querySelector('[data-testid="stCheckbox"] input[id*="{rerun_key}"]');
                     if (fallback) fallback.click();
