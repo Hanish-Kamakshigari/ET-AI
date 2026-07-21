@@ -2,7 +2,11 @@
 Frame Processor - Processes frames and generates alerts
 """
 
-import cv2
+import types
+try:
+    import cv2
+except ImportError:  # opencv-python-headless not installed in this environment
+    cv2: types.ModuleType | None = None
 import numpy as np
 from typing import Dict, List, Optional, Callable, Tuple
 from datetime import datetime

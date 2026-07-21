@@ -3,7 +3,11 @@ Object Detector - AI detection for CCTV feeds
 Uses YOLO or simulated detection for demo
 """
 
-import cv2
+import types
+try:
+    import cv2
+except ImportError:  # opencv-python-headless not installed in this environment
+    cv2: types.ModuleType | None = None
 import numpy as np
 import time
 from typing import List, Dict, Tuple, Optional
