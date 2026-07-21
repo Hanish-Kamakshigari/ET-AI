@@ -1,5 +1,7 @@
 # 🛡️ SurakshaAI — Multi-Engine Industrial Safety & Intelligence Platform
 
+> 🌐 **Live Application**: Try SurakshaAI live at **[suraksh-ai.streamlit.app](https://suraksh-ai.streamlit.app)**
+
 SurakshaAI is a high-performance industrial safety and compliance intelligence platform. It integrates real-time object detection and safety checking into a multi-layered safety architecture.
 
 Designed for high-hazard environments (refineries, power blocks, chemical storehouses), SurakshaAI goes beyond simple computer vision. It combines **YOLOv8-based vision perception** with a **state evaluation engine**, **compliance rule correlation**, and **mitigation/action loops** to prevent industrial accidents.
