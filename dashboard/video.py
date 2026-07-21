@@ -1179,9 +1179,13 @@ def stream_cctv_feed_raw(
     )
 
     # Cache latest detections/worker counts for the rest of the dashboard.
+    # Cache latest detections/worker counts for the rest of the dashboard.
     st.session_state.current_detections = active_dets
     st.session_state.yolo_worker_counts[selected_zone] = w_count
     latest[f"{selected_zone}_worker_count"] = w_count
+
+    # Update AlertManager immediately with current frame detections
+    am.update(active_dets, selected_zone)
 
     # Feed live data to the Safety Intelligence Orchestrator
     try:
@@ -1252,50 +1256,37 @@ def stream_cctv_feed_raw(
 
     if alert_conditions["should_alert"]:
         severity = alert_conditions.get('severity', 'MEDIUM').upper()
-
         st.session_state['alert_stable_frames'] = stable + 1
 
         alert_key = f"alert_active_{selected_zone}"
         current_incident = f"{selected_zone}_{severity}"
 
-        print(f"[DIAGNOSTIC] FSM transition: fsm={fsm}, stable={stable}, severity={severity}, zone={selected_zone}")
-
         if fsm == 'NORMAL':
-            if stable >= 3:
+            if stable >= 2:
                 st.session_state['alert_fsm_state'] = 'DETECTING'
                 st.session_state[f"_safe_frames_{selected_zone}"] = 0
-                print(f"[DIAGNOSTIC] FSM: NORMAL -> DETECTING")
+                print(f"[REALTIME_PIPELINE] FSM: NORMAL -> DETECTING (Frame={frame_idx})")
 
         elif fsm == 'DETECTING':
-            if stable >= 6:
-                st.session_state['alert_fsm_state'] = 'WARNING_ACTIVE'
+            if stable >= 4:
+                st.session_state['alert_fsm_state'] = 'DISPATCHING'
                 st.session_state[alert_key] = True
                 st.session_state["_last_incident"] = current_incident
                 st.session_state[f"_safe_frames_{selected_zone}"] = 0
-                print(f"[DIAGNOSTIC] FSM: DETECTING -> WARNING_ACTIVE")
-
-        elif fsm == 'WARNING_ACTIVE':
-            if not st.session_state.get(alert_key, False) or st.session_state.get("_last_incident") != current_incident:
-                st.session_state[alert_key] = True
-                st.session_state["_last_incident"] = current_incident
                 dispatch_alerts(alert_conditions)
-                st.session_state['alert_fsm_state'] = 'DISPATCHING'
-                print(f"[DIAGNOSTIC] FSM: WARNING_ACTIVE -> DISPATCHING, dispatch_alerts called")
-            else:
-                siren_st = st.session_state.get('siren_status', {})
-                if siren_st.get('status') in ('ACTIVE', 'ACTIVE 🔊'):
-                    st.session_state['alert_fsm_state'] = 'DELIVERED'
-                    print(f"[DIAGNOSTIC] FSM: WARNING_ACTIVE -> DELIVERED")
+                print(f"[REALTIME_PIPELINE] FSM: DETECTING -> DISPATCHING, dispatch_alerts triggered (Frame={frame_idx})")
 
-        elif fsm == 'DISPATCHING':
+        elif fsm in ('WARNING_ACTIVE', 'DISPATCHING'):
+            st.session_state[alert_key] = True
+            st.session_state["_last_incident"] = current_incident
             siren_st = st.session_state.get('siren_status', {})
-            if siren_st.get('status') in ('ACTIVE', 'ACTIVE 🔊', 'DELIVERED'):
+            if siren_st.get('status') in ('ACTIVE 🔊', 'DELIVERED ✓', 'ACTIVE'):
                 st.session_state['alert_fsm_state'] = 'DELIVERED'
-                print(f"[DIAGNOSTIC] FSM: DISPATCHING -> DELIVERED")
+                print(f"[REALTIME_PIPELINE] FSM: DISPATCHING -> DELIVERED (Frame={frame_idx})")
 
         elif fsm == 'DELIVERED':
             st.session_state['alert_fsm_state'] = 'INCIDENT_ACTIVE'
-            print(f"[DIAGNOSTIC] FSM: DELIVERED -> INCIDENT_ACTIVE")
+            print(f"[REALTIME_PIPELINE] FSM: DELIVERED -> INCIDENT_ACTIVE (Frame={frame_idx})")
 
         elif fsm in ('INCIDENT_ACTIVE', 'ACKNOWLEDGED'):
             if fsm == 'INCIDENT_ACTIVE':
@@ -1306,7 +1297,7 @@ def stream_cctv_feed_raw(
                 )
                 if any_acked:
                     st.session_state['alert_fsm_state'] = 'ACKNOWLEDGED'
-                    print(f"[DIAGNOSTIC] FSM: INCIDENT_ACTIVE -> ACKNOWLEDGED")
+                    print(f"[REALTIME_PIPELINE] FSM: INCIDENT_ACTIVE -> ACKNOWLEDGED (Frame={frame_idx})")
 
         st.session_state[f"_safe_frames_{selected_zone}"] = 0
 
@@ -1326,6 +1317,8 @@ def stream_cctv_feed_raw(
                 st.session_state['alert_fsm_state'] = 'NORMAL'
             elif fsm in ('DETECTING', 'WARNING_ACTIVE'):
                 st.session_state['alert_fsm_state'] = 'NORMAL'
+
+    print(f"[REALTIME_PIPELINE] Frame={frame_idx} | YOLO Detections={len(active_dets)} | Hazards={viol_count} | should_alert={alert_conditions['should_alert']} | ActiveAlerts={len(am.active_alerts)} | FSM={st.session_state.get('alert_fsm_state')}")
 
     # Debounce & telemetry state hash guard
     active_alert_count = len(am.active_alerts)
