@@ -1,4 +1,0 @@
-libgl1
-libglx0
-libglib2.0-0
-libgbm1
