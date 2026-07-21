@@ -1108,426 +1108,51 @@ def stream_cctv_feed_raw(
 
     st.session_state.cctv_frame_index = frame_idx
 
-        # Run YOLO or Simulated detection
-        from src.cctv.inference import run_inference
-        pil_img, w_count, viol_count, active_dets = run_inference(
-            frame,
-            selected_zone,
-            latest,
-            current_frame=frame_idx,
-            draw_fallback_fn=draw_pil_overlays
-        )
+    # Run YOLO or Simulated detection
+    from src.cctv.inference import run_inference
+    pil_img, w_count, viol_count, active_dets = run_inference(
+        frame,
+        selected_zone,
+        latest,
+        current_frame=frame_idx,
+        draw_fallback_fn=draw_pil_overlays
+    )
 
-        # Cache latest detections/worker counts for the rest of the dashboard.
-        st.session_state.current_detections = active_dets
-        st.session_state.yolo_worker_counts[selected_zone] = w_count
-        latest[f"{selected_zone}_worker_count"] = w_count
+    # Cache latest detections/worker counts for the rest of the dashboard.
+    st.session_state.current_detections = active_dets
+    st.session_state.yolo_worker_counts[selected_zone] = w_count
+    latest[f"{selected_zone}_worker_count"] = w_count
 
-        # Feed live data to the Safety Intelligence Orchestrator
-        try:
-            from src.safety_intelligence import get_intelligence_orchestrator
-            _orch = get_intelligence_orchestrator()
-            _orch.ingest_live_frame(
-                zone=selected_zone,
-                detections=active_dets,
-                telemetry=latest,
-                alert_manager=am,
-            )
-        except Exception:
-            pass
-
-        # Render CCTV Frame + Status Bar in place
-        if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
-            if frame_slot:
-                from PIL import ImageOps
-                padded_img = ImageOps.expand(pil_img, border=(0, 30), fill='black')
-                frame_slot.image(padded_img, width='stretch')
-                st.session_state['last_cctv_frame'] = pil_img
-
-            fps_val = 25.0 if play_active else 0.0
-            p_count = w_count
-            h_count = viol_count
-
-            safe_zones_count = 6
-            active_alerts_dict = am.active_alerts if hasattr(am, 'active_alerts') else {}
-            active_alert_zones = {a.zone for a in active_alerts_dict.values()}
-            safe_zones_count = 6 - len(active_alert_zones)
-
-            if status_bar_placeholder:
-                audio_muted = st.session_state.get('audio_muted', False)
-                audio_icon = "🔇" if audio_muted else "🔊"
-                audio_lbl = "MUTED" if audio_muted else "SOUND ON"
-                audio_color = "#ef4444" if audio_muted else "#22c55e"
-                status_bar_placeholder.markdown(f"""
-                <div style='background:#0a1628; border:1px solid #1e3a5f; border-top:none;
-                            border-radius:0 0 8px 8px; padding:8px 16px;
-                            display:flex; justify-content:space-around; align-items:center;
-                            font-family:"Outfit",sans-serif; font-size:12px;'>
-                    <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">{fps_val:.1f}</b></span>
-                    <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">{p_count}</b></span>
-                    <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">{h_count}</b></span>
-                    <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">{safe_zones_count}</b></span>
-                    <a href='?toggle_audio=1' target='_self' style='text-decoration:none; display:flex; align-items:center; gap:4px;'>
-                        <span style='font-size:12px;'>{audio_icon}</span>
-                        <span style='color:{audio_color}; font-weight:800; font-size:10px; letter-spacing:0.5px;'>{audio_lbl}</span>
-                    </a>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            if frame_slot:
-                frame_slot.empty()
-            if status_bar_placeholder:
-                status_bar_placeholder.empty()
-
-        # Evaluate alert conditions and drive the FSM + dispatch
-        alert_conditions = evaluate_alert_conditions(
-            detections=active_dets,
-            violations=viol_count,
+    # Feed live data to the Safety Intelligence Orchestrator
+    try:
+        from src.safety_intelligence import get_intelligence_orchestrator
+        _orch = get_intelligence_orchestrator()
+        _orch.ingest_live_frame(
             zone=selected_zone,
-            telemetry=latest
+            detections=active_dets,
+            telemetry=latest,
+            alert_manager=am,
         )
+    except Exception:
+        pass
 
-        fsm = st.session_state.get('alert_fsm_state', 'NORMAL')
-        stable = st.session_state.get('alert_stable_frames', 0)
+    # Render CCTV Frame + Status Bar in place
+    if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
+        if frame_slot:
+            from PIL import ImageOps
+            padded_img = ImageOps.expand(pil_img, border=(0, 30), fill='black')
+            frame_slot.image(padded_img, width='stretch')
+            st.session_state['last_cctv_frame'] = pil_img
 
-        if alert_conditions["should_alert"]:
-            severity = alert_conditions.get('severity', 'MEDIUM').upper()
+        fps_val = 25.0 if play_active else 0.0
+        p_count = w_count
+        h_count = viol_count
 
-            st.session_state['alert_stable_frames'] = stable + 1
+        safe_zones_count = 6
+        active_alerts_dict = am.active_alerts if hasattr(am, 'active_alerts') else {}
+        active_alert_zones = {a.zone for a in active_alerts_dict.values()}
+        safe_zones_count = 6 - len(active_alert_zones)
 
-            alert_key = f"alert_active_{selected_zone}"
-            current_incident = f"{selected_zone}_{severity}"
-
-            if fsm == 'NORMAL':
-                if stable >= 3:
-                    st.session_state['alert_fsm_state'] = 'DETECTING'
-                    st.session_state[f"_safe_frames_{selected_zone}"] = 0
-
-            elif fsm == 'DETECTING':
-                if stable >= 6:
-                    st.session_state['alert_fsm_state'] = 'WARNING_ACTIVE'
-                    st.session_state[alert_key] = True
-                    st.session_state["_last_incident"] = current_incident
-                    st.session_state[f"_safe_frames_{selected_zone}"] = 0
-
-            elif fsm == 'WARNING_ACTIVE':
-                if not st.session_state.get(alert_key, False) or st.session_state.get("_last_incident") != current_incident:
-                    st.session_state[alert_key] = True
-                    st.session_state["_last_incident"] = current_incident
-                    dispatch_alerts(alert_conditions)
-                    st.session_state['alert_fsm_state'] = 'DISPATCHING'
-                else:
-                    siren_st = st.session_state.get('siren_status', {})
-                    if siren_st.get('status') in ('ACTIVE', 'ACTIVE 🔊'):
-                        st.session_state['alert_fsm_state'] = 'DELIVERED'
-
-            elif fsm == 'DISPATCHING':
-                siren_st = st.session_state.get('siren_status', {})
-                if siren_st.get('status') in ('ACTIVE', 'ACTIVE 🔊', 'DELIVERED'):
-                    st.session_state['alert_fsm_state'] = 'DELIVERED'
-
-            elif fsm == 'DELIVERED':
-                st.session_state['alert_fsm_state'] = 'INCIDENT_ACTIVE'
-
-            elif fsm in ('INCIDENT_ACTIVE', 'ACKNOWLEDGED'):
-                if fsm == 'INCIDENT_ACTIVE':
-                    all_active = am.active_alerts
-                    any_acked = any(
-                        getattr(getattr(a, 'status', None), 'name', str(getattr(a, 'status', ''))).upper() in ('ACKNOWLEDGED', 'ACK')
-                        for a in all_active.values()
-                    )
-                    if any_acked:
-                        st.session_state['alert_fsm_state'] = 'ACKNOWLEDGED'
-
-            st.session_state[f"_safe_frames_{selected_zone}"] = 0
-
-        else:
-            safe_key = f"_safe_frames_{selected_zone}"
-            st.session_state[safe_key] = st.session_state.get(safe_key, 0) + 1
-            st.session_state['alert_stable_frames'] = 0
-
-            if st.session_state[safe_key] >= 10:
-                if st.session_state.get(f"alert_active_{selected_zone}", False):
-                    clear_alert_if_safe(selected_zone)
-                    st.session_state[f"alert_active_{selected_zone}"] = False
-                    st.session_state["_last_incident"] = None
-                    if fsm in ('INCIDENT_ACTIVE', 'ACKNOWLEDGED', 'DELIVERED', 'DISPATCHING'):
-                        st.session_state['alert_fsm_state'] = 'RESOLVED'
-                elif fsm == 'RESOLVED':
-                    st.session_state['alert_fsm_state'] = 'NORMAL'
-                elif fsm in ('DETECTING', 'WARNING_ACTIVE'):
-                    st.session_state['alert_fsm_state'] = 'NORMAL'
-
-        # Debounce guard
-        active_alert_count = len(am.active_alerts)
-        siren_state_val = st.session_state.get('siren_status', {}).get('status', 'STANDBY')
-        current_fsm = st.session_state.get('alert_fsm_state', 'NORMAL')
-        new_ui_hash = f"{active_alert_count}|{siren_state_val}|{current_fsm}|{selected_zone}"
-        ui_state_changed = (new_ui_hash != st.session_state.get('alert_ui_hash', ''))
-        if ui_state_changed:
-            st.session_state['alert_ui_hash'] = new_ui_hash
-
-        if data_dict:
-            st.session_state.zone_risks = data_dict.get('zone_risks', {})
-
-        if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
-            try:
-                from dashboard.layout import render_top_alert_banner
-                top_banner_p = placeholders.get('top_banner')
-                if top_banner_p:
-                    render_top_alert_banner(top_banner_p, am, selected_zone=selected_zone)
-            except Exception:
-                pass
-
-            if ui_state_changed:
-                try:
-                    from dashboard.components import render_notifications_panel
-                    notifications_p = placeholders.get('notifications')
-                    if notifications_p:
-                        render_notifications_panel(notifications_p, data_dict, selected_zone)
-                except Exception:
-                    pass
-
-                try:
-                    from dashboard.components import render_risk_analysis_row
-                    render_risk_analysis_row(placeholders, data_dict, selected_zone, active_dets)
-                except Exception:
-                    pass
-
-                try:
-                    from dashboard.components import render_decision_telemetry_row
-                    max_risk = "LOW"
-                    risk_color = "#22c55e"
-                    if len(am.active_alerts) > 0:
-                        sev_rank = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
-                        highest_active = max(
-                            am.active_alerts.values(),
-                            key=lambda x: sev_rank.get(getattr(x, 'risk_level', 'LOW').upper(), 0)
-                        )
-                        max_risk = getattr(highest_active, 'risk_level', 'LOW').upper()
-                        from src.ui_components import Colors
-                        risk_color = Colors.SEVERITY.get(max_risk, "#22c55e")
-
-                    data_dict['STATUS']['level'] = max_risk
-                    data_dict['STATUS']['color'] = risk_color
-                    data_dict['compound_risk_score'] = len(am.active_alerts) * 4.5 if max_risk in ("HIGH", "CRITICAL") else 1.2
-
-                    render_decision_telemetry_row(placeholders, data_dict, selected_zone, active_dets)
-                except Exception:
-                    pass
-
-                try:
-                    from dashboard.components import render_incident_summary_html
-                    summary_p = placeholders.get('incident_summary')
-                    if summary_p:
-                        open_inc = len(am.active_alerts)
-                        closed_inc = len(am.history)
-                        today_inc = open_inc + closed_inc
-                        summary_p.markdown(
-                            render_incident_summary_html(open_inc, closed_inc, today_inc),
-                            unsafe_allow_html=True
-                        )
-                except Exception:
-                    pass
-
-        # 3. Render contextual warning cards below the feed
-        alerts_list = []
-        is_critical = (latest.get("max_risk_level") == "CRITICAL" or st.session_state.simulate_active)
-        overpressure_active = (selected_zone == 'Zone_C' and frame_idx >= 95)
-
-        if selected_zone != 'Reactor_Area':
-            no_helmet_count = sum(1 for d in active_dets if d.label == 'no_helmet')
-            no_vest_count = sum(1 for d in active_dets if d.label == 'no_vest')
-
-            if no_helmet_count > 0 or no_vest_count > 0:
-                msg = ""
-                if no_helmet_count > 0 and no_vest_count > 0:
-                    msg = f"Multiple workers detected missing mandatory Hard Hats and High-Visibility Vests in {selected_zone_name}."
-                elif no_helmet_count > 0:
-                    msg = f"Worker detected missing mandatory protective Hard Hat in {selected_zone_name}."
-                else:
-                    msg = f"Worker detected missing mandatory High-Visibility safety Vest in {selected_zone_name}."
-
-                alerts_list.append(render_compliance_warning_card(
-                    severity="MEDIUM",
-                    hazard="PPE VIOLATION",
-                    description=msg,
-                    zone_label=selected_zone_name,
-                    confidence=92,
-                    time_str=datetime.now().strftime('%H:%M:%S'),
-                    duration=frame_idx
-                ))
-
-        if overpressure_active:
-            alerts_list.append(render_compliance_warning_card(
-                severity="HIGH",
-                hazard="OVERPRESSURE THREAT",
-                description="OVERPRESSURE WARNING — Gauge in red zone. Relief valve activation recommended.",
-                zone_label=selected_zone_name,
-                confidence=96,
-                time_str=datetime.now().strftime('%H:%M:%S'),
-                duration=frame_idx
-            ))
-
-        if selected_zone == 'Reactor_Area':
-            alerts_list.append(render_compliance_warning_card(
-                severity="HIGH",
-                hazard="BYSTANDER FLASH BURNS",
-                description="Bystander Flash Burns: Second worker far too close to welding arc without eye/face protection.",
-                zone_label=selected_zone_name,
-                confidence=89,
-                time_str=datetime.now().strftime('%H:%M:%S'),
-                duration=frame_idx
-            ))
-
-            alerts_list.append(render_compliance_warning_card(
-                severity="MEDIUM",
-                hazard="INADEQUATE FUME EXTRACTION",
-                description="Inadequate Fume Extraction: Yellowish haze indicates poor ventilation and build-up of toxic welding fumes.",
-                zone_label=selected_zone_name,
-                confidence=91,
-                time_str=datetime.now().strftime('%H:%M:%S'),
-                duration=frame_idx
-            ))
-
-        if selected_zone == 'Storage_Area':
-            alerts_list.append(render_compliance_warning_card(
-                severity="HIGH",
-                hazard="AREA OVERCROWDING",
-                description="More than 9 workers detected in the warehouse aisle under hazardous gas telemetry. Immediate shift rotation or aisle clearance required.",
-                zone_label=selected_zone_name,
-                confidence=94,
-                time_str=datetime.now().strftime('%H:%M:%S'),
-                duration=frame_idx
-            ))
-
-        show_critical_alert = False
-        if selected_zone == 'Zone_C':
-            show_critical_alert = is_critical
-        elif selected_zone == 'Zone_A':
-            show_critical_alert = (frame_idx >= 40)
-        elif selected_zone in ('Reactor_Area', 'Storage_Area'):
-            show_critical_alert = False
-        else:
-            show_critical_alert = is_critical or (selected_zone != 'Zone_C' and h_count > 0)
-
-        if show_critical_alert:
-            if selected_zone == 'Zone_C':
-                alerts_list.append(render_compliance_warning_card(
-                    severity="CRITICAL",
-                    hazard="EQUIPMENT OVERHEATING",
-                    description="Tank/pipe junction temperature exceeds critical threshold in Zone C. Coolant flow activation required.",
-                    zone_label=selected_zone_name,
-                    confidence=98,
-                    time_str=datetime.now().strftime('%H:%M:%S'),
-                    duration=frame_idx
-                ))
-            else:
-                alerts_list.append(render_compliance_warning_card(
-                    severity="CRITICAL",
-                    hazard="COMPATIBILITY VIOLATION",
-                    description="Uncontrolled volatile gas cloud detected in close proximity to active hot work permit. Evacuation required.",
-                    zone_label=selected_zone_name,
-                    confidence=97,
-                    time_str=datetime.now().strftime('%H:%M:%S'),
-                    duration=frame_idx
-                ))
-
-        if overpressure_active:
-            from src.cctv.object_detector import Detection
-            active_dets.append(Detection(label="overpressure", confidence=0.99, bbox=(0,0,0,0)))
-
-        am.update(active_dets, selected_zone)
-
-        if warnings_placeholder:
-            if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
-                if alerts_list:
-                    warnings_placeholder.markdown("\n".join(alerts_list), unsafe_allow_html=True)
-                else:
-                    warnings_placeholder.markdown(render_nominal_card(
-                        title="Zone Secure",
-                        message=f"All telemetry and compliance factors in {selected_zone_name} are nominal."
-                    ), unsafe_allow_html=True)
-            else:
-                warnings_placeholder.empty()
-
-    else:
-        # Live CCTV Simulation Fallback when MP4 or OpenCV is not available
-        selected_zone_name = ZONE_LABELS.get(selected_zone, selected_zone).upper() if selected_zone else "STANDBY"
-        if header_placeholder:
-            header_placeholder.markdown(f"""
-            <div class='cctv-header'>
-                <span style='color:#e2e8f0; font-weight:bold; font-family:"Outfit",sans-serif; font-size:12px; letter-spacing:0.5px;'>📷 LIVE CCTV FEED — {selected_zone_name}</span>
-                <span style='color:#00ff41; font-weight:bold; font-size:11px;'>● LIVE (SIMULATION)</span>
-            </div>
-            """, unsafe_allow_html=True)
- 
-        try:
-            from src.cctv.camera_manager import DemoVideoGenerator
-            sample_img_np = DemoVideoGenerator.generate_sample_frame(
-                zone=selected_zone,
-                time=datetime.now(),
-                zone_risks=data_dict.get('zone_risks', {}) if data_dict else {},
-                latest=latest
-            )
-            pil_img = Image.fromarray(sample_img_np)
-            frame_slot = frame_placeholder or frame_placeholder_1
-            if frame_slot:
-                from PIL import ImageOps
-                padded_img = ImageOps.expand(pil_img, border=(0, 30), fill='black')
-                frame_slot.image(padded_img, width='stretch')
-                st.session_state['last_cctv_frame'] = pil_img
-        except Exception as e:
-            if frame_placeholder:
-                frame_placeholder.error(f"Failed to generate simulated CCTV frame: {e}")
-
-            frame_placeholder.markdown(f"""
-            <div style="{img_background} height: 440px; border: 1px solid #1e3a5f; border-radius: 8px; position: relative; box-sizing: border-box; overflow: hidden; font-family: 'Outfit', sans-serif;">
-                <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(10, 14, 23, 0.75); display: flex; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box;">
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;">
-                        <div>
-                            <span style="font-size: 13px; font-weight: 700; color: #cbd5e1; letter-spacing: 0.5px;">📋 OPERATIONS STANDBY MONITOR</span>
-                            <div style="font-size: 10px; color: #64748b; margin-top: 2px;">CCTV Feed Standby • Last Frame Cached</div>
-                        </div>
-                        <span style="background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); border-radius: 6px; padding: 3px 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;">⏸ MONITORING PAUSED</span>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 15px 0; flex-grow: 1; align-content: center;">
-                        <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
-                            <div style="color: #64748b; font-size: 9px; text-transform: uppercase; font-weight: 600;">Last Analysed Frame</div>
-                            <div style="color: #60a5fa; font-size: 12px; font-weight: 800; margin-top: 4px; font-family: monospace;">{last_frame_label}</div>
-                        </div>
-                        <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
-                            <div style="color: #64748b; font-size: 9px; text-transform: uppercase; font-weight: 600;">Session Duration</div>
-                            <div style="color: #fff; font-size: 12px; font-weight: 800; margin-top: 4px; font-family: monospace;">{session_duration}</div>
-                        </div>
-                        <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
-                            <div style="color: #64748b; font-size: 9px; text-transform: uppercase; font-weight: 600;">Frames Processed</div>
-                            <div style="color: #fff; font-size: 12px; font-weight: 800; margin-top: 4px; font-family: monospace;">{frames_processed}</div>
-                        </div>
-                        <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
-                            <div style="color: #64748b; font-size: 9px; text-transform: uppercase; font-weight: 600;">Detection Accuracy</div>
-                            <div style="color: #22c55e; font-size: 12px; font-weight: 800; margin-top: 4px; font-family: monospace;">91.4%</div>
-                        </div>
-                        <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
-                            <div style="color: #64748b; font-size: 9px; text-transform: uppercase; font-weight: 600;">Average FPS</div>
-                            <div style="color: #22c55e; font-size: 12px; font-weight: 800; margin-top: 4px; font-family: monospace;">24.8 FPS</div>
-                        </div>
-                        <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
-                            <div style="color: #64748b; font-size: 9px; text-transform: uppercase; font-weight: 600;">Last Incident Time</div>
-                            <div style="color: #ef4444; font-size: 12px; font-weight: 800; margin-top: 4px; font-family: monospace;">{last_incident_str}</div>
-                        </div>
-                    </div>
-
-                    <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: #94a3b8; font-size: 10px;">🛡 YOLOv8n-PPE Surveillance Core Standby • {today_incidents} Incidents Logged</span>
-                        <a href="?start_autoplay=1" target="_self" style="text-decoration: none; display: inline-block; background: #3b82f6; color: #fff; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 6px 12px; border: 1px solid #2563eb; letter-spacing: 0.5px; text-transform: uppercase; transition: background 0.2s;">▶ Resume Monitoring</a>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        
         if status_bar_placeholder:
             audio_muted = st.session_state.get('audio_muted', False)
             audio_icon = "🔇" if audio_muted else "🔊"
@@ -1538,17 +1163,291 @@ def stream_cctv_feed_raw(
                         border-radius:0 0 8px 8px; padding:8px 16px;
                         display:flex; justify-content:space-around; align-items:center;
                         font-family:"Outfit",sans-serif; font-size:12px;'>
-                <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">0.0</b></span>
-                <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">0</b></span>
-                <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">0</b></span>
-                <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">6</b></span>
+                <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">{fps_val:.1f}</b></span>
+                <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">{p_count}</b></span>
+                <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">{h_count}</b></span>
+                <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">{safe_zones_count}</b></span>
                 <a href='?toggle_audio=1' target='_self' style='text-decoration:none; display:flex; align-items:center; gap:4px;'>
                     <span style='font-size:12px;'>{audio_icon}</span>
                     <span style='color:{audio_color}; font-weight:800; font-size:10px; letter-spacing:0.5px;'>{audio_lbl}</span>
                 </a>
             </div>
             """, unsafe_allow_html=True)
-        
-        if warnings_placeholder:
+    else:
+        if frame_slot:
+            frame_slot.empty()
+        if status_bar_placeholder:
+            status_bar_placeholder.empty()
+
+    # Evaluate alert conditions and drive the FSM + dispatch
+    alert_conditions = evaluate_alert_conditions(
+        detections=active_dets,
+        violations=viol_count,
+        zone=selected_zone,
+        telemetry=latest
+    )
+
+    fsm = st.session_state.get('alert_fsm_state', 'NORMAL')
+    stable = st.session_state.get('alert_stable_frames', 0)
+
+    if alert_conditions["should_alert"]:
+        severity = alert_conditions.get('severity', 'MEDIUM').upper()
+
+        st.session_state['alert_stable_frames'] = stable + 1
+
+        alert_key = f"alert_active_{selected_zone}"
+        current_incident = f"{selected_zone}_{severity}"
+
+        if fsm == 'NORMAL':
+            if stable >= 3:
+                st.session_state['alert_fsm_state'] = 'DETECTING'
+                st.session_state[f"_safe_frames_{selected_zone}"] = 0
+
+        elif fsm == 'DETECTING':
+            if stable >= 6:
+                st.session_state['alert_fsm_state'] = 'WARNING_ACTIVE'
+                st.session_state[alert_key] = True
+                st.session_state["_last_incident"] = current_incident
+                st.session_state[f"_safe_frames_{selected_zone}"] = 0
+
+        elif fsm == 'WARNING_ACTIVE':
+            if not st.session_state.get(alert_key, False) or st.session_state.get("_last_incident") != current_incident:
+                st.session_state[alert_key] = True
+                st.session_state["_last_incident"] = current_incident
+                dispatch_alerts(alert_conditions)
+                st.session_state['alert_fsm_state'] = 'DISPATCHING'
+            else:
+                siren_st = st.session_state.get('siren_status', {})
+                if siren_st.get('status') in ('ACTIVE', 'ACTIVE 🔊'):
+                    st.session_state['alert_fsm_state'] = 'DELIVERED'
+
+        elif fsm == 'DISPATCHING':
+            siren_st = st.session_state.get('siren_status', {})
+            if siren_st.get('status') in ('ACTIVE', 'ACTIVE 🔊', 'DELIVERED'):
+                st.session_state['alert_fsm_state'] = 'DELIVERED'
+
+        elif fsm == 'DELIVERED':
+            st.session_state['alert_fsm_state'] = 'INCIDENT_ACTIVE'
+
+        elif fsm in ('INCIDENT_ACTIVE', 'ACKNOWLEDGED'):
+            if fsm == 'INCIDENT_ACTIVE':
+                all_active = am.active_alerts
+                any_acked = any(
+                    getattr(getattr(a, 'status', None), 'name', str(getattr(a, 'status', ''))).upper() in ('ACKNOWLEDGED', 'ACK')
+                    for a in all_active.values()
+                )
+                if any_acked:
+                    st.session_state['alert_fsm_state'] = 'ACKNOWLEDGED'
+
+        st.session_state[f"_safe_frames_{selected_zone}"] = 0
+
+    else:
+        safe_key = f"_safe_frames_{selected_zone}"
+        st.session_state[safe_key] = st.session_state.get(safe_key, 0) + 1
+        st.session_state['alert_stable_frames'] = 0
+
+        if st.session_state[safe_key] >= 10:
+            if st.session_state.get(f"alert_active_{selected_zone}", False):
+                clear_alert_if_safe(selected_zone)
+                st.session_state[f"alert_active_{selected_zone}"] = False
+                st.session_state["_last_incident"] = None
+                if fsm in ('INCIDENT_ACTIVE', 'ACKNOWLEDGED', 'DELIVERED', 'DISPATCHING'):
+                    st.session_state['alert_fsm_state'] = 'RESOLVED'
+            elif fsm == 'RESOLVED':
+                st.session_state['alert_fsm_state'] = 'NORMAL'
+            elif fsm in ('DETECTING', 'WARNING_ACTIVE'):
+                st.session_state['alert_fsm_state'] = 'NORMAL'
+
+    # Debounce guard
+    active_alert_count = len(am.active_alerts)
+    siren_state_val = st.session_state.get('siren_status', {}).get('status', 'STANDBY')
+    current_fsm = st.session_state.get('alert_fsm_state', 'NORMAL')
+    new_ui_hash = f"{active_alert_count}|{siren_state_val}|{current_fsm}|{selected_zone}"
+    ui_state_changed = (new_ui_hash != st.session_state.get('alert_ui_hash', ''))
+    if ui_state_changed:
+        st.session_state['alert_ui_hash'] = new_ui_hash
+
+    if data_dict:
+        st.session_state.zone_risks = data_dict.get('zone_risks', {})
+
+    if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
+        try:
+            from dashboard.layout import render_top_alert_banner
+            top_banner_p = placeholders.get('top_banner')
+            if top_banner_p:
+                render_top_alert_banner(top_banner_p, am, selected_zone=selected_zone)
+        except Exception:
+            pass
+
+        if ui_state_changed:
+            try:
+                from dashboard.components import render_notifications_panel
+                notifications_p = placeholders.get('notifications')
+                if notifications_p:
+                    render_notifications_panel(notifications_p, data_dict, selected_zone)
+            except Exception:
+                pass
+
+            try:
+                from dashboard.components import render_risk_analysis_row
+                render_risk_analysis_row(placeholders, data_dict, selected_zone, active_dets)
+            except Exception:
+                pass
+
+            try:
+                from dashboard.components import render_decision_telemetry_row
+                max_risk = "LOW"
+                risk_color = "#22c55e"
+                if len(am.active_alerts) > 0:
+                    sev_rank = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
+                    highest_active = max(
+                        am.active_alerts.values(),
+                        key=lambda x: sev_rank.get(getattr(x, 'risk_level', 'LOW').upper(), 0)
+                    )
+                    max_risk = getattr(highest_active, 'risk_level', 'LOW').upper()
+                    from src.ui_components import Colors
+                    risk_color = Colors.SEVERITY.get(max_risk, "#22c55e")
+
+                data_dict['STATUS']['level'] = max_risk
+                data_dict['STATUS']['color'] = risk_color
+                data_dict['compound_risk_score'] = len(am.active_alerts) * 4.5 if max_risk in ("HIGH", "CRITICAL") else 1.2
+
+                render_decision_telemetry_row(placeholders, data_dict, selected_zone, active_dets)
+            except Exception:
+                pass
+
+            try:
+                from dashboard.components import render_incident_summary_html
+                summary_p = placeholders.get('incident_summary')
+                if summary_p:
+                    open_inc = len(am.active_alerts)
+                    closed_inc = len(am.history)
+                    today_inc = open_inc + closed_inc
+                    summary_p.markdown(
+                        render_incident_summary_html(open_inc, closed_inc, today_inc),
+                        unsafe_allow_html=True
+                    )
+            except Exception:
+                pass
+
+    # 3. Render contextual warning cards below the feed
+    alerts_list = []
+    is_critical = (latest.get("max_risk_level") == "CRITICAL" or st.session_state.get('simulate_active', False))
+    overpressure_active = (selected_zone == 'Zone_C' and frame_idx >= 95)
+
+    if selected_zone != 'Reactor_Area':
+        no_helmet_count = sum(1 for d in active_dets if d.label == 'no_helmet')
+        no_vest_count = sum(1 for d in active_dets if d.label == 'no_vest')
+
+        if no_helmet_count > 0 or no_vest_count > 0:
+            msg = ""
+            if no_helmet_count > 0 and no_vest_count > 0:
+                msg = f"Multiple workers detected missing mandatory Hard Hats and High-Visibility Vests in {selected_zone_name}."
+            elif no_helmet_count > 0:
+                msg = f"Worker detected missing mandatory protective Hard Hat in {selected_zone_name}."
+            else:
+                msg = f"Worker detected missing mandatory High-Visibility safety Vest in {selected_zone_name}."
+
+            alerts_list.append(render_compliance_warning_card(
+                severity="MEDIUM",
+                hazard="PPE VIOLATION",
+                description=msg,
+                zone_label=selected_zone_name,
+                confidence=92,
+                time_str=datetime.now().strftime('%H:%M:%S'),
+                duration=frame_idx
+            ))
+
+    if overpressure_active:
+        alerts_list.append(render_compliance_warning_card(
+            severity="HIGH",
+            hazard="OVERPRESSURE THREAT",
+            description="OVERPRESSURE WARNING — Gauge in red zone. Relief valve activation recommended.",
+            zone_label=selected_zone_name,
+            confidence=96,
+            time_str=datetime.now().strftime('%H:%M:%S'),
+            duration=frame_idx
+        ))
+
+    if selected_zone == 'Reactor_Area':
+        alerts_list.append(render_compliance_warning_card(
+            severity="HIGH",
+            hazard="BYSTANDER FLASH BURNS",
+            description="Bystander Flash Burns: Second worker far too close to welding arc without eye/face protection.",
+            zone_label=selected_zone_name,
+            confidence=89,
+            time_str=datetime.now().strftime('%H:%M:%S'),
+            duration=frame_idx
+        ))
+
+        alerts_list.append(render_compliance_warning_card(
+            severity="MEDIUM",
+            hazard="INADEQUATE FUME EXTRACTION",
+            description="Inadequate Fume Extraction: Yellowish haze indicates poor ventilation and build-up of toxic welding fumes.",
+            zone_label=selected_zone_name,
+            confidence=91,
+            time_str=datetime.now().strftime('%H:%M:%S'),
+            duration=frame_idx
+        ))
+
+    if selected_zone == 'Storage_Area':
+        alerts_list.append(render_compliance_warning_card(
+            severity="HIGH",
+            hazard="AREA OVERCROWDING",
+            description="More than 9 workers detected in the warehouse aisle under hazardous gas telemetry. Immediate shift rotation or aisle clearance required.",
+            zone_label=selected_zone_name,
+            confidence=94,
+            time_str=datetime.now().strftime('%H:%M:%S'),
+            duration=frame_idx
+        ))
+
+    show_critical_alert = False
+    if selected_zone == 'Zone_C':
+        show_critical_alert = is_critical
+    elif selected_zone == 'Zone_A':
+        show_critical_alert = (frame_idx >= 40)
+    elif selected_zone in ('Reactor_Area', 'Storage_Area'):
+        show_critical_alert = False
+    else:
+        show_critical_alert = is_critical or (selected_zone != 'Zone_C' and h_count > 0)
+
+    if show_critical_alert:
+        if selected_zone == 'Zone_C':
+            alerts_list.append(render_compliance_warning_card(
+                severity="CRITICAL",
+                hazard="EQUIPMENT OVERHEATING",
+                description="Tank/pipe junction temperature exceeds critical threshold in Zone C. Coolant flow activation required.",
+                zone_label=selected_zone_name,
+                confidence=98,
+                time_str=datetime.now().strftime('%H:%M:%S'),
+                duration=frame_idx
+            ))
+        else:
+            alerts_list.append(render_compliance_warning_card(
+                severity="CRITICAL",
+                hazard="COMPATIBILITY VIOLATION",
+                description="Uncontrolled volatile gas cloud detected in close proximity to active hot work permit. Evacuation required.",
+                zone_label=selected_zone_name,
+                confidence=97,
+                time_str=datetime.now().strftime('%H:%M:%S'),
+                duration=frame_idx
+            ))
+
+    if overpressure_active:
+        from src.cctv.object_detector import Detection
+        active_dets.append(Detection(label="overpressure", confidence=0.99, bbox=(0,0,0,0)))
+
+    am.update(active_dets, selected_zone)
+
+    if warnings_placeholder:
+        if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
+            if alerts_list:
+                warnings_placeholder.markdown("\n".join(alerts_list), unsafe_allow_html=True)
+            else:
+                warnings_placeholder.markdown(render_nominal_card(
+                    title="Zone Secure",
+                    message=f"All telemetry and compliance factors in {selected_zone_name} are nominal."
+                ), unsafe_allow_html=True)
+        else:
             warnings_placeholder.empty()
 
