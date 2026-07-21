@@ -3,7 +3,11 @@ Camera Manager - Handles video capture from multiple sources
 Supports webcam, IP cameras, and video files
 """
 
-import cv2
+import types
+try:
+    import cv2
+except ImportError:  # opencv-python-headless not installed in this environment
+    cv2: types.ModuleType | None = None
 import threading
 import time
 from typing import Dict, Optional, List, Tuple, Any, TYPE_CHECKING
@@ -32,6 +36,9 @@ class CameraSource:
         
     def connect(self) -> bool:
         """Connect to the camera source"""
+        if cv2 is None:
+            self.error = "cv2 (opencv-python-headless) is not installed"
+            return False
         try:
             if self.type == 'webcam':
                 self.cap = cv2.VideoCapture(int(self.path))
@@ -195,6 +202,8 @@ class CameraManager:
     
     def get_available_cameras(self) -> List[str]:
         """Get list of available camera sources"""
+        if cv2 is None:
+            return []
         sources = []
         
         # Check webcams (0-5)
@@ -204,7 +213,7 @@ class CameraManager:
                 if cap.isOpened():
                     sources.append(f'webcam_{i}')
                     cap.release()
-            except:
+            except Exception:
                 pass
         
         return sources
@@ -447,7 +456,13 @@ class DemoVideoGenerator:
         plt.close()
         
         img_data = np.frombuffer(buf_data, dtype=np.uint8)
-        img = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
+        if cv2 is not None:
+            img = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
+        else:
+            # Fallback: decode via PIL and return as numpy RGB array
+            from PIL import Image as _PILImage
+            import io as _io
+            img = np.array(_PILImage.open(_io.BytesIO(buf_data)).convert('RGB'))
         return img
     
     @staticmethod
@@ -480,6 +495,8 @@ class DemoVideoGenerator:
     @staticmethod
     def save_video(frames: List[np.ndarray], output_path: str, fps: int = 5) -> None:
         """Save frames as a video file"""
+        if cv2 is None:
+            raise RuntimeError("cv2 (opencv-python-headless) is required to save video files")
         if not frames:
             return
         
