@@ -1667,52 +1667,53 @@ def stream_cctv_feed_raw(
     }
 
     # Integrate real-time active alerts from AlertManager into compliance warnings
+    from src.config.ui_constants import ZONE_LABELS
     for alert in am.active_alerts.values():
-        if alert.zone == selected_zone:
-            import re as _re
-            raw_msg = getattr(alert, 'message', '')
+        import re as _re
+        raw_msg = getattr(alert, 'message', '')
+        
+        # Extract plain text hazard title from message
+        title_match = _re.search(r'<div[^>]*>\s*(.*?)\s*</div>', raw_msg, _re.DOTALL)
+        if title_match:
+            title = _re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
+        else:
+            title = _re.sub(r'<[^>]+>', '', raw_msg).strip().split('\n')[0][:60]
+        title_upper = ' '.join(title.split()).upper()
+        
+        # Map raw alert title to related compliance warnings
+        related_warnings = []
+        matched = False
+        for key, warnings in RELATED_COMPLIANCE_MAP.items():
+            if key in title_upper:
+                related_warnings.extend(warnings)
+                matched = True
+                break
+        
+        if not matched:
+            # Default fallback warning related to the alert
+            related_warnings.append({
+                "severity": getattr(alert.severity, 'name', 'CRITICAL').upper(),
+                "hazard": f"{title_upper} COMPLIANCE INFRACTION",
+                "description": f"Active {title_upper.lower()} incident violates EHS protocol. Immediate containment and supervisor review required.",
+                "confidence": 90
+            })
             
-            # Extract plain text hazard title from message
-            title_match = _re.search(r'<div[^>]*>\s*(.*?)\s*</div>', raw_msg, _re.DOTALL)
-            if title_match:
-                title = _re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
-            else:
-                title = _re.sub(r'<[^>]+>', '', raw_msg).strip().split('\n')[0][:60]
-            title_upper = ' '.join(title.split()).upper()
+        alert_zone_label = ZONE_LABELS.get(alert.zone, alert.zone).upper()
+        for warn in related_warnings:
+            hazard_name = warn["hazard"].upper()
+            if hazard_name in added_hazards:
+                continue
+            added_hazards.add(hazard_name)
             
-            # Map raw alert title to related compliance warnings
-            related_warnings = []
-            matched = False
-            for key, warnings in RELATED_COMPLIANCE_MAP.items():
-                if key in title_upper:
-                    related_warnings.extend(warnings)
-                    matched = True
-                    break
-            
-            if not matched:
-                # Default fallback warning related to the alert
-                related_warnings.append({
-                    "severity": getattr(alert.severity, 'name', 'CRITICAL').upper(),
-                    "hazard": f"{title_upper} COMPLIANCE INFRACTION",
-                    "description": f"Active {title_upper.lower()} incident violates EHS protocol. Immediate containment and supervisor review required.",
-                    "confidence": 90
-                })
-                
-            for warn in related_warnings:
-                hazard_name = warn["hazard"].upper()
-                if hazard_name in added_hazards:
-                    continue
-                added_hazards.add(hazard_name)
-                
-                alerts_list.append(render_compliance_warning_card(
-                    severity=warn["severity"],
-                    hazard=hazard_name,
-                    description=warn["description"],
-                    zone_label=selected_zone_name,
-                    confidence=warn["confidence"],
-                    time_str=alert.start_time.strftime('%H:%M') if alert.start_time else card_time_str,
-                    duration=frame_idx
-                ))
+            alerts_list.append(render_compliance_warning_card(
+                severity=warn["severity"],
+                hazard=hazard_name,
+                description=warn["description"],
+                zone_label=alert_zone_label,
+                confidence=warn["confidence"],
+                time_str=alert.start_time.strftime('%H:%M') if alert.start_time else card_time_str,
+                duration=frame_idx
+            ))
 
     if overpressure_active:
         from src.cctv.object_detector import Detection
