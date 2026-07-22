@@ -24,7 +24,7 @@ if sys.platform == 'win32':
     # it prevents socket cleanup/detachment and causes infinite loops and noisy printouts.
     try:
         import socket
-        from asyncio.proactor_events import _ProactorBasePipeTransport
+        from asyncio.proactor_events import _ProactorBasePipeTransport     
         
         def _patched_call_connection_lost(self: _ProactorBasePipeTransport, exc: Optional[BaseException]) -> None:
             if self._called_connection_lost:
