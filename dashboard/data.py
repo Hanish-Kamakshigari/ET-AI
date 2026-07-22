@@ -142,14 +142,24 @@ def init_engine() -> CompoundRiskEngine:
 def init_alerts(_engine: CompoundRiskEngine, _df: pd.DataFrame) -> AlertSystem:
     from src.alert_system import AlertSystem
     sys_obj = AlertSystem()
-    for i in range(max(0, len(_df)-50), len(_df)):
-        row = _df.iloc[i]
-        for alert in _engine.analyze_timestamp(row):
-            sys_obj.trigger_alert(row, {
-                'zone': alert.zone, 'risk_level': alert.risk_level,
-                'risk_score': alert.risk_score, 'factors': alert.factors,
-                'compound_factors': alert.compound_factors, 'message': alert.message,
-            })
+    
+    # Check if the database has any incidents already to avoid duplicate pre-population
+    try:
+        history = sys_obj.get_recent_alerts(1)
+    except Exception:
+        history = []
+        
+    if not history:
+        for i in range(max(0, len(_df)-50), len(_df)):
+            row = _df.iloc[i]
+            for alert in _engine.analyze_timestamp(row):
+                payload = sys_obj.trigger_alert(row, {
+                    'zone': alert.zone, 'risk_level': alert.risk_level,
+                    'risk_score': alert.risk_score, 'factors': alert.factors,
+                    'compound_factors': alert.compound_factors, 'message': alert.message,
+                })
+                if payload and "incident_id" in payload:
+                    sys_obj.resolve_alert(payload["incident_id"])
     return sys_obj
 
 
