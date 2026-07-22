@@ -1270,6 +1270,24 @@ def stream_cctv_feed_raw(
     fsm = st.session_state.get('alert_fsm_state', 'NORMAL')
     stable = st.session_state.get('alert_stable_frames', 0)
 
+    # Force FSM to align with database active alerts state to prevent FSM desync
+    active_alerts_list = list(am.active_alerts.values())
+    if not active_alerts_list:
+        if fsm in ('DISPATCHING', 'DELIVERED', 'INCIDENT_ACTIVE', 'ACKNOWLEDGED'):
+            st.session_state['alert_fsm_state'] = 'NORMAL'
+            fsm = 'NORMAL'
+    else:
+        any_acked = any(
+            getattr(getattr(a, 'status', None), 'name', str(getattr(a, 'status', ''))).upper() in ('ACKNOWLEDGED', 'ACK')
+            for a in active_alerts_list
+        )
+        if any_acked:
+            st.session_state['alert_fsm_state'] = 'ACKNOWLEDGED'
+            fsm = 'ACKNOWLEDGED'
+        elif fsm in ('NORMAL', 'RESOLVED'):
+            st.session_state['alert_fsm_state'] = 'INCIDENT_ACTIVE'
+            fsm = 'INCIDENT_ACTIVE'
+
     if alert_conditions["should_alert"]:
         severity = alert_conditions.get('severity', 'MEDIUM').upper()
         st.session_state['alert_stable_frames'] = stable + 1
