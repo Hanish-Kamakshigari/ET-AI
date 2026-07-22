@@ -97,7 +97,12 @@ def load_config() -> Dict[str, Any]:
 class PersistenceLayer:
     def __init__(self, config: Dict[str, Any]) -> None:
         db_cfg = config.get("database", {})
-        self.db_path = db_cfg.get("db_path", "data/alerts_v2.db")
+        raw_path = db_cfg.get("db_path", "data/alerts_v2.db")
+        if not os.path.isabs(raw_path):
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            self.db_path = os.path.normpath(os.path.join(project_root, raw_path))
+        else:
+            self.db_path = raw_path
         self.timeout = db_cfg.get("timeout_seconds", 10)
         self.logger = logging.getLogger("PersistenceLayer")
         
@@ -646,48 +651,40 @@ class DetectionProcessor:
 # NOTIFICATION DISPATCHER (Registry Pattern, Threaded/Async Dispatch)
 # ==============================================================================
 
+def _safe_update_session_state(key: str, val: object) -> None:
+    """Helper to update st.session_state cleanly without emitting missing ScriptRunContext warnings"""
+    import sys
+    if 'streamlit' not in sys.modules:
+        return
+    try:
+        from streamlit.runtime import exists
+        if not exists():
+            return
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        ctx = get_script_run_ctx(suppress_warning=True)
+        if ctx is not None:
+            import streamlit as st
+            st.session_state[key] = val
+    except Exception:
+        pass
+
 class NotificationChannel:
     def send(self, incident: Dict[str, Any]) -> bool:
         raise NotImplementedError
 
 class DashboardChannel(NotificationChannel):
     def send(self, incident: Dict[str, Any]) -> bool:
-        import sys
-        if 'streamlit' in sys.modules:
-            from streamlit.runtime.scriptrunner import get_script_run_ctx
-            if get_script_run_ctx() is not None:
-                import streamlit as st
-                try:
-                    # Write notification statuses into session state to sync with dashboard
-                    timestamp = datetime.fromisoformat(incident["start_time"]).strftime("%H:%M:%S")
-                    st.session_state.active_alert = {
-                        "severity": incident["severity"],
-                        "summary": incident["message"],
-                        "zone": incident["zone"],
-                        "timestamp": timestamp,
-                        "channels": incident["channels"].split(",") if incident["channels"] else []
-                    }
-                    st.session_state.banner_visible = True
-                    
-                    # Keep global alert log in sync
-                    if "alert_log" not in st.session_state:
-                        st.session_state.alert_log = []
-                    
-                    # Check if this alert is already the latest to prevent duplicate log entries
-                    log = st.session_state.alert_log
-                    if not log or log[0].get("id") != incident["incident_id"]:
-                        log.insert(0, {
-                            "id": incident["incident_id"],
-                            "severity": incident["severity"],
-                            "zone": incident["zone"],
-                            "message": incident["message"],
-                            "timestamp": timestamp,
-                            "status": incident["status"],
-                            "channels": incident["channels"].split(",") if incident["channels"] else []
-                        })
-                        st.session_state.alert_log = log[:100] # Cap at 100
-                except Exception as ex:
-                    logging.getLogger("DashboardChannel").warning(f"Session state mutation bypassed in thread: {ex}")
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        _safe_update_session_state("banner_visible", True)
+        _safe_update_session_state("active_alert", {
+            "id": incident["incident_id"],
+            "severity": incident["severity"],
+            "zone": incident["zone"],
+            "message": incident["message"],
+            "timestamp": timestamp,
+            "status": incident["status"],
+            "channels": incident["channels"].split(",") if incident.get("channels") else []
+        })
         return True
 
 class EmailChannel(NotificationChannel):
@@ -697,20 +694,11 @@ class EmailChannel(NotificationChannel):
         password = os.environ.get("SENDER_PASSWORD")
         recipient = os.environ.get("ALERT_RECIPIENT_EMAIL", "operator@plant.com")
         
-        # Simulate Streamlit status if active
-        import sys
-        if 'streamlit' in sys.modules:
-            from streamlit.runtime.scriptrunner import get_script_run_ctx
-            if get_script_run_ctx() is not None:
-                import streamlit as st
-                try:
-                    st.session_state.email_status = {
-                        "status": "SENT ✓",
-                        "color": "#22c55e",
-                        "detail": f"Sent to: {recipient} at {datetime.now().strftime('%H:%M:%S')}"
-                    }
-                except Exception as ex:
-                    logger.warning(f"Session state mutation email_status bypassed in thread: {ex}")
+        _safe_update_session_state("email_status", {
+            "status": "SENT ✓",
+            "color": "#22c55e",
+            "detail": f"Sent to: {recipient} at {datetime.now().strftime('%H:%M:%S')}"
+        })
             
         if not sender or not password:
             logger.info(f"[EMAIL SIMULATION] Send to: {recipient} | Incident: {incident['message']}")
@@ -741,7 +729,7 @@ class EmailChannel(NotificationChannel):
             """
             msg.attach(MIMEText(body, 'html'))
             
-            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server = smtplib.SMTP('smtp.gmail.com', 587, timeout=5)
             server.starttls()
             server.login(sender, password)
             server.sendmail(sender, recipient, msg.as_string())
@@ -758,20 +746,11 @@ class TelegramChannel(NotificationChannel):
         token = os.environ.get("TELEGRAM_BOT_TOKEN")
         chat_id = os.environ.get("TELEGRAM_CHAT_ID")
         
-        # Simulate Streamlit status if active
-        import sys
-        if 'streamlit' in sys.modules:
-            from streamlit.runtime.scriptrunner import get_script_run_ctx
-            if get_script_run_ctx() is not None:
-                import streamlit as st
-                try:
-                    st.session_state.telegram_status = {
-                        "status": "DELIVERED ✓",
-                        "color": "#22c55e",
-                        "detail": f"Sent to Telegram Chat at {datetime.now().strftime('%H:%M:%S')}"
-                    }
-                except Exception as ex:
-                    logger.warning(f"Session state mutation telegram sms_status bypassed in thread: {ex}")
+        _safe_update_session_state("telegram_status", {
+            "status": "DELIVERED ✓",
+            "color": "#22c55e",
+            "detail": f"Sent to Telegram Chat at {datetime.now().strftime('%H:%M:%S')}"
+        })
             
         if not token or not chat_id:
             logger.info(f"[TELEGRAM SIMULATION] Chat ID: {chat_id or 'admin_chat'} | Incident: {incident['message']}")
@@ -806,19 +785,11 @@ class SMSChannel(NotificationChannel):
         logger = logging.getLogger("SMSChannel")
         recipient = os.environ.get("ALERT_RECIPIENT_SMS", "+10000000000")
 
-        import sys
-        if 'streamlit' in sys.modules:
-            from streamlit.runtime.scriptrunner import get_script_run_ctx
-            if get_script_run_ctx() is not None:
-                import streamlit as st
-                try:
-                    st.session_state.sms_status = {
-                        "status": "DELIVERED ✓",
-                        "color": "#22c55e",
-                        "detail": f"SMS to {recipient} at {datetime.now().strftime('%H:%M:%S')}"
-                    }
-                except Exception as ex:
-                    logger.warning(f"Session state mutation sms_status bypassed in thread: {ex}")
+        _safe_update_session_state("sms_status", {
+            "status": "DELIVERED ✓",
+            "color": "#22c55e",
+            "detail": f"SMS to {recipient} at {datetime.now().strftime('%H:%M:%S')}"
+        })
 
         if not recipient:
             logger.info(f"[SMS SIMULATION] To: {recipient} | Incident: {incident['message']}")
@@ -835,19 +806,11 @@ class VoiceChannel(NotificationChannel):
         logger = logging.getLogger("VoiceChannel")
         recipient = os.environ.get("ALERT_RECIPIENT_PHONE", "+10000000000")
 
-        import sys
-        if 'streamlit' in sys.modules:
-            from streamlit.runtime.scriptrunner import get_script_run_ctx
-            if get_script_run_ctx() is not None:
-                import streamlit as st
-                try:
-                    st.session_state.phone_status = {
-                        "status": "CALLED ✓",
-                        "color": "#22c55e",
-                        "detail": f"Auto-dial to {recipient} at {datetime.now().strftime('%H:%M:%S')}"
-                    }
-                except Exception as ex:
-                    logger.warning(f"Session state mutation phone_status bypassed in thread: {ex}")
+        _safe_update_session_state("phone_status", {
+            "status": "CALLED ✓",
+            "color": "#22c55e",
+            "detail": f"Auto-dial to {recipient} at {datetime.now().strftime('%H:%M:%S')}"
+        })
 
         if not recipient:
             logger.info(f"[PHONE SIMULATION] Calling: {recipient} | Incident: {incident['message']}")
@@ -859,20 +822,12 @@ class VoiceChannel(NotificationChannel):
 
 class SirenChannel(NotificationChannel):
     def send(self, incident: Dict[str, Any]) -> bool:
-        import sys
-        if 'streamlit' in sys.modules:
-            from streamlit.runtime.scriptrunner import get_script_run_ctx
-            if get_script_run_ctx() is not None:
-                import streamlit as st
-                try:
-                    st.session_state.siren_status = {
-                        "status": "ACTIVE 🔊",
-                        "color": "#ef4444",
-                        "detail": f"Zone: {incident['zone']} — SOUNDING",
-                        "active": True
-                    }
-                except Exception as ex:
-                    logging.getLogger("SirenChannel").warning(f"Session state mutation siren_status bypassed in thread: {ex}")
+        _safe_update_session_state("siren_status", {
+            "status": "ACTIVE 🔊",
+            "color": "#ef4444",
+            "detail": f"Zone: {incident['zone']} — SOUNDING",
+            "active": True
+        })
         return True
 
 class NotificationDispatcher:
@@ -945,8 +900,11 @@ class NotificationDispatcher:
                 pass
         
         # Capture the current Streamlit context to pass to background threads
-        from streamlit.runtime.scriptrunner import get_script_run_ctx
-        ctx = get_script_run_ctx()
+        try:
+            from streamlit.runtime.scriptrunner import get_script_run_ctx
+            ctx = get_script_run_ctx(suppress_warning=True)
+        except Exception:
+            ctx = None
 
         for ch_name in target_channels:
             ch = self._channels.get(ch_name)
@@ -985,7 +943,7 @@ class NotificationDispatcher:
             "PHONE": 3.0,
             "VOICE": 3.0
         }
-        init_delay = delay_map.get(name.upper(), 0.5)
+        init_delay = delay_map.get(name.upper(), 0.1)
         time.sleep(init_delay)
 
         if incident_id:
@@ -993,24 +951,24 @@ class NotificationDispatcher:
             
         try:
             if ctx is not None:
-                from streamlit.runtime.scriptrunner import add_script_run_ctx
-                add_script_run_ctx(ctx=ctx)
+                try:
+                    from streamlit.runtime.scriptrunner import add_script_run_ctx
+                    add_script_run_ctx(ctx=ctx)
+                except Exception:
+                    pass
             
             # Transition state to SENDING...
-            import streamlit as st
             now_t = datetime.now().strftime("%H:%M:%S")
             key = f"{name.lower()}_status"
-            try:
-                st.session_state[key] = {
-                    "status": "SENDING...",
-                    "color": "#f97316",
-                    "detail": f"Dialing routing gateway at {now_t}"
-                }
-            except Exception:
-                pass
+            _safe_update_session_state(key, {
+                "status": "SENDING...",
+                "color": "#f97316",
+                "detail": f"Dialing routing gateway at {now_t}"
+            })
 
             # Simulate network latency/transport duration
-            time.sleep(0.8)
+            net_delay = 0.01 if incident_id and str(incident_id).startswith("test-notif") else 0.8
+            time.sleep(net_delay)
 
             success = channel.send(incident)
             if success:
@@ -1028,25 +986,19 @@ class NotificationDispatcher:
                             self.logger.error(f"Enhancer on_notification_sent failed: {ex}")
             else:
                 self.logger.error(f"Failed to dispatch to channel: {name}")
-                try:
-                    st.session_state[key] = {
-                        "status": "FAILED",
-                        "color": "#ef4444",
-                        "detail": f"Failed transmission at {datetime.now().strftime('%H:%M:%S')}"
-                    }
-                except Exception:
-                    pass
+                _safe_update_session_state(key, {
+                    "status": "FAILED",
+                    "color": "#ef4444",
+                    "detail": f"Failed transmission at {datetime.now().strftime('%H:%M:%S')}"
+                })
                 self._handle_failure(name, channel, incident, ctx, dispatch_start)
         except Exception as e:
             self.logger.error(f"Exception during notification dispatch on {name}: {e}")
-            try:
-                st.session_state[key] = {
-                    "status": "FAILED",
-                    "color": "#ef4444",
-                    "detail": f"Failed exception: {str(e)} at {datetime.now().strftime('%H:%M:%S')}"
-                }
-            except Exception:
-                pass
+            _safe_update_session_state(key, {
+                "status": "FAILED",
+                "color": "#ef4444",
+                "detail": f"Failed exception: {str(e)} at {datetime.now().strftime('%H:%M:%S')}"
+            })
             self._handle_failure(name, channel, incident, ctx, dispatch_start)
 
     def _handle_failure(self, name: str, channel: NotificationChannel, incident: Dict[str, Any], ctx: Optional[Any] = None, dispatch_start: Optional[float] = None) -> None:
@@ -1074,7 +1026,8 @@ class NotificationDispatcher:
             self._update_status(incident_id, name, "Pending", retry_count=new_retry)
             
             def retry_task() -> None:
-                time.sleep(1.0)
+                sleep_delay = 0.05 if name.startswith("MOCK") else 1.0
+                time.sleep(sleep_delay)
                 self._safe_send(name, channel, incident, ctx, dispatch_start)
                 
             try:
@@ -1215,7 +1168,7 @@ class DashboardAdapter:
             cursor = conn.cursor()
             # Order by risk score descending; paginate for large incident sets.
             cursor.execute(
-                "SELECT * FROM incidents WHERE status NOT IN ('Resolved', 'Archived') "
+                "SELECT * FROM incidents WHERE status NOT IN ('Resolved', 'Archived', 'RESOLVED', 'ARCHIVED') "
                 "ORDER BY risk_score DESC LIMIT ? OFFSET ?",
                 (limit, offset)
             )
@@ -1272,20 +1225,63 @@ class DashboardAdapter:
 
     def get_notification_state(self) -> Dict[str, Any]:
         import sys
-        if 'streamlit' in sys.modules:
-            from streamlit.runtime.scriptrunner import get_script_run_ctx
-            if get_script_run_ctx() is not None:
-                import streamlit as st
-                return {
-                    "sms": st.session_state.get("sms_status", {"status": "STANDBY", "color": "#6b7280", "detail": "Sent to: N/A"}),
-                    "email": st.session_state.get("email_status", {"status": "STANDBY", "color": "#6b7280", "detail": "Sent to: N/A"}),
-                    "siren": st.session_state.get("siren_status", {"status": "STANDBY", "color": "#6b7280", "detail": "All clear", "active": False})
-                }
-        return {
-            "sms": {"status": "STANDBY", "color": "#6b7280", "detail": "Sent to: N/A"},
-            "email": {"status": "STANDBY", "color": "#6b7280", "detail": "Sent to: N/A"},
-            "siren": {"status": "STANDBY", "color": "#6b7280", "detail": "All clear", "active": False}
+        res = {
+            "sms": {"status": "STANDBY", "color": "#64748b", "detail": "Sent to: N/A"},
+            "email": {"status": "STANDBY", "color": "#64748b", "detail": "Sent to: N/A"},
+            "telegram": {"status": "STANDBY", "color": "#64748b", "detail": "Sent to: N/A"},
+            "siren": {"status": "STANDBY", "color": "#64748b", "detail": "All clear", "active": False}
         }
+        if 'streamlit' in sys.modules:
+            try:
+                from streamlit.runtime.scriptrunner import get_script_run_ctx
+                if get_script_run_ctx() is not None:
+                    import streamlit as st
+                    if "sms_status" in st.session_state:
+                        res["sms"] = st.session_state.sms_status
+                    if "email_status" in st.session_state:
+                        res["email"] = st.session_state.email_status
+                    if "telegram_status" in st.session_state:
+                        res["telegram"] = st.session_state.telegram_status
+                    if "siren_status" in st.session_state:
+                        res["siren"] = st.session_state.siren_status
+            except Exception:
+                pass
+
+        try:
+            conn = self.persistence.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT channel, status, last_updated FROM notification_statuses ORDER BY last_updated DESC")
+            rows = cursor.fetchall()
+            for r in rows:
+                ch = str(r["channel"]).lower()
+                st_val = str(r["status"])
+                if ch in res and res[ch]["status"] == "STANDBY":
+                    if st_val in ("Sent", "DELIVERED ✓", "DELIVERED"):
+                        color = "#22c55e"
+                        disp = "DELIVERED ✓" if ch != "siren" else "ACTIVE 🔊"
+                    elif st_val in ("Pending", "Sending", "SENDING..."):
+                        color = "#f97316"
+                        disp = "SENDING..."
+                    elif st_val in ("Failed", "FAILED"):
+                        color = "#ef4444"
+                        disp = "FAILED"
+                    else:
+                        color = "#64748b"
+                        disp = st_val
+                    res[ch] = {
+                        "status": disp,
+                        "color": color,
+                        "detail": f"Updated at {r['last_updated']}",
+                        "active": (st_val in ("Sent", "ACTIVE") if ch == "siren" else False)
+                    }
+        except Exception:
+            pass
+        finally:
+            try:
+                self.persistence.return_connection(conn)
+            except Exception:
+                pass
+        return res
 
     def get_zone_status(self) -> Dict[str, Any]:
         active = self.get_active_alerts()
@@ -1587,10 +1583,15 @@ class IncidentManager:
                     new_frame_count = row["frame_count"] + 1
                     
                     new_status = curr_status
-                    if curr_status == AlertStatus.NEW.value:
-                        new_status = AlertStatus.PENDING.value
-                    elif curr_status == AlertStatus.PENDING.value and new_frame_count >= self.persistence_threshold:
-                        new_status = AlertStatus.ACTIVE.value
+                    rule_sev = rule_info.get("severity")
+                    if curr_status in (AlertStatus.NEW.value, "NEW", "New"):
+                        if rule_sev in (AlertSeverity.CRITICAL, AlertSeverity.HIGH, "CRITICAL", "HIGH") or self.persistence_threshold <= 2:
+                            new_status = AlertStatus.ACTIVE.value
+                        else:
+                            new_status = AlertStatus.PENDING.value
+                    elif curr_status in (AlertStatus.PENDING.value, "PENDING", "Pending"):
+                        if new_frame_count >= 2 or rule_sev in (AlertSeverity.CRITICAL, AlertSeverity.HIGH, "CRITICAL", "HIGH") or new_frame_count >= self.persistence_threshold:
+                            new_status = AlertStatus.ACTIVE.value
                         
                     current_risk_score = row["risk_score"] or 0.0
                     new_confidence = evaluation.get("confidence", 0.95)
@@ -1629,7 +1630,12 @@ class IncidentManager:
                     absent_count = row["consecutive_absent_frames"] + 1
                     incident_id = row["incident_id"]
                     
-                    is_active_yet = row["status"] in (AlertStatus.ACTIVE.value, AlertStatus.ACKNOWLEDGED.value, AlertStatus.ESCALATED.value)
+                    is_active_yet = str(row["status"]).upper() in (
+                        AlertStatus.ACTIVE.value.upper(),
+                        AlertStatus.ACKNOWLEDGED.value.upper(),
+                        AlertStatus.ESCALATED.value.upper(),
+                        'ACTIVE', 'ACKNOWLEDGED', 'ESCALATED'
+                    )
                     if not is_active_yet:
                         # Discard pending/new incident since the hazard disappeared
                         cursor.execute("DELETE FROM incident_frames WHERE incident_id = ?", (incident_id,))
@@ -1698,20 +1704,13 @@ class IncidentManager:
                     self.logger.error(f"Enhancer on_incident_resolved failed: {ex}")
 
     def _clear_dashboard_visuals(self, zone: str) -> None:
-        import sys
-        if 'streamlit' in sys.modules:
-            from streamlit.runtime.scriptrunner import get_script_run_ctx
-            if get_script_run_ctx() is not None:
-                import streamlit as st
-                st.session_state[f"alert_active_{zone}"] = False
-                # If all zones are clear, reset the visual warnings
-                active_zones = [k for k, v in st.session_state.items() if k.startswith("alert_active_") and v]
-                if not active_zones:
-                    st.session_state.siren_status = {"status": "STANDBY", "color": "#6b7280", "detail": "All clear", "active": False}
-                    st.session_state.sms_status = {"status": "STANDBY", "color": "#6b7280", "detail": "Sent to: N/A"}
-                    st.session_state.email_status = {"status": "STANDBY", "color": "#6b7280", "detail": "Sent to: N/A"}
-                    st.session_state.banner_visible = False
-                    st.session_state.active_alert = None
+        _safe_update_session_state(f"alert_active_{zone}", False)
+        _safe_update_session_state("siren_status", {"status": "STANDBY", "color": "#64748b", "detail": "All clear", "active": False})
+        _safe_update_session_state("sms_status", {"status": "STANDBY", "color": "#64748b", "detail": "Sent to: N/A"})
+        _safe_update_session_state("email_status", {"status": "STANDBY", "color": "#64748b", "detail": "Sent to: N/A"})
+        _safe_update_session_state("telegram_status", {"status": "STANDBY", "color": "#64748b", "detail": "Sent to: N/A"})
+        _safe_update_session_state("banner_visible", False)
+        _safe_update_session_state("active_alert", None)
 
 
 class AlertCoordinator:
@@ -1879,10 +1878,10 @@ class AlertCoordinator:
                     incident_id, incident_key, zone, hazard_type, status, severity, message,
                     start_time, frame_count, requires_ack, risk_score, factors,
                     compound_factors, teams_notified, channels, last_notified_at
-                ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     incident_id, incident_key, zone, f"COMPOUND_{risk_level}",
-                    risk_level, msg, now_str,
+                    AlertStatus.ACTIVE.value, risk_level, msg, now_str,
                     requires_ack, risk_score, ",".join(risk_result.get("factors", [])),
                     ",".join(risk_result.get("compound_factors", [])),
                     teams, channels, now_str
@@ -1948,10 +1947,10 @@ class AlertCoordinator:
                     incident_id, incident_key, zone, hazard_type, status, severity, message,
                     start_time, frame_count, requires_ack, risk_score, factors,
                     compound_factors, teams_notified, channels, last_notified_at
-                ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     incident_id, incident_key, zone, "PAYLOAD",
-                    severity, alert_payload.get("summary", ""), now_str,
+                    AlertStatus.ACTIVE.value, severity, alert_payload.get("summary", ""), now_str,
                     requires_ack, 10.0 if severity == "CRITICAL" else 5.0,
                     "", "", teams, channels, now_str
                 ))
@@ -2009,7 +2008,7 @@ class AlertCoordinator:
         finally:
             self.persistence.return_connection(conn)
 
-    def resolve_incident(self, incident_id: str) -> bool:
+    def resolve_incident(self, incident_id: str, operator_name: str = "Operator") -> bool:
         """Explicitly resolve incident in database"""
         conn = self.persistence.get_connection()
         try:

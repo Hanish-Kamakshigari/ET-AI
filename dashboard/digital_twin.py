@@ -243,8 +243,9 @@ def render_digital_twin_panel() -> None:
             "</div>"
 
     html = "<div style='background:" + _BG_GRADIENT + "; border:1px solid " + risk_color + \
+        "; border-left:3px solid " + risk_color + \
         "; border-radius:" + _CARD_RADIUS + "; padding:12px 14px; font-family:" + _FONT + \
-        "; margin-bottom:8px; " + pulse_style + "; box-shadow:0 0 16px " + risk_color + "33;'>" + \
+        "; margin-bottom:8px;'>" + \
         "<div style='display:flex; justify-content:space-between; margin-bottom:8px;'>" + \
         "<span style='color:" + _TEXT_MUTED + "; font-size:11px; font-weight:600;'>ZONE DIGITAL TWIN - " + \
         twin.zone_label.upper() + "</span>" + \
@@ -307,11 +308,11 @@ def render_interactive_zone_map() -> None:
     for zone, pos in zone_positions.items():
         risk_level = zone_risks.get(zone, {}).get('risk_level', 'LOW') if zone_risks else 'LOW'
         color = {'CRITICAL': _ACCENT_RED, 'HIGH': _ACCENT_ORANGE, 'MEDIUM': _ACCENT_YELLOW, 'LOW': _ACCENT_GREEN}.get(risk_level, _ACCENT_GREEN)
-        pulse = "animation: mapPulse 1.5s infinite;" if risk_level in ('HIGH', 'CRITICAL') else ""
+        pulse = ""
         zone_markers = zone_markers + "<div style='position:absolute; left:" + str(pos['x']) + "%; top:" + str(pos['y']) + \
             "%; transform:translate(-50%,-50%);'>" + \
             "<div style='width:48px; height:48px; border-radius:50%; background:" + color + "22; border:2px solid " + color + \
-            "; display:flex; align-items:center; justify-content:center; font-size:14px; " + pulse + "; box-shadow:0 0 12px " + color + "66;'>" + \
+            "; display:flex; align-items:center; justify-content:center; font-size:14px;'>" + \
             pos['icon'] + "</div>" + \
             "<div style='color:" + color + "; font-size:9px; font-weight:600; text-align:center; margin-top:4px;'>" + pos['label'] + "</div></div>"
 

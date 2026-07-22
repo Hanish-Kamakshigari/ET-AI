@@ -585,7 +585,7 @@ st.markdown(f"""
         <span>📡 MQTT: <b style="color: #22c55e;">CONNECTED</b></span>
         <span>🗄️ DB: <b style="color: #22c55e;">SQLITE OK</b></span>
         <span>🧠 MODEL: <b style="color: #60a5fa;">YOLOv8n-PPE</b></span>
-        <span>⏱️ SYNC: <b style="color: #f59e0b;">{current_time_str}</b></span>
+        <span>⏱️ SYNC: <b style="color: #22c55e;">ONLINE</b></span>
     </div>
 </div>
 <style>

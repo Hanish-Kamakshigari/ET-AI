@@ -30,6 +30,16 @@ from src.ui_components import (
 )
 
 
+def _safe_markdown(placeholder: Optional[DeltaGenerator], html: str, key: str) -> None:
+    """Render markdown into placeholder only if the html content has changed, guaranteeing 0 flicker."""
+    if not placeholder:
+        return
+    clean = clean_html(html)
+    if st.session_state.get(key) != clean:
+        st.session_state[key] = clean
+        placeholder.markdown(clean, unsafe_allow_html=True)
+
+
 def _zone_color(risk_level: str) -> str:
     return {
         "CRITICAL": "#ef4444",
@@ -678,7 +688,7 @@ def render_notifications_panel(placeholder: DeltaGenerator, data_dict: Dict[str,
         f'border-left:3px solid {color}; border-radius:8px; padding:6px 8px;">'
         f'<div style="display:flex; justify-content:space-between; align-items:center;">'
         f'<span style="font-size:8.5px; font-weight:700; color:#94a3b8; letter-spacing:0.5px;">{name}</span>'
-        f'<span style="font-size:8px; font-weight:800; color:{color};">{status}</span>'
+        f'<span style="background:{color}20; color:{color}; border:1px solid {color}40; font-size:7.5px; font-weight:800; padding:1px 5px; border-radius:3px; text-transform:uppercase;">{status}</span>'
         f'</div>'
         f'<div style="font-size:9px; color:#64748b; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{detail}</div>'
         f'</div>'
@@ -695,7 +705,11 @@ def render_notifications_panel(placeholder: DeltaGenerator, data_dict: Dict[str,
             '<span style="color:#22c55e;font-size:11px;font-weight:600;">All critical alerts escalated to all channels</span>'
             '</div>'
         )
-    placeholder.markdown(channels_html + escalated_toast, unsafe_allow_html=True)
+    full_html = clean_html(channels_html + escalated_toast)
+    hash_key = f"_hash_notif_{selected_zone}"
+    if st.session_state.get(hash_key) != full_html:
+        st.session_state[hash_key] = full_html
+        placeholder.markdown(full_html, unsafe_allow_html=True)
 
 def render_compact_alert_card_html(alert: Union[SafetyAlert, Dict[str, Any]]) -> str:
     """Renders a single compact alert card for the alerts panel"""
@@ -770,7 +784,7 @@ def render_compact_alert_card_html(alert: Union[SafetyAlert, Dict[str, Any]]) ->
     elif isinstance(alert, dict) and "id" in alert:
         alert_id = alert["id"]
 
-    # Countdown timer calculation (Escalation window)
+    # Countdown timer calculation (Escalation window - stepped to 15s blocks to prevent per-second flicker)
     if is_ack:
         countdown_str = "✓ ACKED"
     else:
@@ -779,29 +793,30 @@ def render_compact_alert_card_html(alert: Union[SafetyAlert, Dict[str, Any]]) ->
         if countdown_seconds == 0:
             countdown_str = "⚠️ ESCALATED"
         else:
-            countdown_str = f"⏳ {countdown_seconds // 60:02d}:{countdown_seconds % 60:02d}"
+            step_seconds = (countdown_seconds // 15) * 15
+            countdown_str = f"⏳ {step_seconds // 60:02d}:{step_seconds % 60:02d}"
 
     # Status pill styles
     status_tuple = Colors.STATUS.get(status_label, ("rgba(239, 68, 68, 0.15)", "#EF4444", "rgba(239, 68, 68, 0.3)"))
     status_bg, status_color, status_border = status_tuple
 
-    # Acknowledge button html
-    if is_ack:
-        ack_btn = f"""<span style="background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); border-radius: 4px; padding: 1.5px 6px; font-size: 8.5px; font-weight: 800; text-transform: uppercase;">✓ ACKED</span>"""
+    # Acknowledge / Resolve button html
+    if is_ack and alert_id:
+        ack_btn = f"""<a href="?resolve_alert={alert_id}" target="_self" style="text-decoration: none;"><span style="background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.4); border-radius: 4px; padding: 1.5px 6px; font-size: 8.5px; font-weight: 800; cursor: pointer; text-transform: uppercase;">RESOLVE</span></a>"""
     elif alert_id:
-        ack_btn = f"""<a href="?ack_alert={alert_id}" target="_self" style="text-decoration: none;"><span style="background: {color}; color: #fff; border-radius: 4px; padding: 1.5px 6px; font-size: 8.5px; font-weight: 800; cursor: pointer; text-transform: uppercase;">ACK</span></a>"""
+        ack_btn = f"""<a href="?ack_alert={alert_id}" target="_self" style="text-decoration: none; margin-right: 3px;"><span style="background: {color}; color: #fff; border-radius: 4px; padding: 1.5px 6px; font-size: 8.5px; font-weight: 800; cursor: pointer; text-transform: uppercase;">ACK</span></a><a href="?resolve_alert={alert_id}" target="_self" style="text-decoration: none;"><span style="background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.4); border-radius: 4px; padding: 1.5px 6px; font-size: 8.5px; font-weight: 800; cursor: pointer; text-transform: uppercase;">RESOLVE</span></a>"""
     else:
         ack_btn = f"""<span style="background: rgba(255,255,255,0.08); color: #64748b; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 1.5px 6px; font-size: 8.5px;">ACK</span>"""
 
-    # Check for critical pulse class
-    card_class = "glass-card glass-card-critical" if severity_name == "CRITICAL" else "glass-card"
+    # Solid card styling with zero pulse animation
+    card_class = "glass-card"
 
     # Restructured Card HTML with countdown indicator
     html = f"""
     <div class="{card_class}" style="background: {bg}; border-left: 4px solid {color}; border-top: 1px solid {border_color}; border-right: 1px solid {border_color}; border-bottom: 1px solid {border_color}; border-radius: 6px; padding: 6px 10px; margin-bottom: 4px; font-family: Outfit, sans-serif;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px; flex-wrap: nowrap;">
         <div style="display: flex; align-items: center; gap: 6px;">
-          <span style="font-weight: 800; color: {color}; font-size: 9.5px; letter-spacing: 0.5px; text-transform: uppercase; display: flex; align-items: center; gap: 3px; {'animation: dotPulse 1.2s ease infinite alternate;' if severity_name == 'CRITICAL' else ''}">
+          <span style="font-weight: 800; color: {color}; font-size: 9.5px; letter-spacing: 0.5px; text-transform: uppercase; display: flex; align-items: center; gap: 3px;">
             {icon} {severity_name}
           </span>
           <span style="color: #94a3b8; font-size: 9.5px; font-weight: 600;">{zone_lbl}</span>
@@ -905,7 +920,7 @@ def render_alerts_panel(placeholder: DeltaGenerator, am: AlertManager, selected_
                 {resolved_items_html}
             </div>
         </div>"""
-        placeholder.markdown(clean_html(html), unsafe_allow_html=True)
+        _safe_markdown(placeholder, html, f"_hash_alerts_hist_{selected_zone}")
         return
 
     all_alerts = am.active_alerts
@@ -916,30 +931,29 @@ def render_alerts_panel(placeholder: DeltaGenerator, am: AlertManager, selected_
     else:
         zone_alerts = all_alerts
 
-    # FSM-aware intermediate state: during WARNING_ACTIVE and DISPATCHING,
-    # show a stable "Threat Detected" card rather than alternating Nominal/Critical.
-    fsm_state = st.session_state.get('alert_fsm_state', 'NORMAL')
-    _DETECTING_STATES = ('DETECTING', 'WARNING_ACTIVE', 'DISPATCHING')
     fsm_state = st.session_state.get('alert_fsm_state', 'NORMAL')
     if fsm_state == 'NORMAL':
-        placeholder.markdown(render_nominal_card(
+        nom_html = render_nominal_card(
             title="Zone Nominal",
             message="No active alerts for this zone. The risk engine is monitoring all telemetry channels."
-        ), unsafe_allow_html=True)
+        )
+        _safe_markdown(placeholder, nom_html, f"_hash_alerts_nom_{selected_zone}")
         return
 
     if fsm_state in ('DETECTING', 'WARNING_ACTIVE', 'DISPATCHING'):
-        placeholder.markdown(render_nominal_card(
+        eval_html = render_nominal_card(
             title="Threat Detected — Evaluating",
             message="Hazard detected. AI risk engine is evaluating compound rules. Alert will be raised if thresholds are exceeded."
-        ), unsafe_allow_html=True)
+        )
+        _safe_markdown(placeholder, eval_html, f"_hash_alerts_eval_{selected_zone}")
         return
 
     if not zone_alerts:
-        placeholder.markdown(render_nominal_card(
+        nom_html = render_nominal_card(
             title="Zone Nominal",
             message="No active alerts for this zone. The risk engine is monitoring all telemetry channels."
-        ), unsafe_allow_html=True)
+        )
+        _safe_markdown(placeholder, nom_html, f"_hash_alerts_nom_{selected_zone}")
         return
 
     filtered_alerts = zone_alerts
@@ -967,7 +981,7 @@ def render_alerts_panel(placeholder: DeltaGenerator, am: AlertManager, selected_
         )
         cards_html.append(extra_card)
 
-    placeholder.markdown(clean_html("".join(cards_html)), unsafe_allow_html=True)
+    _safe_markdown(placeholder, "".join(cards_html), f"_hash_alerts_active_{selected_zone}")
 
 
 def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, Any], selected_zone: str, detections_list: List[Any]) -> None:
@@ -1064,11 +1078,14 @@ def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, 
         )
 
     risk_color = data_dict['STATUS']['color']
-    timeline_border = f"border: 1px solid {risk_color}; box-shadow: 0 0 14px {risk_color}33;" if highest_risk in ('HIGH', 'CRITICAL') else "border: 1px solid var(--border2);"
+    timeline_border = f"border: 1px solid {risk_color}55; border-left: 3px solid {risk_color};" if highest_risk in ('HIGH', 'CRITICAL') else "border: 1px solid var(--border2); border-left: 3px solid #3b82f6;"
     
     timeline_html = (
-        f'<div style="background: rgba(17, 24, 39, 0.7); {timeline_border} border-radius: 12px; padding: 14px 16px; min-height: {card_height}; box-sizing: border-box; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif; display: flex; flex-direction: column;">'
-        f'<div style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 8px;">LIVE INCIDENT TIMELINE</div>'
+        f'<div style="background: rgba(17, 24, 39, 0.7); {timeline_border} border-radius: 12px; padding: 14px 16px; min-height: {card_height}; box-sizing: border-box; font-family: Outfit, sans-serif; display: flex; flex-direction: column;">'
+        f'<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">'
+        f'<span style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">LIVE INCIDENT TIMELINE</span>'
+        f'<span style="background: rgba(59,130,246,0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.3); font-size: 8px; font-weight: 700; padding: 1px 6px; border-radius: 4px; text-transform: uppercase;">LOG ACTIVE</span>'
+        f'</div>'
         f'<div style="max-height: {scroll_height}; overflow-y: auto; font-size: 10px; line-height: 1.4; flex-grow: 1;">'
         f'{"".join(events_html)}'
         f'</div></div>'
@@ -1108,11 +1125,11 @@ def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, 
             f'</div>'
         )
 
-    risk_border = f"border: 1px solid {risk_color}; box-shadow: 0 0 14px {risk_color}33;" if highest_risk in ('HIGH', 'CRITICAL') else "border: 1px solid var(--border2);"
+    risk_border = f"border: 1px solid {risk_color}55; border-left: 3px solid {risk_color};" if highest_risk in ('HIGH', 'CRITICAL') else "border: 1px solid var(--border2); border-left: 3px solid #22c55e;"
     
     if play_active:
         risk_engine_html = (
-            f'<div style="background: rgba(17, 24, 39, 0.7); {risk_border} border-radius: 12px; padding: 14px 16px; min-height: 220px; box-sizing: border-box; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif; display: flex; flex-direction: column;">'
+            f'<div style="background: rgba(17, 24, 39, 0.7); {risk_border} border-radius: 12px; padding: 14px 16px; min-height: 220px; box-sizing: border-box; font-family: Outfit, sans-serif; display: flex; flex-direction: column;">'
             f'<div style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 8px;">COMPOUND RISK ENGINE</div>'
             f'<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; max-height: 200px; overflow-y: auto; flex-grow: 1;">'
             f'{"".join(badges)}'
@@ -1120,7 +1137,7 @@ def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, 
         )
     else:
         risk_engine_html = (
-            f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-radius: 12px; padding: 14px 16px; min-height: 220px; box-sizing: border-box; box-shadow: var(--shadow-sm); font-family: Outfit, sans-serif; display: flex; flex-direction: column; justify-content: space-between;">'
+            f'<div style="background: rgba(17, 24, 39, 0.7); border: 1px solid var(--border2); border-left: 3px solid #22c55e; border-radius: 12px; padding: 14px 16px; min-height: 220px; box-sizing: border-box; font-family: Outfit, sans-serif; display: flex; flex-direction: column; justify-content: space-between;">'
             f'<div style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 8px;">COMPOUND RISK ENGINE</div>'
             f'<div style="display: flex; flex-direction: column; gap: 8px; flex-grow: 1; justify-content: center;">'
             f'<div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.04); border-radius: 6px; padding: 8px 12px;">'
@@ -1142,8 +1159,8 @@ def render_risk_analysis_row(placeholders: Dict[str, Any], data_dict: Dict[str, 
             f'</div></div>'
         )
 
-    placeholders['timeline'].markdown(timeline_html, unsafe_allow_html=True)
-    placeholders['risk_engine'].markdown(risk_engine_html, unsafe_allow_html=True)
+    _safe_markdown(placeholders.get('timeline'), timeline_html, f"_hash_timeline_{selected_zone}")
+    _safe_markdown(placeholders.get('risk_engine'), risk_engine_html, f"_hash_risk_engine_{selected_zone}")
 
 
 def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[str, Any], selected_zone: str, detections_list: List[Any]) -> None:
@@ -1218,12 +1235,15 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
     else:
         recommendation = "Continue standard plant surveillance."
 
-    ai_border = f"border: 1px solid {risk_color}; box-shadow: 0 0 14px {risk_color}33;" if is_emergency else "border: 1px solid #1e3a5f;"
+    ai_border = f"border: 1px solid {risk_color}55; border-left: 3px solid {risk_color};" if is_emergency else "border: 1px solid #1e3a5f; border-left: 3px solid #3b82f6;"
 
     if play_active:
         ai_decision_html = (
             f'<div style="background:linear-gradient(135deg,#0f1f38,#0a1628); {ai_border} border-radius:12px; padding:12px 14px; min-height:260px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column;">'
-            f'<div style="color:#94a3b8; font-size:10px; font-weight:600; letter-spacing:1px; margin-bottom:8px;">AI DECISION ENGINE</div>'
+            f'<div style="color:#94a3b8; font-size:10px; font-weight:600; letter-spacing:1px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">'
+            f'<span>🤖 AI DECISION ENGINE</span>'
+            f'<span style="background:{risk_color}20; color:{risk_color}; border:1px solid {risk_color}40; font-size:7.5px; font-weight:800; padding:1px 5px; border-radius:3px; text-transform:uppercase;">{risk_level}</span>'
+            f'</div>'
             f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; flex-grow:1; align-content:space-between;">'
             f'<div style="display:flex; flex-direction:column; gap:4px; justify-content:space-between;">'
             f'<div><span style="font-size:9px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:0.5px; display:block; margin-bottom:1px;">Risk Level</span><div style="font-size:15px; font-weight:800; color:{risk_color}; display:flex; align-items:center; gap:4px;">{risk_icon} {risk_level}</div></div>'
@@ -1244,10 +1264,10 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         )
     else:
         ai_decision_html = (
-            f'<div style="background:linear-gradient(135deg,#0b1528,#050b14); border: 1px solid #1e3a5f; border-radius:12px; padding:14px 16px; min-height:320px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column; justify-content:space-between;">'
+            f'<div style="background:linear-gradient(135deg,#0b1528,#050b14); border: 1px solid #1e3a5f; border-left: 3px solid #22c55e; border-radius:12px; padding:14px 16px; min-height:320px; box-sizing: border-box; font-family:Outfit,sans-serif; display:flex; flex-direction:column; justify-content:space-between;">'
             f'<div style="color:#94a3b8; font-size:10px; font-weight:600; letter-spacing:1px; margin-bottom:8px; display:flex; justify-content:space-between;">'
             f'<span>🤖 AI DECISION ENGINE — STANDBY INTELLIGENCE</span>'
-            f'<span style="color:#22c55e;">STATUS: MONITORING</span>'
+            f'<span style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); font-size:7.5px; font-weight:800; padding:1px 5px; border-radius:3px; text-transform:uppercase;">MONITORING</span>'
             f'</div>'
             f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 16px; flex-grow:1; align-content:center;">'
             f'<div style="display:flex; flex-direction:column; gap:6px;">'
@@ -1265,19 +1285,23 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
             f'</div>'
             f'</div>'
         )
-    placeholders['ai_decision'].markdown(ai_decision_html, unsafe_allow_html=True)
+    _safe_markdown(placeholders.get('ai_decision'), ai_decision_html, f"_hash_ai_decision_{selected_zone}")
 
     # ── Rolling history buffers (20-point ring) — updated every render tick ──
     _MAX_HISTORY = 20
+    # Store quantized values (0.5-unit steps) in history so sparkline SVG path
+    # only changes when the reading meaningfully shifts — not on every frame.
     for _key, _val in [
-        ('telemetry_history_gas',   current_gas),
-        ('telemetry_history_temp',  current_temp),
-        ('telemetry_history_press', current_press),
+        ('telemetry_history_gas',   round(current_gas   * 2) / 2),
+        ('telemetry_history_temp',  round(current_temp  * 2) / 2),
+        ('telemetry_history_press', round(current_press * 4) / 4),
     ]:
         if _key not in st.session_state:
             st.session_state[_key] = [_val] * _MAX_HISTORY
         else:
-            st.session_state[_key].append(_val)
+            # Only append if value actually changed to further reduce SVG churn
+            if not st.session_state[_key] or st.session_state[_key][-1] != _val:
+                st.session_state[_key].append(_val)
             if len(st.session_state[_key]) > _MAX_HISTORY:
                 st.session_state[_key] = st.session_state[_key][-_MAX_HISTORY:]
 
@@ -1286,20 +1310,33 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
     _temp_stroke  = "#ef4444" if current_temp > 95 else "#f59e0b" if current_temp > 88 else "#10ac84"
     _press_stroke = "#ef4444" if current_press > 80 else "#f59e0b" if current_press > 60 else "#2e86de"
 
-    temp_gauge_svg  = render_gauge_svg(current_temp,  0, 120, "Temp (°C)",   "#10ac84", 88, 95)
-    press_gauge_svg = render_gauge_svg(current_press, 0, 100, "Press (bar)", "#2e86de", 60, 80)
+    # Quantize sensor values before building SVG / HTML to prevent per-frame DOM re-renders.
+    # Tiny float oscillations would otherwise produce unique HTML strings every frame.
+    _q_temp_gauge  = round(current_temp  * 2) / 2   # 0.5°C steps for gauge
+    _q_press_gauge = round(current_press * 4) / 4   # 0.25 bar steps for gauge
+
+    temp_gauge_svg  = render_gauge_svg(_q_temp_gauge,  0, 120, "Temp (°C)",   "#10ac84", 88, 95)
+    press_gauge_svg = render_gauge_svg(_q_press_gauge, 0, 100, "Press (bar)", "#2e86de", 60, 80)
     gas_spark_svg   = render_sparkline_svg(st.session_state.telemetry_history_gas,   stroke_color=_gas_stroke,   height=36)
     temp_spark_svg  = render_sparkline_svg(st.session_state.telemetry_history_temp,  stroke_color=_temp_stroke,  height=36)
 
     # ── Sensor summary row — always shows live values ──
-    _now_str      = st.session_state.get('_last_sync_time', datetime.now().strftime('%H:%M:%S'))
+    # Quantize to 0.5-unit steps: prevents constant HTML re-renders from tiny float oscillations
+    _now_str      = st.session_state.get('_last_sync_time', datetime.now().strftime('%H:%M'))
     _worker_count = current_workers
-    _temp_c       = f"{current_temp:.1f}°C"
-    _gas_ppm      = f"{current_gas:.1f} ppm"
-    _press_bar    = f"{current_press:.2f} bar"
+    _q_temp  = round(current_temp  * 2) / 2  # 0.5°C steps
+    _q_gas   = round(current_gas   * 2) / 2  # 0.5 ppm steps
+    _q_press = round(current_press * 4) / 4  # 0.25 bar steps
+    _temp_c       = f"{_q_temp:.1f}°C"
+    _gas_ppm      = f"{_q_gas:.1f} ppm"
+    _press_bar    = f"{_q_press:.2f} bar"
     _temp_col     = "#ef4444" if current_temp > 95 else "#f59e0b" if current_temp > 88 else "#22c55e"
     _gas_col      = "#ef4444" if current_gas  > 35 else "#f59e0b" if current_gas  > 20 else "#22c55e"
     _press_col    = "#ef4444" if current_press > 80 else "#f59e0b" if current_press > 60 else "#22c55e"
+
+    # Quantize sparkline label values to 0.5-unit steps too
+    _q_gas_label  = round(current_gas  * 2) / 2
+    _q_temp_label = round(current_temp * 2) / 2
 
     sensor_row_html = (
         f'<div style="display:grid; grid-template-columns:repeat(5,1fr); gap:4px; margin-bottom:6px;">'
@@ -1321,7 +1358,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         f'</div>'
     )
 
-    telemetry_border = f"border: 1px solid {risk_color}; box-shadow: 0 0 14px {risk_color}33;" if is_emergency else "border: 1px solid #1e3a5f;"
+    telemetry_border = f"border: 1px solid {risk_color}55; border-left: 3px solid {risk_color};" if is_emergency else "border: 1px solid #1e3a5f; border-left: 3px solid #3b82f6;"
     _sync_label = f" <span style='color:#f59e0b; font-size:8.5px; font-weight:600;'>🕐 {_now_str}</span>"
 
     telemetry_html = f"""
@@ -1343,7 +1380,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
                 <div>
                     <div style="font-size:8.5px; color:{_gas_stroke}; font-weight:700; margin-bottom:2px; display:flex; justify-content:space-between; letter-spacing:0.5px;">
                         <span>⛽ GAS TREND</span>
-                        <span style="font-family:monospace;">{current_gas:.1f} ppm</span>
+                        <span style="font-family:monospace;">{_q_gas_label:.1f} ppm</span>
                     </div>
                     <div style="background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.03); border-radius:6px; padding:2px 4px;">
                         {gas_spark_svg}
@@ -1352,7 +1389,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
                 <div>
                     <div style="font-size:8.5px; color:{_temp_stroke}; font-weight:700; margin-bottom:2px; display:flex; justify-content:space-between; letter-spacing:0.5px;">
                         <span>🌡️ TEMP TREND</span>
-                        <span style="font-family:monospace;">{current_temp:.1f}°C</span>
+                        <span style="font-family:monospace;">{_q_temp_label:.1f}°C</span>
                     </div>
                     <div style="background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.03); border-radius:6px; padding:2px 4px;">
                         {temp_spark_svg}
@@ -1362,8 +1399,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         </div>
     </div>
     """
-    clean_lines = [line.strip() for line in telemetry_html.split("\n")]
-    placeholders['telemetry_trends'].markdown("".join(clean_lines), unsafe_allow_html=True)
+    _safe_markdown(placeholders.get('telemetry_trends'), telemetry_html, f"_hash_telemetry_{selected_zone}")
 
     from src.alert_system import get_alert_system
     wrapper_system = get_alert_system()
@@ -1417,7 +1453,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
         <div style="color: #64748b; margin-bottom: 2px;">⌛ Emergency response actions standby</div>
         """
 
-    zone_response_border = f"border: 1px solid {risk_color}; box-shadow: 0 0 14px {risk_color}33;" if is_emergency else "border: 1px solid #1e3a5f;"
+    zone_response_border = f"border: 1px solid {risk_color}55; border-left: 3px solid {risk_color};" if is_emergency else "border: 1px solid #1e3a5f; border-left: 3px solid #22c55e;"
 
     if play_active:
         zone_response_html = (
@@ -1454,7 +1490,7 @@ def render_decision_telemetry_row(placeholders: Dict[str, Any], data_dict: Dict[
             f'<div style="color: #cbd5e1; font-size:9.5px; line-height:1.2;">All diagnostic sensors are reporting nominal parameters. Daily inspection logs are verified. No actions required.</div>'
             f'</div></div>'
         )
-    placeholders['zone_response'].markdown(zone_response_html, unsafe_allow_html=True)
+    _safe_markdown(placeholders.get('zone_response'), zone_response_html, f"_hash_zone_response_{selected_zone}")
 
 
 def render_right_panel_diagnostics(

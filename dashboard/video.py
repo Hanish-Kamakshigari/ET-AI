@@ -14,8 +14,11 @@ import time
 from datetime import datetime
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+import threading
 from typing import Dict, List, Any, Optional, Tuple
 import streamlit as st
+
+_cap_lock = threading.Lock()
 from src.risk_engine import CompoundRiskEngine
 from src.alert_system import AlertSystem, AlertManager
 
@@ -23,6 +26,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.config.ui_constants import ZONE_LABELS
 from src.ui_components import Colors, render_nominal_card
+from src.alert_coordinator import get_alert_coordinator
 from src.alert_system import evaluate_alert_conditions, dispatch_alerts, clear_alert_if_safe
 from src.utils.video_downloader import get_video
 
@@ -30,25 +34,29 @@ _TRANSPARENT_IMAGE = Image.new("RGBA", (16, 9), (0, 0, 0, 0))
 
 def render_compliance_warning_card(severity: str, hazard: str, description: str, zone_label: str, confidence: int, time_str: str, duration: int) -> str:
     color = "#ef4444" if severity in ("CRITICAL", "HIGH") else "#eab308"
-    bg = "rgba(239, 68, 68, 0.04)" if severity in ("CRITICAL", "HIGH") else "rgba(234, 179, 8, 0.03)"
-    border_class = "border: 2px solid #ef4444;" if severity in ("CRITICAL", "HIGH") else "border: 1px solid rgba(234, 179, 8, 0.4);"
-    pulse_style = "animation: warningPulse 1.5s infinite alternate;" if severity in ("CRITICAL", "HIGH") else ""
+    bg = "rgba(239, 68, 68, 0.06)" if severity in ("CRITICAL", "HIGH") else "rgba(234, 179, 8, 0.05)"
+    border_style = f"border: 1px solid {color}40; border-left: 3px solid {color};"
     
-    countdown = max(0, 180 - duration)
+    # Quantize to 15-second steps at ~25 FPS (375 frames per step) to prevent
+    # per-second HTML re-renders that cause compliance card flickering.
+    _FRAMES_PER_STEP = 375  # 15 seconds × 25 FPS
+    step_duration = (duration // _FRAMES_PER_STEP) * 15  # Each step = 15 wall-clock seconds
+    countdown = max(0, 180 - step_duration)
     countdown_str = f"⌛ {countdown // 60:02d}:{countdown % 60:02d}" if countdown > 0 else "⚠️ ESCALATED"
 
     html = f"""
     <div style="background: {bg};
-                {border_class}
+                {border_style}
                 padding: 10px 14px;
                 margin: 6px 0;
                 border-radius: 8px;
                 font-family: 'Outfit', sans-serif;
-                color: #fff;
-                box-shadow: 0 0 10px {color}22;
-                {pulse_style}">
+                color: #fff;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <span style="font-weight: 900; color: {color}; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;">⚠️ {severity} COMPLIANCE ALERT</span>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-weight: 900; color: {color}; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;">⚠️ {severity} COMPLIANCE ALERT</span>
+          <span style="background:{color}20; color:{color}; border:1px solid {color}40; font-size:7.5px; font-weight:800; padding:1px 5px; border-radius:3px; text-transform:uppercase;">{severity}</span>
+        </div>
         <span style="font-size: 10px; color: {color}; font-weight: 700; font-family: monospace;">{countdown_str}</span>
       </div>
       <div style="font-size: 12px; font-weight: 700; margin-bottom: 4px; color: #fff;">{hazard}</div>
@@ -955,21 +963,43 @@ def get_frame_tracker() -> FrameTracker:
     return FrameTracker()
 
 
-@st.cache_resource
-def get_video_capture(video_path: str) -> Optional[Any]:
-    """Cache a lightweight VideoCapture object instead of all frames.
+@st.cache_resource(max_entries=2)
+def load_video_frames(video_path: str) -> Optional[Tuple[List[np.ndarray], int]]:
+    """Load all frames of a video into memory to avoid concurrent VideoCapture access crashes.
     
-    This avoids loading the entire video into RAM, which can exceed
-    Streamlit Cloud memory limits and cause startup failures.
+    Uses max_entries=2 to limit memory usage on Streamlit Cloud/server.
     """
-    if cv2 is None:
-        return None
     if not video_path or not os.path.exists(video_path):
         return None
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
+
+    frames = []
+    if cv2 is not None:
+        try:
+            with _cap_lock:
+                cap = cv2.VideoCapture(video_path)
+                if cap.isOpened():
+                    while True:
+                        ret, frame = cap.read()
+                        if not ret or frame is None:
+                            break
+                        frames.append(frame)
+                    cap.release()
+        except Exception as e:
+            print(f"[load_video_frames] OpenCV loading error for {video_path}: {e}")
+
+    if not frames:
+        try:
+            import imageio
+            with imageio.get_reader(video_path) as reader:
+                for frame in reader:
+                    frames.append(frame)
+        except Exception as e:
+            print(f"[load_video_frames] ImageIO loading error for {video_path}: {e}")
+
+    if not frames:
         return None
-    return cap
+
+    return frames, len(frames)
 
 
 def get_video_frame_count(video_path: str) -> int:
@@ -988,46 +1018,21 @@ def get_video_frame_count(video_path: str) -> int:
             pass
     try:
         import imageio
-        reader = imageio.get_reader(video_path)
-        meta = reader.get_meta_data()
-        total = meta.get('nframes', 240)
-        return int(total) if total > 0 and total != float('inf') else 240
+        with imageio.get_reader(video_path) as reader:
+            meta = reader.get_meta_data()
+            total = meta.get('nframes', 240)
+            return int(total) if total > 0 and total != float('inf') else 240
     except Exception:
         return 240
 
 
 def read_mp4_frame(video_path: str, frame_idx: int) -> Tuple[Optional[np.ndarray], int]:
-    """Reads a single frame from an MP4 video file using cv2 or imageio fallback."""
-    if not video_path or not os.path.exists(video_path):
-        return None, 0
-
-    if cv2 is not None:
-        try:
-            cap = get_video_capture(video_path)
-            if cap is not None and cap.isOpened():
-                total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                if total > 0:
-                    target_idx = frame_idx % total
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, target_idx)
-                    ret, frame = cap.read()
-                    if ret and frame is not None:
-                        return frame, total
-        except Exception:
-            pass
-
-    try:
-        import imageio
-        reader = imageio.get_reader(video_path)
-        meta = reader.get_meta_data()
-        total = meta.get('nframes', 240)
-        if total == float('inf') or total <= 0:
-            total = 240
-        target_idx = frame_idx % int(total)
-        frame_rgb = reader.get_data(target_idx)
-        return frame_rgb, int(total)
-    except Exception as e:
-        print(f"[video_reader] ImageIO fallback error for {video_path}: {e}")
-
+    """Reads a single frame from cached video frames or falls back dynamically."""
+    res = load_video_frames(video_path)
+    if res is not None:
+        frames, total = res
+        if total > 0:
+            return frames[frame_idx % total], total
     return None, 0
 
 
@@ -1243,6 +1248,13 @@ def stream_cctv_feed_raw(
         if status_bar_placeholder:
             status_bar_placeholder.empty()
 
+    # Process frame through AlertCoordinator to track persistence and store incident frames
+    try:
+        coordinator = get_alert_coordinator()
+        coordinator.process_frame(active_dets, selected_zone, latest)
+    except Exception as ex:
+        pass
+
     # Evaluate alert conditions and drive the FSM + dispatch
     alert_conditions = evaluate_alert_conditions(
         detections=active_dets,
@@ -1320,11 +1332,11 @@ def stream_cctv_feed_raw(
 
     print(f"[REALTIME_PIPELINE] Frame={frame_idx} | YOLO Detections={len(active_dets)} | Hazards={viol_count} | should_alert={alert_conditions['should_alert']} | ActiveAlerts={len(am.active_alerts)} | FSM={st.session_state.get('alert_fsm_state')}")
 
-    # Debounce & telemetry state hash guard
+    # Debounce & telemetry state hash guard (excludes per-frame index to prevent unnecessary UI re-renders)
     active_alert_count = len(am.active_alerts)
     siren_state_val = st.session_state.get('siren_status', {}).get('status', 'STANDBY')
     current_fsm = st.session_state.get('alert_fsm_state', 'NORMAL')
-    det_metrics_hash = f"{w_count}_{viol_count}_{len(active_dets)}_{frame_idx}"
+    det_metrics_hash = f"{w_count}_{viol_count}_{len(active_dets)}"
     new_ui_hash = f"{active_alert_count}|{siren_state_val}|{current_fsm}|{selected_zone}|{det_metrics_hash}"
     ui_state_changed = (new_ui_hash != st.session_state.get('alert_ui_hash', ''))
     if ui_state_changed:
@@ -1367,9 +1379,7 @@ def stream_cctv_feed_raw(
 
             try:
                 from dashboard.components import render_decision_telemetry_row
-                max_risk = "LOW"
-                risk_color = "#22c55e"
-                if len(am.active_alerts) > 0:
+                if len(am.active_alerts) > 0 and data_dict:
                     sev_rank = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
                     highest_active = max(
                         am.active_alerts.values(),
@@ -1378,10 +1388,10 @@ def stream_cctv_feed_raw(
                     max_risk = getattr(highest_active, 'risk_level', 'LOW').upper()
                     from src.ui_components import Colors
                     risk_color = Colors.SEVERITY.get(max_risk, "#22c55e")
-
-                data_dict['STATUS']['level'] = max_risk
-                data_dict['STATUS']['color'] = risk_color
-                data_dict['compound_risk_score'] = len(am.active_alerts) * 4.5 if max_risk in ("HIGH", "CRITICAL") else 1.2
+                    current_rank = sev_rank.get(data_dict.get('STATUS', {}).get('level', 'LOW').upper(), 0)
+                    if sev_rank.get(max_risk, 0) > current_rank:
+                        data_dict['STATUS']['level'] = max_risk
+                        data_dict['STATUS']['color'] = risk_color
 
                 render_decision_telemetry_row(placeholders, data_dict, selected_zone, active_dets)
             except Exception:
@@ -1403,8 +1413,11 @@ def stream_cctv_feed_raw(
 
     # 3. Render contextual warning cards below the feed
     alerts_list = []
+    added_hazards = set()
     is_critical = (latest.get("max_risk_level") == "CRITICAL" or st.session_state.get('simulate_active', False))
     overpressure_active = (selected_zone == 'Zone_C' and frame_idx >= 95)
+
+    card_time_str = data_dict['now'].strftime('%H:%M') if data_dict and 'now' in data_dict else datetime.now().strftime('%H:%M')
 
     if selected_zone != 'Reactor_Area':
         no_helmet_count = sum(1 for d in active_dets if d.label == 'no_helmet')
@@ -1425,9 +1438,10 @@ def stream_cctv_feed_raw(
                 description=msg,
                 zone_label=selected_zone_name,
                 confidence=92,
-                time_str=datetime.now().strftime('%H:%M:%S'),
+                time_str=card_time_str,
                 duration=frame_idx
             ))
+            added_hazards.add("PPE VIOLATION")
 
     if overpressure_active:
         alerts_list.append(render_compliance_warning_card(
@@ -1436,9 +1450,10 @@ def stream_cctv_feed_raw(
             description="OVERPRESSURE WARNING — Gauge in red zone. Relief valve activation recommended.",
             zone_label=selected_zone_name,
             confidence=96,
-            time_str=datetime.now().strftime('%H:%M:%S'),
+            time_str=card_time_str,
             duration=frame_idx
         ))
+        added_hazards.add("OVERPRESSURE THREAT")
 
     if selected_zone == 'Reactor_Area':
         alerts_list.append(render_compliance_warning_card(
@@ -1447,9 +1462,10 @@ def stream_cctv_feed_raw(
             description="Bystander Flash Burns: Second worker far too close to welding arc without eye/face protection.",
             zone_label=selected_zone_name,
             confidence=89,
-            time_str=datetime.now().strftime('%H:%M:%S'),
+            time_str=card_time_str,
             duration=frame_idx
         ))
+        added_hazards.add("BYSTANDER FLASH BURNS")
 
         alerts_list.append(render_compliance_warning_card(
             severity="MEDIUM",
@@ -1457,9 +1473,10 @@ def stream_cctv_feed_raw(
             description="Inadequate Fume Extraction: Yellowish haze indicates poor ventilation and build-up of toxic welding fumes.",
             zone_label=selected_zone_name,
             confidence=91,
-            time_str=datetime.now().strftime('%H:%M:%S'),
+            time_str=card_time_str,
             duration=frame_idx
         ))
+        added_hazards.add("INADEQUATE FUME EXTRACTION")
 
     if selected_zone == 'Storage_Area':
         alerts_list.append(render_compliance_warning_card(
@@ -1468,9 +1485,10 @@ def stream_cctv_feed_raw(
             description="More than 9 workers detected in the warehouse aisle under hazardous gas telemetry. Immediate shift rotation or aisle clearance required.",
             zone_label=selected_zone_name,
             confidence=94,
-            time_str=datetime.now().strftime('%H:%M:%S'),
+            time_str=card_time_str,
             duration=frame_idx
         ))
+        added_hazards.add("AREA OVERCROWDING")
 
     show_critical_alert = False
     if selected_zone == 'Zone_C':
@@ -1490,9 +1508,10 @@ def stream_cctv_feed_raw(
                 description="Tank/pipe junction temperature exceeds critical threshold in Zone C. Coolant flow activation required.",
                 zone_label=selected_zone_name,
                 confidence=98,
-                time_str=datetime.now().strftime('%H:%M:%S'),
+                time_str=card_time_str,
                 duration=frame_idx
             ))
+            added_hazards.add("EQUIPMENT OVERHEATING")
         else:
             alerts_list.append(render_compliance_warning_card(
                 severity="CRITICAL",
@@ -1500,9 +1519,130 @@ def stream_cctv_feed_raw(
                 description="Uncontrolled volatile gas cloud detected in close proximity to active hot work permit. Evacuation required.",
                 zone_label=selected_zone_name,
                 confidence=97,
-                time_str=datetime.now().strftime('%H:%M:%S'),
+                time_str=card_time_str,
                 duration=frame_idx
             ))
+            added_hazards.add("COMPATIBILITY VIOLATION")
+
+    # Map active alert types to distinct, related EHS compliance infractions/protocols
+    RELATED_COMPLIANCE_MAP = {
+        "CRITICAL GAS ESCAPE": [
+            {
+                "severity": "CRITICAL",
+                "hazard": "HOT WORK PERMIT BREACH",
+                "description": "Volatile gas cloud detected in close proximity to active hot work permit. Hot work must be suspended immediately.",
+                "confidence": 98
+            },
+            {
+                "severity": "HIGH",
+                "hazard": "PPE BREACH (GAS EVACUATION)",
+                "description": "Workers in gas escape boundary detected without mandatory breathing apparatus or self-contained respirator gear.",
+                "confidence": 94
+            }
+        ],
+        "ELEVATED HAZARDOUS GAS": [
+            {
+                "severity": "HIGH",
+                "hazard": "VENTILATION COMPLIANCE",
+                "description": "Exhaust fan rate insufficient for rising gas concentration. Mechanical ventilation manual boost recommended.",
+                "confidence": 91
+            }
+        ],
+        "FIRE EMERGENCY": [
+            {
+                "severity": "CRITICAL",
+                "hazard": "DELUGE SYSTEM OBSTRUCTION",
+                "description": "Sprinkler line blockage detected or low line pressure in fire deluge suppression loop. Alternate exit routing activated.",
+                "confidence": 99
+            },
+            {
+                "severity": "HIGH",
+                "hazard": "EVACUATION ROUTE BLOCKAGE",
+                "description": "Exit corridors or assembly point access points detected obstructed by pallets/materials. Clear path immediately.",
+                "confidence": 95
+            }
+        ],
+        "RESTRICTED ZONE INTRUSION": [
+            {
+                "severity": "HIGH",
+                "hazard": "PERMIT SECURITY INTRUSION",
+                "description": "Personnel entry detected inside high-risk boundary without active access credentials or zone clearance permit.",
+                "confidence": 92
+            }
+        ],
+        "CRITICAL TEMPERATURE THREAT": [
+            {
+                "severity": "CRITICAL",
+                "hazard": "COOLANT FLOW COMPLIANCE",
+                "description": "Coolant line pressure drop detected under critical temperature conditions; mechanical strain exceeds nominal safety index.",
+                "confidence": 96
+            }
+        ],
+        "EQUIPMENT OVERHEATING": [
+            {
+                "severity": "CRITICAL",
+                "hazard": "THERMAL STRAIN OVERRIDE",
+                "description": "Piping mechanical strain exceeds thermal safety index. Automatic coolant bypass manual override required.",
+                "confidence": 97
+            }
+        ],
+        "COMPATIBILITY VIOLATION": [
+            {
+                "severity": "CRITICAL",
+                "hazard": "HOT WORK PERMIT BREACH",
+                "description": "Active hot work permit co-located with volatile gas cloud. Immediate suspension required.",
+                "confidence": 98
+            }
+        ]
+    }
+
+    # Integrate real-time active alerts from AlertManager into compliance warnings
+    for alert in am.active_alerts.values():
+        if alert.zone == selected_zone:
+            import re as _re
+            raw_msg = getattr(alert, 'message', '')
+            
+            # Extract plain text hazard title from message
+            title_match = _re.search(r'<div[^>]*>\s*(.*?)\s*</div>', raw_msg, _re.DOTALL)
+            if title_match:
+                title = _re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
+            else:
+                title = _re.sub(r'<[^>]+>', '', raw_msg).strip().split('\n')[0][:60]
+            title_upper = ' '.join(title.split()).upper()
+            
+            # Map raw alert title to related compliance warnings
+            related_warnings = []
+            matched = False
+            for key, warnings in RELATED_COMPLIANCE_MAP.items():
+                if key in title_upper:
+                    related_warnings.extend(warnings)
+                    matched = True
+                    break
+            
+            if not matched:
+                # Default fallback warning related to the alert
+                related_warnings.append({
+                    "severity": getattr(alert.severity, 'name', 'CRITICAL').upper(),
+                    "hazard": f"{title_upper} COMPLIANCE INFRACTION",
+                    "description": f"Active {title_upper.lower()} incident violates EHS protocol. Immediate containment and supervisor review required.",
+                    "confidence": 90
+                })
+                
+            for warn in related_warnings:
+                hazard_name = warn["hazard"].upper()
+                if hazard_name in added_hazards:
+                    continue
+                added_hazards.add(hazard_name)
+                
+                alerts_list.append(render_compliance_warning_card(
+                    severity=warn["severity"],
+                    hazard=hazard_name,
+                    description=warn["description"],
+                    zone_label=selected_zone_name,
+                    confidence=warn["confidence"],
+                    time_str=alert.start_time.strftime('%H:%M') if alert.start_time else card_time_str,
+                    duration=frame_idx
+                ))
 
     if overpressure_active:
         from src.cctv.object_detector import Detection
@@ -1517,71 +1657,42 @@ def stream_cctv_feed_raw(
         ui_hash = f"{len(am.active_alerts)}|{st.session_state.get('siren_status', {}).get('status', 'STANDBY')}|{current_fsm}|{selected_zone}"
         st.session_state['alert_ui_hash'] = ui_hash
 
-    if warnings_placeholder:
-        if st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
-            if alerts_list:
-                warnings_placeholder.markdown("\n".join(alerts_list), unsafe_allow_html=True)
-            else:
-                warnings_placeholder.markdown(render_nominal_card(
-                    title="Zone Secure",
-                    message=f"All telemetry and compliance factors in {selected_zone_name} are nominal."
-                ), unsafe_allow_html=True)
-        else:
-            warnings_placeholder.empty()
+    if warnings_placeholder and st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
+        warn_html = "\n".join(alerts_list) if alerts_list else render_nominal_card(
+            title="Zone Secure",
+            message=f"All telemetry and compliance factors in {selected_zone_name} are nominal."
+        )
+        warnings_placeholder.markdown(warn_html, unsafe_allow_html=True)
+    elif warnings_placeholder:
+        warnings_placeholder.empty()
 
     # ═══════════════════════════════════════════════════════════════════════════════
     # AUTO-RERUN FOR SMOOTH PLAYBACK (driven by Autoplay Simulation toggle)
     # ═══════════════════════════════════════════════════════════════════════════════
-    # When Autoplay = ON: schedule next fragment rerun at ~25 FPS * speed multiplier
-    # When Autoplay = OFF: do not auto-rerun; frame index stays frozen
-    # Uses JavaScript setTimeout -> hidden checkbox click for non-blocking, Streamlit-Cloud-safe playback
-    # ═══════════════════════════════════════════════════════════════════════════════
     if play_active and st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
-        # Base ~25 FPS = 40ms per frame; speed multipliers: 1x=40ms, 2x=20ms, 4x=10ms
         speed = st.session_state.get('sim_play_speed', '1x')
         speed_multiplier = {'1x': 1, '2x': 2, '4x': 4}.get(speed, 1)
         base_delay_ms = 40  # ~25 FPS base
         delay_ms = max(10, base_delay_ms // speed_multiplier)  # clamp minimum to 10ms (100 FPS cap)
 
-        # Hidden checkbox widget - when its value changes, the fragment re-runs.
-        # We give it a unique key per zone and hide it via CSS.
         rerun_key = f"_cctv_rerun_trigger_{selected_zone}"
         _ = st.checkbox(" ", key=rerun_key, value=False, label_visibility="collapsed")
 
-        # Inject JavaScript that toggles the checkbox after the computed delay.
-        # Toggling a widget value inside a fragment triggers a fragment re-run.
+        # Inject JS timer script cleanly
         st.markdown(f"""
         <script>
-        console.log('[DIAGNOSTIC] Autoplay JS: zone={selected_zone}, play_active={play_active}, delay_ms={delay_ms}');
         (function() {{
             if (window._suraksha_cctv_timer) clearTimeout(window._suraksha_cctv_timer);
             window._suraksha_cctv_timer = setTimeout(function() {{
-                // Find the hidden checkbox by its test ID (derived from key)
                 const checkbox = document.querySelector('input[data-testid="stCheckbox"][aria-label="{rerun_key}"]');
                 if (checkbox) {{
-                    console.log('[DIAGNOSTIC] Autoplay JS: Found checkbox, clicking to trigger rerun');
-                    checkbox.click();  // Toggle checkbox -> widget change -> fragment rerun
+                    checkbox.click();
                 }} else {{
-                    console.log('[DIAGNOSTIC] Autoplay JS: Checkbox not found, trying fallback');
-                    // Fallback: try to find by key attribute
                     const fallback = document.querySelector('[data-testid="stCheckbox"] input[id*="{rerun_key}"]');
                     if (fallback) fallback.click();
                 }}
             }}, {delay_ms});
         }})();
         </script>
-        <style>
-        /* Hide the autoplay trigger checkbox visually */
-        input[data-testid="stCheckbox"][aria-label="{rerun_key}"] {{
-            position: absolute !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-            width: 1px !important;
-            height: 1px !important;
-        }}
-        input[data-testid="stCheckbox"][aria-label="{rerun_key}"] + div {{
-            display: none !important;
-        }}
-        </style>
         """, unsafe_allow_html=True)
 

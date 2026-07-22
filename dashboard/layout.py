@@ -131,13 +131,12 @@ def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: 
         html = f"""
         <div class="global-emergency-banner" style="
             background: linear-gradient(90deg, rgba(120,8,8,0.98) 0%, rgba(185,15,15,0.92) 50%, rgba(120,8,8,0.98) 100%);
-            border: 2px solid #ef4444;
+            border: 1px solid #ef4444;
+            border-left: 4px solid #ef4444;
             border-radius: 8px;
             padding: 8px 16px;
             margin-bottom: 12px;
-            box-shadow: 0 0 20px rgba(239,68,68,0.5);
             font-family: 'Outfit', sans-serif;
-            animation: bannerPulse 2.0s infinite ease-in-out;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -145,10 +144,8 @@ def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: 
             position: relative;
             overflow: hidden;
         ">
-          <!-- Left accent line -->
-          <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#ef4444;"></div>
-          <div style="display: flex; align-items: center; gap: 12px; z-index: 2; padding-left: 6px;">
-            <span style="font-size: 20px; animation: warningBlink 1.5s infinite alternate;" class="emergency-warning-indicator">🚨</span>
+          <div style="display: flex; align-items: center; gap: 12px; z-index: 2; padding-left: 2px;">
+            <span style="font-size: 20px;" class="emergency-warning-indicator">🚨</span>
             <div>
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                  <span style="font-weight: 900; font-size: 11px; letter-spacing: 1px; color: #fca5a5; text-transform: uppercase;">🚨 {severity_name} INDUSTRIAL INCIDENT ACTIVE</span>
@@ -179,12 +176,6 @@ def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: 
             </a>
           </div>
         </div>
-        <style>
-        @keyframes bannerPulse {{
-            0%, 100% {{ border-color: rgba(239, 68, 68, 0.6); box-shadow: 0 0 12px rgba(239, 68, 68, 0.35); }}
-            50% {{ border-color: rgba(239, 68, 68, 1); box-shadow: 0 0 24px rgba(239, 68, 68, 0.65); }}
-        }}
-        </style>
         """
         placeholder.markdown(html, unsafe_allow_html=True)
         return
@@ -221,7 +212,6 @@ def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: 
 
     style = SEVERITY_BANNER_STYLES.get(severity_name, SEVERITY_BANNER_STYLES["HIGH"])
     is_critical = severity_name == "CRITICAL"
-    animation = "animation: emergPulse 2.5s ease-in-out infinite;" if is_critical else ""
 
     ack_href = f"?ack_alert={alert_id}" if alert_id else "?ack_auto_alert=1"
 
@@ -232,11 +222,10 @@ def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: 
     <div style="
         background: {style['bg']};
         border: 1px solid {style['border']};
+        border-left: 4px solid {style['border']};
         border-radius: 10px;
         padding: 10px 18px;
         margin-bottom: 10px;
-        {animation}
-        box-shadow: 0 0 18px {style['glow']}, inset 0 1px 0 rgba(255,255,255,0.08);
         font-family: 'Outfit', sans-serif;
         position: relative;
         overflow: hidden;
@@ -286,10 +275,8 @@ def render_auto_banner(placeholder: st.delta_generator.DeltaGenerator, data_dict
 
     if banner_level:
         html = f"""
-        <div style="background:{banner_color}; border:2px solid {banner_border};
-                    border-radius:12px; padding:12px 20px; text-align:center;
-                    animation: emergPulse 2.5s ease-in-out infinite;
-                    box-shadow:0 0 20px rgba(239,68,68,0.25); margin-bottom:15px;
+        <div style="background:{banner_color}; border:1px solid {banner_border}; border-left:4px solid {banner_border};
+                    border-radius:8px; padding:12px 20px; text-align:center; margin-bottom:15px;
                     font-family:'Outfit',sans-serif;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-weight:800; color:#fff; font-size:13px; letter-spacing:1px; text-transform:uppercase;">

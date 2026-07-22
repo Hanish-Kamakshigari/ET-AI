@@ -5,6 +5,7 @@ Provides AlertManager, AlertSystem, evaluate_alert_conditions, and dispatch_aler
 # Refactoring Safeguard: Preserves 100% of the original business logic and algorithms.
 
 
+import sys
 import logging
 import threading
 from datetime import datetime
@@ -122,8 +123,13 @@ class AlertManager:
     def active_alerts(self) -> Dict[str, SafetyAlert]:
         active_incidents = self.coordinator.dashboard_adapter.get_active_alerts()
         alerts = {}
-        status_map = {s.value: s for s in AlertStatus}
-        sev_map = {s.name: s for s in AlertSeverity}
+        status_map = {s.value.upper(): s for s in AlertStatus}
+        for s in AlertStatus:
+            status_map[s.name.upper()] = s
+            
+        sev_map = {s.name.upper(): s for s in AlertSeverity}
+        for s in AlertSeverity:
+            sev_map[s.value[2].upper()] = s
         
         for inc in active_incidents:
             try:
@@ -136,9 +142,10 @@ class AlertManager:
             except ValueError:
                 end_time = None
                 
-            status_val = inc["status"]
+            status_val = str(inc["status"]).upper()
             status_enum = status_map.get(status_val, AlertStatus.ACTIVE)
-            severity_enum = sev_map.get(inc["severity"], AlertSeverity.LOW)
+            sev_val = str(inc["severity"]).upper()
+            severity_enum = sev_map.get(sev_val, AlertSeverity.LOW)
             
             alert_id = inc["incident_id"]
             alerts[alert_id] = SafetyAlert(
@@ -160,8 +167,13 @@ class AlertManager:
         resolved_incidents = [i for i in all_incidents if i["status"] in ("RESOLVED", "Resolved")]
         
         history_list = []
-        status_map = {s.value: s for s in AlertStatus}
-        sev_map = {s.name: s for s in AlertSeverity}
+        status_map = {s.value.upper(): s for s in AlertStatus}
+        for s in AlertStatus:
+            status_map[s.name.upper()] = s
+            
+        sev_map = {s.name.upper(): s for s in AlertSeverity}
+        for s in AlertSeverity:
+            sev_map[s.value[2].upper()] = s
         
         for inc in resolved_incidents:
             try:
@@ -174,9 +186,10 @@ class AlertManager:
             except ValueError:
                 end_time = None
                 
-            status_val = inc["status"]
+            status_val = str(inc["status"]).upper()
             status_enum = status_map.get(status_val, AlertStatus.RESOLVED)
-            severity_enum = sev_map.get(inc["severity"], AlertSeverity.LOW)
+            sev_val = str(inc["severity"]).upper()
+            severity_enum = sev_map.get(sev_val, AlertSeverity.LOW)
             
             history_list.append(SafetyAlert(
                 alert_id=inc["incident_id"],
@@ -223,8 +236,14 @@ class AlertManager:
         telemetry = get_current_telemetry(zone)
         self.coordinator.process_frame(current_detections, zone, telemetry)
 
-    def acknowledge(self, alert_id: str, user_name: str) -> None:
+    def acknowledge(self, alert_id: str, user_name: str = "Operator") -> None:
         self.coordinator.acknowledge_incident(alert_id, user_name)
+
+    def resolve(self, alert_id: str, user_name: str = "Operator") -> None:
+        self.coordinator.resolve_incident(alert_id, user_name)
+
+    def resolve_alert(self, alert_id: str, user_name: str = "Operator") -> None:
+        self.coordinator.resolve_incident(alert_id, user_name)
 
 
 class AlertSystem:
@@ -400,10 +419,10 @@ def render_improved_alerts(placeholder: st.delta_generator.DeltaGenerator, alert
             ('rgba(34, 197, 94, 0.15)', '#22c55e', 'rgba(34, 197, 94, 0.3)')
         )
 
-        if alert.status == AlertStatus.ACKNOWLEDGED:
-            ack_btn = '<span style="background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; text-transform: uppercase;">✔ ACKNOWLEDGED</span>'
+        if alert.status in (AlertStatus.ACKNOWLEDGED, "ACKNOWLEDGED", "Acknowledged"):
+            ack_btn = f'<a href="?resolve_alert={alert.alert_id}" target="_self" style="text-decoration: none;"><span style="background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.4); border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase;">RESOLVE</span></a>'
         else:
-            ack_btn = f'<a href="?ack_alert={alert.alert_id}" target="_self" style="text-decoration: none;"><span style="background: {color}; color: #fff; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase;">ACKNOWLEDGE</span></a>'
+            ack_btn = f'<a href="?ack_alert={alert.alert_id}" target="_self" style="text-decoration: none; margin-right: 4px;"><span style="background: {color}; color: #fff; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase;">ACKNOWLEDGE</span></a><a href="?resolve_alert={alert.alert_id}" target="_self" style="text-decoration: none;"><span style="background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.4); border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase;">RESOLVE</span></a>'
 
         zone_lbl = ZONE_LABELS_MAP.get(alert.zone, alert.zone)
 

@@ -487,12 +487,8 @@ div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-test
   border-color: var(--border3);
 }}
 .glass-card-critical {{
-  border-color: rgba(239,68,68,0.4) !important;
-  animation: critBorder 1.8s ease-in-out infinite;
-}}
-@keyframes critBorder {{
-  0%,100% {{ box-shadow: 0 0 8px rgba(239,68,68,0.2), var(--shadow-md); }}
-  50%     {{ box-shadow: 0 0 24px rgba(239,68,68,0.5), var(--shadow-md); }}
+  border-color: rgba(239,68,68,0.5) !important;
+  border-left: 3px solid #ef4444 !important;
 }}
 
 /* TYPOGRAPHY UTILITIES */
@@ -536,20 +532,19 @@ div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-test
 
 /* STATUS INDICATORS */
 .dot {{ width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }}
-.dot-critical {{ background: #EF4444; box-shadow: 0 0 8px #EF4444; animation: dotPulse 1.2s ease infinite alternate; }}
-.dot-high     {{ background: #F59E0B; box-shadow: 0 0 6px #F59E0B; animation: dotPulse 1.8s ease infinite alternate; }}
+.dot-critical {{ background: #EF4444; box-shadow: 0 0 8px #EF4444; opacity: 1; }}
+.dot-high     {{ background: #F59E0B; box-shadow: 0 0 6px #F59E0B; opacity: 1; }}
 .dot-medium   {{ background: #EAB308; box-shadow: 0 0 5px #EAB308; }}
 .dot-safe, .dot-low {{ background: #22C55E; box-shadow: 0 0 5px #22C55E; }}
-@keyframes dotPulse {{ 0% {{ transform: scale(0.8); opacity: 0.7; }} 100% {{ transform: scale(1.4); opacity: 1; }} }}
+@keyframes dotPulse {{ 0%, 100% {{ transform: scale(1); opacity: 1; }} }}
 
 /* Severity text colors */
-.risk-critical {{ color: #EF4444 !important; font-weight: 800; animation: critText 1.5s ease-in-out infinite alternate; }}
+.risk-critical {{ color: #EF4444 !important; font-weight: 800; text-shadow: 0 0 12px rgba(239,68,68,0.5); }}
 .risk-high     {{ color: #F59E0B !important; font-weight: 700; }}
 .risk-medium   {{ color: #EAB308 !important; font-weight: 700; }}
 .risk-safe, .risk-low {{ color: #22C55E !important; font-weight: 700; }}
 @keyframes critText {{
-  0%   {{ text-shadow: 0 0 8px rgba(239,68,68,0.3); }}
-  100% {{ text-shadow: 0 0 22px rgba(239,68,68,0.8); }}
+  0%, 100% {{ text-shadow: 0 0 12px rgba(239,68,68,0.5); }}
 }}
 
 /* BANNERS */
@@ -571,22 +566,21 @@ div[data-testid="stHorizontalBlock"]:not(div[data-testid="column"] div[data-test
   border-radius: var(--radius-lg);
   padding: 16px 20px;
   margin: 4px 0 14px 0;
-  animation: emergPulse 2.5s ease-in-out infinite;
+  box-shadow: 0 0 25px rgba(239,68,68,0.4), inset 0 0 35px rgba(239,68,68,0.05);
   backdrop-filter: blur(12px);
 }}
 @keyframes emergPulse {{
-  0%,100% {{ box-shadow: 0 0 15px rgba(239,68,68,0.3), inset 0 0 30px rgba(239,68,68,0.03); }}
-  50%     {{ box-shadow: 0 0 40px rgba(239,68,68,0.6), inset 0 0 50px rgba(239,68,68,0.07); }}
+  0%,100% {{ box-shadow: 0 0 25px rgba(239,68,68,0.4), inset 0 0 35px rgba(239,68,68,0.05); }}
 }}
 
 /* ANIMATIONS */
-@keyframes pulse-red   {{ 0%,100%{{opacity:1;}} 50%{{opacity:0.35;}} }}
-@keyframes pulse-green {{ 0%,100%{{opacity:1;}} 50%{{opacity:0.5;}} }}
-@keyframes pulse-blue  {{ 0%,100%{{opacity:1;}} 50%{{opacity:0.4;}} }}
+@keyframes pulse-red   {{ 0%,100%{{opacity:1;}} }}
+@keyframes pulse-green {{ 0%,100%{{opacity:1;}} }}
+@keyframes pulse-blue  {{ 0%,100%{{opacity:1;}} }}
 @keyframes fadeIn      {{ from{{opacity:0;transform:translateY(6px);}} to{{opacity:1;transform:translateY(0);}} }}
-.pulse-red   {{ animation: pulse-red 1.2s ease infinite; }}
-.pulse-green {{ animation: pulse-green 2s ease infinite; }}
-.pulse-blue  {{ animation: pulse-blue 2s ease infinite; }}
+.pulse-red   {{ opacity: 1; }}
+.pulse-green {{ opacity: 1; }}
+.pulse-blue  {{ opacity: 1; }}
 .fade-in     {{ animation: fadeIn 0.4s ease both; }}
 .stApp       {{ animation: fadeIn 0.4s ease; }}
 
@@ -913,9 +907,9 @@ div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="
 }}
 .suraksha-status-pill.critical {{
   background: rgba(239,68,68,0.1);
+  border-left: 3px solid #ef4444;
   border-color: rgba(239,68,68,0.4);
   color: #ef4444;
-  animation: critBorder 1.8s ease-in-out infinite;
 }}
 .suraksha-status-dot {{
   width: 7px; height: 7px;
@@ -924,26 +918,12 @@ div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="
 }}
 .suraksha-status-dot.secure {{
   background: #22c55e;
-  box-shadow: 0 0 6px #22c55e;
-  animation: safePulse 2.5s ease-in-out infinite;
 }}
 .suraksha-status-dot.elevated {{
   background: #f59e0b;
-  box-shadow: 0 0 6px #f59e0b;
-  animation: safePulse 2s ease-in-out infinite;
 }}
 .suraksha-status-dot.critical {{
   background: #ef4444;
-  box-shadow: 0 0 8px #ef4444;
-  animation: critPulse 0.9s ease-in-out infinite;
-}}
-@keyframes safePulse {{
-  0%,100% {{ opacity:1; transform:scale(1); }}
-  50%       {{ opacity:0.6; transform:scale(0.85); }}
-}}
-@keyframes critPulse {{
-  0%,100% {{ opacity:1; box-shadow:0 0 8px #ef4444; }}
-  50%      {{ opacity:0.7; box-shadow:0 0 16px #ef4444; }}
 }}
 
 /* Time badge */
@@ -978,13 +958,10 @@ div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="
   animation: rulePassFlash 1s ease-out forwards;
 }}
 
-@keyframes ruleFailPulse {{
-  0%, 100% {{ border-color: rgba(239, 68, 68, 0.15); box-shadow: inset 0 0 3px rgba(239, 68, 68, 0.05); }}
-  50% {{ border-color: rgba(239, 68, 68, 0.4); box-shadow: inset 0 0 8px rgba(239, 68, 68, 0.15); }}
-}}
 .rule-fail-row {{
-  animation: ruleFailPulse 1.8s infinite ease-in-out;
-  background-color: rgba(239, 68, 68, 0.03) !important;
+  border-left: 3px solid #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  background-color: rgba(239, 68, 68, 0.06) !important;
 }}
 
 @keyframes scoreGrow {{
@@ -1024,12 +1001,10 @@ div[data-testid="stHorizontalBlock"]:has(button[id*="nav_"]) > div[data-testid="
 .detection-entry:last-child {{
   border-bottom: none;
 }}
-@keyframes warningPulse {{
-  0% {{ border-color: rgba(239, 68, 68, 0.4); box-shadow: 0 0 8px rgba(239, 68, 68, 0.2); }}
-  100% {{ border-color: rgba(239, 68, 68, 1); box-shadow: 0 0 16px rgba(239, 68, 68, 0.55); }}
-}}
 .warning-pulse-active {{
-  animation: warningPulse 1.5s infinite alternate !important;
+  border-left: 3px solid #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
+  background: rgba(239, 68, 68, 0.06) !important;
 }}
 </style>
 """
@@ -1339,7 +1314,7 @@ def render_alert_card(
     html = f"""
     <div class="{card_class}" style="background: {bg}; border-left: 4px solid {color}; border-top: 1px solid {border_color}; border-right: 1px solid {border_color}; border-bottom: 1px solid {border_color}; border-radius: 6px; padding: 6px 10px; margin-bottom: 4px; font-family: var(--font-primary);">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-        <span style="display: flex; align-items: center; gap: 4px; font-weight: 800; color: {color}; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; {'animation: dotPulse 1.2s ease infinite alternate;' if severity_name == 'CRITICAL' else ''}">
+        <span style="display: flex; align-items: center; gap: 4px; font-weight: 800; color: {color}; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;">
           {icon} {severity_name}
         </span>
         <div style="display: flex; align-items: center; gap: 6px;">
@@ -1498,9 +1473,10 @@ def render_sparkline_svg(
     pts_str = " ".join(f"{x},{y}" for x, y in pts)
     fill_pts_str = f"0,{height} " + pts_str + f" {width},{height}"
     
-    # We use a unique ID for the gradient based on timestamp/random to avoid caching collisions
-    import random
-    grad_id = f"grad-{random.randint(1000, 9999)}"
+    # Use a deterministic gradient ID so identical data produces identical SVG output.
+    # A random ID here would defeat content-hash memoization (the HTML would always differ).
+    _hash_seed = hash((pts_str, stroke_color)) & 0xFFFF
+    grad_id = f"grad-{_hash_seed}"
     
     svg = f"""
     <svg width="100%" height="{height}" viewBox="0 0 {width} {height}" style="overflow:visible; display:block;">

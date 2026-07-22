@@ -203,6 +203,9 @@ def handle_url_actions(alert_system: AlertSystem, am: AlertManager) -> None:
         aid = st.query_params['ack_alert']
         am.acknowledge(aid, "Operator")
         alert_system.acknowledge_alert(aid)
+        st.session_state['alert_fsm_state'] = 'ACKNOWLEDGED'
+        if hasattr(am, 'coordinator') and am.coordinator:
+            am.coordinator.dashboard_adapter.invalidate_cache()
         if aid == 'ALT-001':
             st.session_state.ack_critical = True
             st.session_state.sim_stage    = 'acknowledged'
@@ -216,9 +219,24 @@ def handle_url_actions(alert_system: AlertSystem, am: AlertManager) -> None:
         del st.query_params['ack_alert']
         st.rerun()
 
+    if 'resolve_alert' in st.query_params:
+        aid = st.query_params['resolve_alert']
+        if hasattr(am, 'resolve_alert'):
+            am.resolve_alert(aid)
+        elif hasattr(am, 'resolve'):
+            am.resolve(aid)
+        alert_system.resolve_alert(aid)
+        st.session_state['alert_fsm_state'] = 'RESOLVED'
+        if hasattr(am, 'coordinator') and am.coordinator:
+            am.coordinator.dashboard_adapter.invalidate_cache()
+        st.toast(f'✔ Alert {aid} Resolved.', icon='✅')
+        del st.query_params['resolve_alert']
+        st.rerun()
+
     if 'ack_auto_alert' in st.query_params:
         st.session_state.banner_visible = False
         st.session_state.active_alert = None
+        st.session_state['alert_fsm_state'] = 'ACKNOWLEDGED'
         del st.query_params['ack_auto_alert']
         st.toast("✔ Alert Acknowledged", icon="🚨")
         st.rerun()

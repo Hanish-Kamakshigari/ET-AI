@@ -167,9 +167,8 @@ def render_executive_command_center() -> None:
         </div>"""
 
     html = f"""
-    <div style="background:{_BG_GRADIENT}; border:1px solid {grade_color}; border-radius:{_CARD_RADIUS};
-                padding:12px 14px; font-family:{_FONT}; margin-bottom:8px;
-                box-shadow:0 0 12px {grade_color}33;">
+    <div style="background:{_BG_GRADIENT}; border:1px solid {grade_color}55; border-left:3px solid {grade_color}; border-radius:{_CARD_RADIUS};
+                padding:12px 14px; font-family:{_FONT}; margin-bottom:8px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <span style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px;">
                 🎯 EXECUTIVE COMMAND CENTER
@@ -571,9 +570,8 @@ def render_emergency_response_plan() -> None:
         </div>"""
 
     html = f"""
-    <div style="background:{_BG_GRADIENT}; border:1px solid {sev_color}; border-radius:{_CARD_RADIUS};
-                padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;
-                box-shadow:0 0 12px {sev_color}33;">
+    <div style="background:{_BG_GRADIENT}; border:1px solid {sev_color}55; border-left:3px solid {sev_color}; border-radius:{_CARD_RADIUS};
+                padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
             <span style="color:{sev_color}; font-size:11px; font-weight:600; letter-spacing:1px;">
                 🆘 EMERGENCY RESPONSE ORCHESTRATOR
@@ -672,7 +670,7 @@ def render_incident_intelligence() -> None:
 # 9. INTELLIGENCE TIMELINE — Automatic Incident Timeline
 # ════════════════════════════════════════════════════════════════════════════════
 
-def render_intelligence_timeline() -> None:
+def render_intelligence_timeline(placeholder: Optional[Any] = None) -> None:
     """Automatic incident timeline — every incident creates a timeline entry."""
     orch = get_intelligence_orchestrator()
     timeline = orch.get_incident_timeline()
@@ -681,53 +679,59 @@ def render_intelligence_timeline() -> None:
     play_active = _st.session_state.get('sim_play_active', False)
 
     if not timeline:
-        # Standby: show historical/logged events
-        if not play_active:
-            html = f"""
-            <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
-                        padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
-                <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:6px;">
-                    📋 INTELLIGENCE TIMELINE (STANDBY)
-                </div>
-                <div style="color:{_TEXT_DIM}; font-size:10px;">
-                    Historical events from today's operations shown below.
-                </div>
+        label_suffix = " (STANDBY)" if not play_active else " (MONITORING)"
+        html = clean_html(f"""
+        <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-left:3px solid #3b82f6; border-radius:{_CARD_RADIUS};
+                    padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <span style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px;">
+                    📋 INTELLIGENCE TIMELINE{label_suffix}
+                </span>
+                <span style="background:rgba(59,130,246,0.15); color:#3b82f6; border:1px solid rgba(59,130,246,0.3); font-size:7.5px; font-weight:800; padding:1px 5px; border-radius:3px; text-transform:uppercase;">READY</span>
             </div>
-            """
-            _st.markdown(html, unsafe_allow_html=True)
+            <div style="color:{_TEXT_DIM}; font-size:10px;">
+                No active threat events recorded today. Surveillance active.
+            </div>
+        </div>
+        """)
+        hash_key = f"_hash_intel_timeline_empty_{play_active}"
+        if _st.session_state.get(hash_key) != html:
+            _st.session_state[hash_key] = html
+            if placeholder: placeholder.markdown(html, unsafe_allow_html=True)
+            else: _st.markdown(html, unsafe_allow_html=True)
         return
 
-    # Limit to 15 events in standby, 10 in live mode
     limit = 15 if not play_active else 10
     timeline_items = ""
     for event in timeline[:limit]:
-        sev_color = _severity_color(event.get('status', ''))
+        status_str = str(event.get('status', 'NOMINAL')).upper()
+        sev_color = _severity_color(status_str)
         timeline_items += f"""
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-            <div style="min-width:50px; color:{_ACCENT_BLUE}; font-size:9px; font-weight:600;">
-                {event.get('timestamp','')}
-            </div>
-            <div style="width:8px; height:8px; border-radius:50%; background:{sev_color};
-                        box-shadow:0 0 6px {sev_color};"></div>
-            <div style="color:{_TEXT_MUTED}; font-size:10px; flex:1;">
-                {event.get('event','')}
-            </div>
-            <div style="color:{sev_color}; font-size:9px; font-weight:600;">
-                [{event.get('status','')}]
-            </div>
+        <div style="display:grid; grid-template-columns:54px 14px 1fr auto; align-items:center; gap:6px; padding:5px 8px; margin-bottom:4px; background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.04); border-left:3px solid {sev_color}; border-radius:6px;">
+            <span style="color:#64748b; font-family:monospace; font-size:9px;">{event.get('timestamp','')}</span>
+            <span style="width:7px; height:7px; border-radius:50%; background:{sev_color}; display:inline-block; margin:auto;"></span>
+            <span style="color:#cbd5e1; font-size:10px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{event.get('event','')}</span>
+            <span style="background:{sev_color}20; color:{sev_color}; border:1px solid {sev_color}40; border-radius:3px; padding:1px 5px; font-size:7.5px; font-weight:800; text-transform:uppercase;">{status_str}</span>
         </div>"""
 
     label_suffix = " (STANDBY)" if not play_active else ""
-    html = f"""
-    <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-radius:{_CARD_RADIUS};
+    html = clean_html(f"""
+    <div style="background:{_BG_GRADIENT}; border:1px solid {_BORDER}; border-left:3px solid #3b82f6; border-radius:{_CARD_RADIUS};
                 padding:10px 14px; font-family:{_FONT}; margin-bottom:6px;">
-        <div style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px; margin-bottom:6px;">
-            📋 INTELLIGENCE TIMELINE{label_suffix}
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="color:{_TEXT_MUTED}; font-size:11px; font-weight:600; letter-spacing:1px;">
+                📋 INTELLIGENCE TIMELINE{label_suffix}
+            </span>
+            <span style="background:rgba(59,130,246,0.15); color:#3b82f6; border:1px solid rgba(59,130,246,0.3); font-size:7.5px; font-weight:800; padding:1px 5px; border-radius:3px; text-transform:uppercase;">LOG ACTIVE</span>
         </div>
         {timeline_items}
     </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
+    """)
+    hash_key = "_hash_intel_timeline_active"
+    if _st.session_state.get(hash_key) != html:
+        _st.session_state[hash_key] = html
+        if placeholder: placeholder.markdown(html, unsafe_allow_html=True)
+        else: _st.markdown(html, unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -743,7 +747,6 @@ def render_compound_risk_status_compact() -> None:
 
     from src.config.ui_constants import ZONE_LABELS
 
-    # Get highest risk zone
     highest_risk_zone = "—"
     highest_risk_score = 100.0
     if scores:
@@ -751,7 +754,6 @@ def render_compound_risk_status_compact() -> None:
         highest_risk_zone = ZONE_LABELS.get(worst_zone, worst_zone)
         highest_risk_score = scores[worst_zone]
 
-    # Risk level badge
     if not risks:
         risk_level = "MONITORING"
         risk_color = _ACCENT_GREEN
@@ -791,7 +793,10 @@ def render_compound_risk_status_compact() -> None:
         </div>
     </div>
     """
-    st.markdown(html, unsafe_allow_html=True)
+    hash_key = "_hash_compound_status_compact"
+    if st.session_state.get(hash_key) != html:
+        st.session_state[hash_key] = html
+        st.markdown(html, unsafe_allow_html=True)
 
 
 def render_interactive_plant_twin() -> None:
@@ -809,17 +814,13 @@ def render_center_column_panels(placeholders: Dict[str, Any]) -> None:
     compound_risk_detail_placeholder = placeholders.get('compound_risk_detail')
     multi_agent_placeholder = placeholders.get('multi_agent')
 
-    # Intelligence Timeline
     if intelligence_timeline_placeholder:
-        with intelligence_timeline_placeholder.container():
-            render_intelligence_timeline()
+        render_intelligence_timeline(intelligence_timeline_placeholder)
 
-    # Compound Risk Intelligence detailed panel
     if compound_risk_detail_placeholder:
         with compound_risk_detail_placeholder.container():
             render_compound_risk_intelligence()
 
-    # Multi-Agent Reasoning Pipeline (moved beneath AI decision engine)
     if multi_agent_placeholder:
         with multi_agent_placeholder.container():
             st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
@@ -856,7 +857,7 @@ def render_geospatial_plant_map() -> None:
         <div style="position:absolute; left:{pos['x']}%; top:{pos['y']}%; transform:translate(-50%,-50%);">
             <div style="width:28px; height:28px; border-radius:50%; background:{grade.color}33;
                         border:2px solid {grade.color}; display:flex; align-items:center; justify-content:center;
-                        font-size:12px; {pulse} box-shadow:0 0 10px {grade.color}66;">
+                        font-size:12px;">
                 {pos['cam']}
             </div>
             <div style="color:{grade.color}; font-size:8px; font-weight:600; text-align:center; margin-top:2px;
@@ -1226,8 +1227,7 @@ def render_incident_story_mode() -> None:
             <div style="min-width:42px; color:{_ACCENT_BLUE}; font-size:9px; font-weight:600; padding-top:2px;">
                 {event.get('timestamp','')}
             </div>
-            <div style="width:10px; height:10px; border-radius:50%; background:{sev_color};
-                        box-shadow:0 0 6px {sev_color}; margin-top:3px; flex-shrink:0;"></div>
+            <div style="width:10px; height:10px; border-radius:50%; background:{sev_color}; margin-top:3px; flex-shrink:0;"></div>
             <div style="color:{_TEXT_MUTED}; font-size:9px; flex:1; padding-top:1px;">
                 {event.get('event','')}
             </div>
@@ -1314,7 +1314,7 @@ def render_multi_agent_pipeline() -> None:
             active = active_flags[i]
             opacity = "1.0" if active else "0.4"
             border_color = color if active else _BORDER
-            glow = f"box-shadow:0 0 8px {color}55;" if active else ""
+            glow = ""
             lbl = '● ACTIVE' if active else '○ STANDBY'
             lbl_color = _ACCENT_GREEN if active else _TEXT_DIM
             if active:
