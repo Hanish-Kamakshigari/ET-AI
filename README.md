@@ -99,7 +99,6 @@ SurakshaAI has been benchmarked across both edge devices and local servers, demo
 
 ---
 
----
 
 ## 👥 Contributors
 
