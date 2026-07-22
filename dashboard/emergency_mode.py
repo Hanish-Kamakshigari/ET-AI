@@ -10,6 +10,11 @@ from src.alert_system import AlertManager
 
 
 def is_emergency_active(data_dict: Dict[str, Any] = None) -> bool:
+    # If there are active alerts in the shared session state, emergency mode is active!
+    active_alerts = st.session_state.get('active_alerts', {})
+    if active_alerts:
+        return True
+
     if not st.session_state.get('sim_play_active', False):
         return False
     if data_dict:
@@ -107,40 +112,60 @@ def toggle_emergency_mode(active: bool, resolving: bool = False) -> None:
 
 
 def render_critical_banner(placeholder: st.delta_generator.DeltaGenerator, data_dict: Dict[str, Any]) -> None:
-    # Gate: banner only visible when FSM has advanced to WARNING_ACTIVE or later states.
-    # This prevents the banner from firing the moment autoplay starts.
-    _BANNER_FSM_STATES = ('WARNING_ACTIVE', 'DISPATCHING', 'DELIVERED', 'INCIDENT_ACTIVE', 'ACKNOWLEDGED')
+    active_alerts = st.session_state.get('active_alerts', {})
     fsm_state = st.session_state.get('alert_fsm_state', 'NORMAL')
-    is_banner_eligible = fsm_state in _BANNER_FSM_STATES
 
-    if not is_emergency_active(data_dict) or not is_banner_eligible:
-        if st.session_state.get('_banner_was_active', False):
-            if fsm_state == 'RESOLVED':
-                placeholder.markdown('<div class="critical-incident-banner banner-resolving"><span style="color:#22c55e;font-size:12px;font-weight:700;">✅ INCIDENT RESOLVED — Returning to normal operations</span></div>', unsafe_allow_html=True)
-            else:
-                placeholder.empty()
-            st.session_state._banner_was_active = False
-        else:
+    if not active_alerts:
+        if st.session_state.get('_crit_banner_last_html') != 'EMPTY':
+            st.session_state['_crit_banner_last_html'] = 'EMPTY'
             placeholder.empty()
+        st.session_state._banner_was_active = False
         return
+
     st.session_state._banner_was_active = True
-    level = get_emergency_level(data_dict)
-    affected_zone = get_affected_zone(data_dict)
+    
+    # Pick the highest-severity active alert
+    severity_weights = {'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1}
+    top_alert = None
+    max_weight = -1
+    for alert in active_alerts.values():
+        sev_name = getattr(getattr(alert, 'severity', None), 'name', str(getattr(alert, 'severity', ''))).upper()
+        weight = severity_weights.get(sev_name, 0)
+        if weight > max_weight:
+            max_weight = weight
+            top_alert = alert
+
+    if not top_alert:
+        if st.session_state.get('_crit_banner_last_html') != 'EMPTY':
+            st.session_state['_crit_banner_last_html'] = 'EMPTY'
+            placeholder.empty()
+        st.session_state._banner_was_active = False
+        return
+
+    level = getattr(getattr(top_alert, 'severity', None), 'name', 'CRITICAL').upper()
+    affected_zone = getattr(top_alert, 'zone', 'Zone_A')
+
     from src.config.ui_constants import ZONE_LABELS
     zone_label = ZONE_LABELS.get(affected_zone, affected_zone)
+
+    # Extract plain-text incident description
+    import re as _re
+    raw_msg = getattr(top_alert, 'message', '')
+    title_match = _re.search(r'<div[^>]*>\s*(.*?)\s*</div>', raw_msg, _re.DOTALL)
+    if title_match:
+        incident_desc = _re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
+    else:
+        incident_desc = _re.sub(r'<[^>]+>', '', raw_msg).strip().split('\n')[0][:60]
+    incident_desc = ' '.join(incident_desc.split())
+
     compound_score = data_dict.get('compound_risk_score', 0)
-    latest = data_dict.get('latest', {})
-    gas_val = float(latest.get(f"{affected_zone}_gas_ppm", 0))
-    worker_count = int(latest.get(f"{affected_zone}_worker_count", 0))
-    incident_parts = []
-    if gas_val > 35: incident_parts.append("Gas Leak")
-    if worker_count > 0: incident_parts.append("Worker Nearby")
-    if not incident_parts: incident_parts.append("Compound Risk Detected")
-    incident_desc = " + ".join(incident_parts)
     escalation_secs = max(60, 300 - compound_score * 20)
     escalation_str = f"{escalation_secs // 60:02d}:{escalation_secs % 60:02d}"
-    if level == 'CRITICAL': action, icon = "Immediate Evacuation Recommended", "🚨"
-    else: action, icon = "Restrict Zone Access — Deploy Response Team", "⚠️"
+
+    if level == 'CRITICAL':
+        action, icon = "Immediate Evacuation Recommended", "🚨"
+    else:
+        action, icon = "Restrict Zone Access — Deploy Response Team", "⚠️"
 
     # One-shot audio beep on banner first appearance — silent unless unmuted
     audio_script = ""
@@ -178,7 +203,17 @@ def render_critical_banner(placeholder: st.delta_generator.DeltaGenerator, data_
             </div>
         </div>
     </div>{audio_script}"""
-    placeholder.markdown(html, unsafe_allow_html=True)
+
+    # Safe render logic to prevent flicker and keep the banner displayed
+    clean = ' '.join(html.split())
+    last_key = f"_crit_banner_last_html"
+    last_counter_key = f"_crit_banner_last_counter"
+    rerun_cnt = st.session_state.get('rerun_counter', 0)
+
+    if st.session_state.get(last_key) != clean or st.session_state.get(last_counter_key) != rerun_cnt:
+        st.session_state[last_key] = clean
+        st.session_state[last_counter_key] = rerun_cnt
+        placeholder.markdown(clean, unsafe_allow_html=True)
 
 
 def render_cctv_emergency_overlay(

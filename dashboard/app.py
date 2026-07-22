@@ -177,7 +177,7 @@ if not st.session_state.get('sim_play_active', False):
         from src.alert_system import clear_alert_if_safe
         _all_zones = ["Zone_A", "Zone_B", "Zone_C", "Reactor_Area", "Storage_Area"]
         for _z in _all_zones:
-            clear_alert_if_safe(_z)
+            clear_alert_if_safe(_z, update_cooldown=False)
         for _alert_id in list(am.active_alerts.keys()):
             try:
                 am.resolve_alert(_alert_id)
@@ -207,6 +207,13 @@ if not st.session_state.get('sim_play_active', False):
         }
     except Exception:
         pass
+
+# Force invalidation of the active alerts cache to ensure it reads the resolved state
+if hasattr(am, 'coordinator') and am.coordinator:
+    am.coordinator.dashboard_adapter.invalidate_cache()
+
+# Single source of truth for active alerts in session state (assigned AFTER cleanup)
+st.session_state.active_alerts = am.active_alerts
 
 # Handle URL parameters/Operator Action Acknowledges
 handle_url_actions(alert_system, am)

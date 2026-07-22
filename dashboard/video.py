@@ -1249,11 +1249,15 @@ def stream_cctv_feed_raw(
             status_bar_placeholder.empty()
 
     # Process frame through AlertCoordinator to track persistence and store incident frames
-    try:
-        coordinator = get_alert_coordinator()
-        coordinator.process_frame(active_dets, selected_zone, latest)
-    except Exception as ex:
-        pass
+    # only during active simulation after initial startup frames.
+    play_active = st.session_state.get('sim_play_active', False)
+    frame_idx = st.session_state.get('cctv_frame_index', 0)
+    if play_active and frame_idx >= 5:
+        try:
+            coordinator = get_alert_coordinator()
+            coordinator.process_frame(active_dets, selected_zone, latest)
+        except Exception as ex:
+            pass
 
     # Evaluate alert conditions and drive the FSM + dispatch
     alert_conditions = evaluate_alert_conditions(
@@ -1526,7 +1530,7 @@ def stream_cctv_feed_raw(
 
     # Map active alert types to distinct, related EHS compliance infractions/protocols
     RELATED_COMPLIANCE_MAP = {
-        "CRITICAL GAS ESCAPE": [
+        "GAS ESCAPE": [
             {
                 "severity": "CRITICAL",
                 "hazard": "HOT WORK PERMIT BREACH",
@@ -1540,7 +1544,35 @@ def stream_cctv_feed_raw(
                 "confidence": 94
             }
         ],
-        "ELEVATED HAZARDOUS GAS": [
+        "GAS CRITICAL": [
+            {
+                "severity": "CRITICAL",
+                "hazard": "HOT WORK PERMIT BREACH",
+                "description": "Volatile gas cloud detected in close proximity to active hot work permit. Hot work must be suspended immediately.",
+                "confidence": 98
+            },
+            {
+                "severity": "HIGH",
+                "hazard": "PPE BREACH (GAS EVACUATION)",
+                "description": "Workers in gas escape boundary detected without mandatory breathing apparatus or self-contained respirator gear.",
+                "confidence": 94
+            }
+        ],
+        "GAS LEAK": [
+            {
+                "severity": "CRITICAL",
+                "hazard": "HOT WORK PERMIT BREACH",
+                "description": "Volatile gas cloud detected in close proximity to active hot work permit. Hot work must be suspended immediately.",
+                "confidence": 98
+            },
+            {
+                "severity": "HIGH",
+                "hazard": "PPE BREACH (GAS EVACUATION)",
+                "description": "Workers in gas escape boundary detected without mandatory breathing apparatus or self-contained respirator gear.",
+                "confidence": 94
+            }
+        ],
+        "GAS ELEVATED": [
             {
                 "severity": "HIGH",
                 "hazard": "VENTILATION COMPLIANCE",
@@ -1548,7 +1580,7 @@ def stream_cctv_feed_raw(
                 "confidence": 91
             }
         ],
-        "FIRE EMERGENCY": [
+        "FIRE": [
             {
                 "severity": "CRITICAL",
                 "hazard": "DELUGE SYSTEM OBSTRUCTION",
@@ -1562,7 +1594,21 @@ def stream_cctv_feed_raw(
                 "confidence": 95
             }
         ],
-        "RESTRICTED ZONE INTRUSION": [
+        "SMOKE": [
+            {
+                "severity": "CRITICAL",
+                "hazard": "DELUGE SYSTEM OBSTRUCTION",
+                "description": "Sprinkler line blockage detected or low line pressure in fire deluge suppression loop. Alternate exit routing activated.",
+                "confidence": 99
+            },
+            {
+                "severity": "HIGH",
+                "hazard": "EVACUATION ROUTE BLOCKAGE",
+                "description": "Exit corridors or assembly point access points detected obstructed by pallets/materials. Clear path immediately.",
+                "confidence": 95
+            }
+        ],
+        "INTRUDER": [
             {
                 "severity": "HIGH",
                 "hazard": "PERMIT SECURITY INTRUSION",
@@ -1570,7 +1616,15 @@ def stream_cctv_feed_raw(
                 "confidence": 92
             }
         ],
-        "CRITICAL TEMPERATURE THREAT": [
+        "INTRUSION": [
+            {
+                "severity": "HIGH",
+                "hazard": "PERMIT SECURITY INTRUSION",
+                "description": "Personnel entry detected inside high-risk boundary without active access credentials or zone clearance permit.",
+                "confidence": 92
+            }
+        ],
+        "TEMPERATURE": [
             {
                 "severity": "CRITICAL",
                 "hazard": "COOLANT FLOW COMPLIANCE",
@@ -1578,7 +1632,7 @@ def stream_cctv_feed_raw(
                 "confidence": 96
             }
         ],
-        "EQUIPMENT OVERHEATING": [
+        "OVERHEATING": [
             {
                 "severity": "CRITICAL",
                 "hazard": "THERMAL STRAIN OVERRIDE",
@@ -1590,8 +1644,24 @@ def stream_cctv_feed_raw(
             {
                 "severity": "CRITICAL",
                 "hazard": "HOT WORK PERMIT BREACH",
-                "description": "Active hot work permit co-located with volatile gas cloud. Immediate suspension required.",
+                "description": "Active hot work permit co-located with volatile gas cloud. Suspension required.",
                 "confidence": 98
+            }
+        ],
+        "PRESSURE": [
+            {
+                "severity": "HIGH",
+                "hazard": "PRESSURE VESSEL INTEGRITY",
+                "description": "Safe operating pressure threshold exceeded. Verify pressure relief line functionality immediately.",
+                "confidence": 95
+            }
+        ],
+        "PPE": [
+            {
+                "severity": "MEDIUM",
+                "hazard": "PPE EQUIPMENT PROTOCOL",
+                "description": "Worker missing hi-vis vest or hard hat in active machinery/movement area. Mandatory safety gear enforcement required.",
+                "confidence": 92
             }
         ]
     }
@@ -1649,6 +1719,8 @@ def stream_cctv_feed_raw(
         active_dets.append(Detection(label="overpressure", confidence=0.99, bbox=(0,0,0,0)))
 
     am.update(active_dets, selected_zone)
+    # Sync with shared session state active_alerts immediately after update
+    st.session_state.active_alerts = am.active_alerts
     print(f"[DIAGNOSTIC] am.update called: zone={selected_zone}, detections={len(active_dets)}, active_alerts={len(am.active_alerts)}")
 
     # Force immediate refresh of alert UI if state changed
@@ -1662,9 +1734,21 @@ def stream_cctv_feed_raw(
             title="Zone Secure",
             message=f"All telemetry and compliance factors in {selected_zone_name} are nominal."
         )
-        warnings_placeholder.markdown(warn_html, unsafe_allow_html=True)
+        
+        # Use safe render logic to prevent flickering
+        clean_warn = ' '.join(warn_html.split())
+        last_key = f"_warn_last_html_{selected_zone}"
+        last_counter_key = f"_warn_last_counter_{selected_zone}"
+        rerun_cnt = st.session_state.get('rerun_counter', 0)
+        
+        if st.session_state.get(last_key) != clean_warn or st.session_state.get(last_counter_key) != rerun_cnt:
+            st.session_state[last_key] = clean_warn
+            st.session_state[last_counter_key] = rerun_cnt
+            warnings_placeholder.markdown(clean_warn, unsafe_allow_html=True)
     elif warnings_placeholder:
-        warnings_placeholder.empty()
+        if st.session_state.get(f"_warn_last_html_{selected_zone}") != 'EMPTY':
+            st.session_state[f"_warn_last_html_{selected_zone}"] = 'EMPTY'
+            warnings_placeholder.empty()
 
     # ═══════════════════════════════════════════════════════════════════════════════
     # AUTO-RERUN FOR SMOOTH PLAYBACK (driven by Autoplay Simulation toggle)

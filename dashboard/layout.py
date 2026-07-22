@@ -85,12 +85,20 @@ def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: 
     """
     # Gate: banner only visible while simulation is running
     if not st.session_state.get('sim_play_active', False):
-        placeholder.empty()
+        if st.session_state.get('_top_banner_last_html') != 'EMPTY':
+            st.session_state['_top_banner_last_html'] = 'EMPTY'
+            placeholder.empty()
         return
 
-    all_active = getattr(am, "active_alerts", {})
+    # Use the shared active alerts dict from session state to avoid DB re-queries
+    all_active = st.session_state.get('active_alerts')
+    if all_active is None:
+        all_active = getattr(am, "active_alerts", {})
+
     if not all_active:
-        placeholder.empty()
+        if st.session_state.get('_top_banner_last_html') != 'EMPTY':
+            st.session_state['_top_banner_last_html'] = 'EMPTY'
+            placeholder.empty()
         return
 
     # Check if there is ANY plant-wide HIGH or CRITICAL incident
@@ -177,7 +185,17 @@ def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: 
           </div>
         </div>
         """
-        placeholder.markdown(html, unsafe_allow_html=True)
+        
+        # Anti-flicker render guard
+        clean = ' '.join(html.split())
+        last_key = f"_top_banner_last_html"
+        last_counter_key = f"_top_banner_last_counter"
+        rerun_cnt = st.session_state.get('rerun_counter', 0)
+        
+        if st.session_state.get(last_key) != clean or st.session_state.get(last_counter_key) != rerun_cnt:
+            st.session_state[last_key] = clean
+            st.session_state[last_counter_key] = rerun_cnt
+            placeholder.markdown(clean, unsafe_allow_html=True)
         return
 
     # Fallback/Scoped Alert Banner for lower/other alerts
@@ -188,7 +206,9 @@ def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: 
         active = all_active
 
     if not active:
-        placeholder.empty()
+        if st.session_state.get('_top_banner_last_html') != 'EMPTY':
+            st.session_state['_top_banner_last_html'] = 'EMPTY'
+            placeholder.empty()
         return
 
     # Pick the highest-severity alert for this zone
@@ -264,7 +284,17 @@ def render_top_alert_banner(placeholder: st.delta_generator.DeltaGenerator, am: 
       </div>
     </div>
     """
-    placeholder.markdown(html, unsafe_allow_html=True)
+    
+    # Anti-flicker render guard
+    clean = ' '.join(html.split())
+    last_key = f"_top_banner_last_html"
+    last_counter_key = f"_top_banner_last_counter"
+    rerun_cnt = st.session_state.get('rerun_counter', 0)
+    
+    if st.session_state.get(last_key) != clean or st.session_state.get(last_counter_key) != rerun_cnt:
+        st.session_state[last_key] = clean
+        st.session_state[last_counter_key] = rerun_cnt
+        placeholder.markdown(clean, unsafe_allow_html=True)
 
 
 def render_auto_banner(placeholder: st.delta_generator.DeltaGenerator, data_dict: Dict[str, Any]) -> None:

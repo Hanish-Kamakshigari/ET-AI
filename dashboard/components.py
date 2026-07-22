@@ -35,8 +35,12 @@ def _safe_markdown(placeholder: Optional[DeltaGenerator], html: str, key: str) -
     if not placeholder:
         return
     clean = clean_html(html)
-    if st.session_state.get(key) != clean:
+    rerun_cnt = st.session_state.get('rerun_counter', 0)
+    last_counter_key = f"{key}_last_counter"
+    
+    if st.session_state.get(key) != clean or st.session_state.get(last_counter_key) != rerun_cnt:
         st.session_state[key] = clean
+        st.session_state[last_counter_key] = rerun_cnt
         placeholder.markdown(clean, unsafe_allow_html=True)
 
 
@@ -754,13 +758,15 @@ def render_compact_alert_card_html(alert: Union[SafetyAlert, Dict[str, Any]]) ->
     else:
         message = _html.escape(raw_message)
 
-    # 4. Extract time
+    # 4. Extract time (prioritize static start_time / timestamp to prevent frame-by-frame updates)
     time_str = ""
-    if hasattr(alert, "duration"):
+    if hasattr(alert, "start_time") and alert.start_time:
+        time_str = alert.start_time.strftime('%H:%M:%S')
+    elif hasattr(alert, "timestamp") and alert.timestamp:
+        time_str = alert.timestamp.strftime('%H:%M:%S')
+    elif hasattr(alert, "duration"):
         dur = int(alert.duration)
         time_str = f"{dur // 60:02d}:{dur % 60:02d}s"
-    elif hasattr(alert, "timestamp"):
-        time_str = alert.timestamp.strftime('%H:%M:%S')
     elif isinstance(alert, dict) and "timestamp" in alert:
         time_str = str(alert["timestamp"])
 
@@ -784,17 +790,11 @@ def render_compact_alert_card_html(alert: Union[SafetyAlert, Dict[str, Any]]) ->
     elif isinstance(alert, dict) and "id" in alert:
         alert_id = alert["id"]
 
-    # Countdown timer calculation (Escalation window - stepped to 15s blocks to prevent per-second flicker)
+    # Countdown timer calculation (Static indicators during live streaming to prevent browser flickering)
     if is_ack:
         countdown_str = "✓ ACKED"
     else:
-        dur_seconds = int(alert.duration) if hasattr(alert, "duration") else 0
-        countdown_seconds = max(0, 180 - dur_seconds)
-        if countdown_seconds == 0:
-            countdown_str = "⚠️ ESCALATED"
-        else:
-            step_seconds = (countdown_seconds // 15) * 15
-            countdown_str = f"⏳ {step_seconds // 60:02d}:{step_seconds % 60:02d}"
+        countdown_str = "⏳ ACTIVE"
 
     # Status pill styles
     status_tuple = Colors.STATUS.get(status_label, ("rgba(239, 68, 68, 0.15)", "#EF4444", "rgba(239, 68, 68, 0.3)"))
@@ -923,7 +923,9 @@ def render_alerts_panel(placeholder: DeltaGenerator, am: AlertManager, selected_
         _safe_markdown(placeholder, html, f"_hash_alerts_hist_{selected_zone}")
         return
 
-    all_alerts = am.active_alerts
+    all_alerts = st.session_state.get('active_alerts')
+    if all_alerts is None:
+        all_alerts = am.active_alerts
 
     # Filter to selected zone when provided
     if selected_zone and all_alerts:

@@ -306,6 +306,28 @@ def evaluate_alert_conditions(
     zone: str,
     telemetry: dict
 ) -> dict:
+    # Guard: ignore alerts when simulation is paused or during initial startup frames (first 5 frames)
+    # to prevent startup/standby frame noise from incorrectly triggering active alerts.
+    try:
+        from streamlit.runtime import exists as st_exists
+        in_streamlit = st_exists()
+    except ImportError:
+        in_streamlit = False
+
+    if in_streamlit:
+        play_active = st.session_state.get('sim_play_active', False)
+        frame_idx = st.session_state.get('cctv_frame_index', 0)
+        if not play_active or frame_idx < 5:
+            return {
+                "should_alert": False,
+                "severity": "LOW",
+                "messages": [],
+                "summary": "",
+                "zone": zone,
+                "channels": [],
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            }
+
     coordinator = get_alert_coordinator()
     
     # Construct complete telemetry dictionary including PPE violations
