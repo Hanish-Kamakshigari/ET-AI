@@ -1685,7 +1685,6 @@ def stream_cctv_feed_raw(
     }
 
     # Integrate real-time active alerts from AlertManager into compliance warnings
-    from src.config.ui_constants import ZONE_LABELS
     for alert in am.active_alerts.values():
         import re as _re
         raw_msg = getattr(alert, 'message', '')
