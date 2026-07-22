@@ -99,6 +99,21 @@ SurakshaAI has been benchmarked across both edge devices and local servers, demo
 
 ---
 
+---
+
+## 👥 Contributors
+
+This project is collaboratively developed by:
+
+| Name | Role | GitHub |
+|------|------|--------|
+| **Hanish Kamakshigari** | Project Lead & AI Engineer | @Hanish-Kamakshigari |
+| **Karunya M** | Software Developer & Contributor | @karun-16 |
+
+We welcome contributions through pull requests and issue reports.
+
+---
+
 ## 🚀 Production Roadmap
 1. **Edge Deployment**: Package the perception layer into Docker containers running on NVIDIA Jetson Edge devices.
 2. **Industrial Gateway**: Connect the Failsafe Engine outputs to real industrial PLCs using Modbus TCP / OPC UA write requests.
