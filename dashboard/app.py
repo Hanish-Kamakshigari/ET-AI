@@ -245,6 +245,7 @@ orchestrate_emergency_mode(data_dict, _emergency_zone, _emergency_dets)
 
 # Critical incident banner placeholder (rendered after layout is created)
 critical_banner_placeholder = st.empty()
+critical_banner_placeholder.empty()
 
 # Parse active tab
 query_params = st.query_params
@@ -294,26 +295,32 @@ st.session_state['last_risk_level'] = data_dict.get('STATUS', {}).get('level', '
 with col_right:
     st.markdown(render_section_header("⚠️ ACTIVE COMPLIANCE WARNINGS"), unsafe_allow_html=True)
     warnings_placeholder = st.empty()
+    warnings_placeholder.empty()
 
     st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("📢 NOTIFICATION CHANNELS"), unsafe_allow_html=True)
     notifications_placeholder = st.empty()
+    notifications_placeholder.empty()
 
     st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("🔔 LIVE ALERTS"), unsafe_allow_html=True)
     alerts_placeholder = st.empty()
+    alerts_placeholder.empty()
 
     st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("🧩 COMPOUND RISK ENGINE"), unsafe_allow_html=True)
     risk_engine_placeholder = st.empty()
+    risk_engine_placeholder.empty()
 
     st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("📊 LIVE TELEMETRY"), unsafe_allow_html=True)
     telemetry_trends_placeholder = st.empty()
+    telemetry_trends_placeholder.empty()
 
     st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
     st.markdown(render_section_header("🧠 SAFETY INTELLIGENCE"), unsafe_allow_html=True)
     intelligence_placeholder = st.empty()
+    intelligence_placeholder.empty()
 
     placeholders = {
         'alerts': alerts_placeholder,
@@ -325,6 +332,8 @@ with col_right:
         'intelligence': intelligence_placeholder,
         'critical_banner': critical_banner_placeholder,
     }
+    if auto_banner_placeholder:
+        auto_banner_placeholder.empty()
 
     # ── Safety Intelligence Panels (Digital Twin, Copilot, XAI, etc.) ──
     # Initialize default work permits once per session for SIMOPS analysis

@@ -195,10 +195,14 @@ def render_zones_tab(
             with st.container():
                 st.markdown("<div class='cctv-buffer-anchor'></div>", unsafe_allow_html=True)
                 cctv_frame_placeholder_1 = st.empty()
+                cctv_frame_placeholder_1.empty()
                 cctv_frame_placeholder_2 = st.empty()
+                cctv_frame_placeholder_2.empty()
 
             cctv_status_placeholder = st.empty()
+            cctv_status_placeholder.empty()
             warnings_placeholder = st.empty()
+            warnings_placeholder.empty()
 
             zone_placeholders = {
                 'cctv_frame_1': cctv_frame_placeholder_1,
