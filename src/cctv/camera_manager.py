@@ -237,13 +237,13 @@ class DemoVideoGenerator:
     """
     
     @staticmethod
-    def generate_sample_frame(zone: str = 'Zone_A', time: datetime = None, zone_risks: dict = None, latest: dict = None) -> np.ndarray:
+    def generate_sample_frame(zone: str = 'Zone_A', timestamp: Optional[datetime] = None, zone_risks: dict = None, latest: dict = None) -> np.ndarray:
         """
         Generate a simulated CCTV frame with stick figure workers and zones
         
         Args:
             zone: Zone name to display
-            time: Timestamp for the frame
+            timestamp: Timestamp for the frame
             zone_risks: Dictionary containing risk level for each zone
             latest: Current telemetry record dictionary
         
@@ -256,13 +256,13 @@ class DemoVideoGenerator:
         import numpy as np
         import random
         
-        if time is None:
-            time = datetime.now()
+        if timestamp is None:
+            timestamp = datetime.now()
             
-        time_str = time.strftime("%H:%M:%S")
+        time_str = timestamp.strftime("%H:%M:%S")
         
         # Calculate a frame number for animation seed
-        frame_num = int(time.second * 10 + time.microsecond // 100000)
+        frame_num = int(timestamp.second * 10 + timestamp.microsecond // 100000)
         
         fig, ax = plt.subplots(figsize=(10, 7))
         ax.set_xlim(0, 100)

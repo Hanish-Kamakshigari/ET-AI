@@ -302,7 +302,7 @@ def _patch_ultralytics_fuse() -> None:
         if getattr(_orig, "_suraksha_patched", False):
             return  # already wrapped
 
-        def _safe_fuse(self, verbose: bool = True) -> object:
+        def _safe_fuse(self: _tasks.BaseModel, verbose: bool = True) -> object:
             try:
                 return _orig(self, verbose=verbose)
             except AttributeError as exc:

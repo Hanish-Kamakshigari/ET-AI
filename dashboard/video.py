@@ -1155,7 +1155,7 @@ def stream_cctv_feed_raw(
         from src.cctv.camera_manager import DemoVideoGenerator
         frame = DemoVideoGenerator.generate_sample_frame(
             zone=selected_zone,
-            time=datetime.now(),
+            timestamp=datetime.now(),
             zone_risks=st.session_state.get('zone_risks'),
             latest=latest
         )
