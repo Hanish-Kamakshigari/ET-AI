@@ -1057,7 +1057,7 @@ def _zone_video_path(zone: str) -> str | None:
     return get_video(filename)
 
 
-@st.fragment(run_every=0.15)
+@st.fragment(run_every=0.08)
 def stream_cctv_feed_fragment(
     placeholders: Dict[str, Any],
     data_dict: Dict[str, Any],
@@ -1146,7 +1146,7 @@ def stream_cctv_feed_raw(
         frame, total_frames = read_mp4_frame(video_path, frame_idx)
         print(f"[DIAGNOSTIC] Video read: frame_idx={frame_idx}, total_frames={total_frames}, frame_loaded={frame is not None}")
         if frame is not None and play_active:
-            tracker.increment(selected_zone, 2, total_frames if total_frames > 0 else 240)
+            tracker.increment(selected_zone, 4, total_frames if total_frames > 0 else 240)
             new_idx = tracker.get_index(selected_zone, 240)
             print(f"[DIAGNOSTIC] Tracker incremented: new_idx={new_idx}")
 
@@ -1161,7 +1161,7 @@ def stream_cctv_feed_raw(
         )
         frame_idx = tracker.get_index(selected_zone, 240)
         if play_active:
-            tracker.increment(selected_zone, 2, 240)
+            tracker.increment(selected_zone, 4, 240)
 
     # Choose a SINGLE frame slot to avoid double-buffer swap flicker.
     frame_slot = frame_placeholder or frame_placeholder_1
@@ -1227,21 +1227,30 @@ def stream_cctv_feed_raw(
             audio_icon = "🔇" if audio_muted else "🔊"
             audio_lbl = "MUTED" if audio_muted else "SOUND ON"
             audio_color = "#ef4444" if audio_muted else "#22c55e"
-            status_bar_placeholder.markdown(f"""
-            <div style='background:#0a1628; border:1px solid #1e3a5f; border-top:none;
-                        border-radius:0 0 8px 8px; padding:8px 16px;
-                        display:flex; justify-content:space-around; align-items:center;
-                        font-family:"Outfit",sans-serif; font-size:12px;'>
-                <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">{fps_val:.1f}</b></span>
-                <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">{p_count}</b></span>
-                <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">{h_count}</b></span>
-                <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">{safe_zones_count}</b></span>
-                <a href='?toggle_audio=1' target='_self' style='text-decoration:none; display:flex; align-items:center; gap:4px;'>
-                    <span style='font-size:12px;'>{audio_icon}</span>
-                    <span style='color:{audio_color}; font-weight:800; font-size:10px; letter-spacing:0.5px;'>{audio_lbl}</span>
-                </a>
-            </div>
-            """, unsafe_allow_html=True)
+            status_hash = f"{fps_val:.1f}|{p_count}|{h_count}|{safe_zones_count}|{audio_icon}"
+            last_status_key = f"_last_status_bar_{selected_zone}"
+            last_status_time = f"_last_status_time_{selected_zone}"
+            prev_hash = st.session_state.get(last_status_key, '')
+            prev_time = st.session_state.get(last_status_time, 0.0)
+            now = time.time()
+            if status_hash != prev_hash and (now - prev_time) > 0.5:
+                st.session_state[last_status_key] = status_hash
+                st.session_state[last_status_time] = now
+                status_bar_placeholder.markdown(f"""
+                <div style='background:#0a1628; border:1px solid #1e3a5f; border-top:none;
+                            border-radius:0 0 8px 8px; padding:8px 16px;
+                            display:flex; justify-content:space-around; align-items:center;
+                            font-family:"Outfit",sans-serif; font-size:12px;'>
+                    <span style='color:#94a3b8;'>🎞 FPS: <b style="color:#e2e8f0">{fps_val:.1f}</b></span>
+                    <span style='color:#94a3b8;'>👷 Workers: <b style="color:#60a5fa">{p_count}</b></span>
+                    <span style='color:#94a3b8;'>⚠️ Hazards: <b style="color:#ef4444">{h_count}</b></span>
+                    <span style='color:#94a3b8;'>✅ Safe Zones: <b style="color:#22c55e">{safe_zones_count}</b></span>
+                    <a href='?toggle_audio=1' target='_self' style='text-decoration:none; display:flex; align-items:center; gap:4px;'>
+                        <span style='font-size:12px;'>{audio_icon}</span>
+                        <span style='color:{audio_color}; font-weight:800; font-size:10px; letter-spacing:0.5px;'>{audio_lbl}</span>
+                    </a>
+                </div>
+                """, unsafe_allow_html=True)
     else:
         if frame_slot:
             frame_slot.empty()
@@ -1753,15 +1762,16 @@ def stream_cctv_feed_raw(
             message=f"All telemetry and compliance factors in {selected_zone_name} are nominal."
         )
         
-        # Use safe render logic to prevent flickering
         clean_warn = ' '.join(warn_html.split())
         last_key = f"_warn_last_html_{selected_zone}"
-        last_counter_key = f"_warn_last_counter_{selected_zone}"
-        rerun_cnt = st.session_state.get('rerun_counter', 0)
+        last_time_key = f"_warn_last_time_{selected_zone}"
+        last_rendered = st.session_state.get(last_key, '')
+        last_time = st.session_state.get(last_time_key, 0.0)
+        now = time.time()
         
-        if st.session_state.get(last_key) != clean_warn or st.session_state.get(last_counter_key) != rerun_cnt:
+        if clean_warn != last_rendered and (now - last_time) > 0.5:
             st.session_state[last_key] = clean_warn
-            st.session_state[last_counter_key] = rerun_cnt
+            st.session_state[last_time_key] = now
             warnings_placeholder.markdown(clean_warn, unsafe_allow_html=True)
     elif warnings_placeholder:
         if st.session_state.get(f"_warn_last_html_{selected_zone}") != 'EMPTY':
