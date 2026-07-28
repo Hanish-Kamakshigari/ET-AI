@@ -454,6 +454,58 @@ class RiskEvaluator:
             })
             highest_severity = AlertSeverity.CRITICAL
 
+        # 2.1 Check Warning Light Overlay
+        warning_light_dets = [d for d in detections if getattr(d, 'label', '') == 'warning_light']
+        if warning_light_dets:
+            rule_id = "WARNING_LIGHT"
+            msg = f"WARNING LIGHT DETECTED in {zone} — {len(warning_light_dets)} light(s) active"
+            matched_rules.append({
+                "rule_id": rule_id,
+                "severity": AlertSeverity.MEDIUM,
+                "message": msg
+            })
+            if highest_severity.value[0] < AlertSeverity.MEDIUM.value[0]:
+                highest_severity = AlertSeverity.MEDIUM
+
+        # 2.2 Check Sparks (welding)
+        sparks_dets = [d for d in detections if getattr(d, 'label', '') == 'sparks']
+        if sparks_dets:
+            rule_id = "SPARKS_DETECTED"
+            msg = f"SPARKS DETECTED in {zone} — {len(sparks_dets)} spark source(s)"
+            matched_rules.append({
+                "rule_id": rule_id,
+                "severity": AlertSeverity.HIGH,
+                "message": msg
+            })
+            if highest_severity.value[0] < AlertSeverity.HIGH.value[0]:
+                highest_severity = AlertSeverity.HIGH
+
+        # 2.3 Check Chemical Haze
+        chemical_haze_dets = [d for d in detections if getattr(d, 'label', '') == 'chemical_haze']
+        if chemical_haze_dets:
+            rule_id = "CHEMICAL_HAZE"
+            msg = f"CHEMICAL HAZE DETECTED in {zone} — {len(chemical_haze_dets)} haze region(s)"
+            matched_rules.append({
+                "rule_id": rule_id,
+                "severity": AlertSeverity.HIGH,
+                "message": msg
+            })
+            if highest_severity.value[0] < AlertSeverity.HIGH.value[0]:
+                highest_severity = AlertSeverity.HIGH
+
+        # 2.4 Check Gas Alarm
+        gas_alarm_dets = [d for d in detections if getattr(d, 'label', '') == 'gas_alarm']
+        if gas_alarm_dets:
+            rule_id = "GAS_ALARM"
+            msg = f"GAS ALARM ACTIVATED in {zone}"
+            matched_rules.append({
+                "rule_id": rule_id,
+                "severity": AlertSeverity.HIGH,
+                "message": msg
+            })
+            if highest_severity.value[0] < AlertSeverity.HIGH.value[0]:
+                highest_severity = AlertSeverity.HIGH
+
         # 3. Check Restricted Zone Intrusion
         intruders = [d for d in detections if getattr(d, 'zone_violation', False)]
         if intruders:
@@ -594,6 +646,10 @@ class RiskEvaluator:
         action_map = {
             "FIRE_SMOKE": "Sound siren, mobilize Fire Response Team, evacuate zone immediately.",
             "GAS_LEAK": "Evacuate area, stop maintenance, call Gas Response Team, isolate gas line.",
+            "WARNING_LIGHT": "Investigate warning light source, notify supervisor, assess hazard level.",
+            "SPARKS_DETECTED": "Clear area of flammable materials, ensure welding shield, dispatch safety officer.",
+            "CHEMICAL_HAZE": "Evacuate area, activate ventilation, deploy HAZMAT team, monitor air quality.",
+            "GAS_ALARM": "Evacuate zone, isolate gas supply, call Gas Response Team, check sensor readings.",
             "ZONE_INTRUSION": "Dispatch Security Team to escort intruder out of restricted zone.",
             "GAS_CRITICAL": "Isolate gas sources, evacuate area immediately, maximize ventilation.",
             "GAS_ELEVATED": "Deploy EHS officer to investigate gas source, restrict area access.",

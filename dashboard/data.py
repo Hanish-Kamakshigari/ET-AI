@@ -303,8 +303,8 @@ def calculate_telemetry(df: pd.DataFrame, engine: CompoundRiskEngine, alert_syst
     play_active = st.session_state.get('sim_play_active', False)
     frame_idx = st.session_state.get('cctv_frame_index', 0)
     
-    if play_active and frame_idx >= 40:
-        _scenario_min = 20.0 + (frame_idx - 40) * 0.05
+    if play_active:
+        _scenario_min = 5.0 + frame_idx * 0.375
     else:
         _scenario_min = 5.0
         
