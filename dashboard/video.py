@@ -1770,31 +1770,6 @@ def stream_cctv_feed_raw(
 
     # ═══════════════════════════════════════════════════════════════════════════════
     # AUTO-RERUN FOR SMOOTH PLAYBACK (driven by Autoplay Simulation toggle)
+    # Rely on @st.fragment(run_every=0.15) for reruns — no JS timer needed.
     # ═══════════════════════════════════════════════════════════════════════════════
-    if play_active and st.session_state.get('active_tab', 'dashboard') in ('dashboard', 'zones'):
-        speed = st.session_state.get('sim_play_speed', '1x')
-        speed_multiplier = {'1x': 1, '2x': 2, '4x': 4}.get(speed, 1)
-        base_delay_ms = 40  # ~25 FPS base
-        delay_ms = max(10, base_delay_ms // speed_multiplier)  # clamp minimum to 10ms (100 FPS cap)
-
-        rerun_key = f"_cctv_rerun_trigger_{selected_zone}"
-        _ = st.checkbox(" ", key=rerun_key, value=False, label_visibility="collapsed")
-
-        # Inject JS timer script cleanly
-        st.markdown(f"""
-        <script>
-        (function() {{
-            if (window._suraksha_cctv_timer) clearTimeout(window._suraksha_cctv_timer);
-            window._suraksha_cctv_timer = setTimeout(function() {{
-                const checkbox = document.querySelector('input[data-testid="stCheckbox"][aria-label="{rerun_key}"]');
-                if (checkbox) {{
-                    checkbox.click();
-                }} else {{
-                    const fallback = document.querySelector('[data-testid="stCheckbox"] input[id*="{rerun_key}"]');
-                    if (fallback) fallback.click();
-                }}
-            }}, {delay_ms});
-        }})();
-        </script>
-        """, unsafe_allow_html=True)
 
