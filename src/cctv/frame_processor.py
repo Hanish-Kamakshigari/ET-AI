@@ -5,13 +5,15 @@ Frame Processor - Processes frames and generates alerts
 import types
 try:
     import cv2
-except ImportError:  # opencv-python-headless not installed in this environment
+except ImportError:
     cv2: types.ModuleType | None = None
 import numpy as np
+import pandas as pd
 from typing import Dict, List, Optional, Callable, Tuple
 from datetime import datetime
 import time
 from collections import deque
+import logging
 
 if __name__ == "__main__" or __package__ is None:
     import sys
@@ -24,6 +26,13 @@ else:
     from .object_detector import ObjectDetector, Detection
     from src.risk_engine import CompoundRiskEngine
     from src.alert_system import AlertSystem
+
+SEVERITY_SCORES = {
+    'CRITICAL': 15.0,
+    'HIGH': 10.0,
+    'MEDIUM': 6.0,
+    'LOW': 2.0
+}
 
 
 class FrameProcessor:
@@ -39,7 +48,6 @@ class FrameProcessor:
         self.alert_history = []
         self.alert_history_max = 100
         
-        # Zone configuration (normalized coordinates 0-100, y up to 70)
         self.zone_config = {
             'Zone_A': {'x': 3, 'y': 35, 'w': 28, 'h': 28, 'color': (0, 212, 255)},
             'Zone_B': {'x': 36, 'y': 35, 'w': 28, 'h': 28, 'color': (0, 212, 255)},
@@ -51,46 +59,30 @@ class FrameProcessor:
         self.processed_frames = 0
         self.alerts_generated = 0
         self.zone_counts = {zone: 0 for zone in self.zone_config.keys()}
-        self.frame_times = deque(maxlen=30)  # For FPS calculation
+        self.frame_times = deque(maxlen=30)
         self.last_alert_time = None
-        self.alert_cooldown = 5  # Seconds between same alert type
+        self.alert_cooldown = 5
+        self._last_alert_times = {}
         
     def process_frame(self, frame: np.ndarray, selected_zone: str = 'Zone_A', latest_telemetry: dict = None, workers: list = None, current_frame: int = 0) -> Dict:
-        """
-        Process a single frame
-        
-        Args:
-            frame: OpenCV image
-            selected_zone: Active zone name
-            latest_telemetry: Current telemetry record dictionary
-            workers: Keyframe worker definitions list
-            current_frame: Video reader frame number index
-            
-        Returns:
-            Dict with detection results and alerts
-        """
         start_time = time.time()
         self.processed_frames += 1
         
-        # Inject parameters into the detector
-        self.detector.selected_zone = selected_zone
-        self.detector.latest_telemetry = latest_telemetry
+        detector = self.detector
+        detector.selected_zone = selected_zone
+        detector.latest_telemetry = latest_telemetry
         
-        # Run detection
-        detections = self.detector.detect(frame, workers=workers, current_frame=current_frame)
+        detections = detector.detect(frame, workers=workers, current_frame=current_frame)
         
-        # Count workers by zone
         h, w = frame.shape[:2]
         self._update_zone_counts(detections, w, h)
         
-        # Generate alerts
         alerts = self._generate_alerts(frame, detections, selected_zone)
         
-        # Calculate FPS
         elapsed = time.time() - start_time
         self.frame_times.append(elapsed)
         
-        result = {
+        return {
             'timestamp': datetime.now(),
             'detections': detections,
             'zone_counts': self.zone_counts.copy(),
@@ -98,8 +90,6 @@ class FrameProcessor:
             'frame_number': self.processed_frames,
             'fps': self._calculate_fps()
         }
-        
-        return result
     
     def _update_zone_counts(self, detections: List[Detection], frame_w: int, frame_h: int) -> None:
         """Update worker counts per zone from telemetry (footage ground truth)"""
@@ -134,158 +124,116 @@ class FrameProcessor:
         }
         zone_name = zone_labels.get(selected_zone, selected_zone)
         
-        people = self.detector.filter_by_label(detections, 'person')
+        detector = self.detector
+        people = detector.filter_by_label(detections, 'person')
         count = len(people)
         
-        # 1. Check for crowding (workers > 5 in selected zone)
         if count > 5:
             alerts.append({
-                'type': 'OVER_CROWDING',
-                'zone': selected_zone,
-                'severity': 'MEDIUM',
+                'type': 'OVER_CROWDING', 'zone': selected_zone,
+                'severity': 'MEDIUM', 'timestamp': current_time, 'count': count,
                 'message': f'{count} workers detected in {zone_name} (Limit: 5)',
-                'timestamp': current_time,
-                'count': count
             })
         elif count > 3:
             alerts.append({
-                'type': 'ELEVATED_WORKERS',
-                'zone': selected_zone,
-                'severity': 'LOW',
+                'type': 'ELEVATED_WORKERS', 'zone': selected_zone,
+                'severity': 'LOW', 'timestamp': current_time, 'count': count,
                 'message': f'{count} workers in {zone_name} (Monitor closely)',
-                'timestamp': current_time,
-                'count': count
             })
         
-        # 2. Check for hazards
-        hazards = self.detector.filter_by_label(detections, 'gas_leak')
-        hazards.extend(self.detector.filter_by_label(detections, 'fire'))
-        hazards.extend(self.detector.filter_by_label(detections, 'smoke'))
+        hazards = detector.filter_by_label(detections, 'gas_leak')
+        hazards.extend(detector.filter_by_label(detections, 'fire'))
+        hazards.extend(detector.filter_by_label(detections, 'smoke'))
         
         has_hazard = False
         for hazard in hazards:
             has_hazard = True
             alerts.append({
-                'type': 'HAZARD_DETECTED',
-                'zone': selected_zone,
-                'severity': 'HIGH',
+                'type': 'HAZARD_DETECTED', 'zone': selected_zone,
+                'severity': 'HIGH', 'timestamp': current_time,
+                'confidence': hazard.confidence,
                 'message': f'⚠️ {hazard.label.upper().replace("_", " ")} detected in {zone_name}!',
-                'timestamp': current_time,
-                'confidence': hazard.confidence
             })
         
-        # 3. Check for compound risk (crowding + gas/hazard)
         has_crowding = count > 5
         
         if has_crowding and has_hazard:
             alerts.append({
-                'type': 'COMPOUND_RISK',
-                'zone': selected_zone,
-                'severity': 'CRITICAL',
+                'type': 'COMPOUND_RISK', 'zone': selected_zone,
+                'severity': 'CRITICAL', 'timestamp': current_time,
+                'compound_factors': ['OVER_CROWDING', 'HAZARD'],
                 'message': f'Overcrowding ({count} workers) + Gas leak detected.',
-                'timestamp': current_time,
-                'compound_factors': ['OVER_CROWDING', 'HAZARD']
             })
         
-        # 4. Check for PPE violations
-        helmets = self.detector.filter_by_label(detections, 'helmet')
-        vests = self.detector.filter_by_label(detections, 'vest')
+        helmets = detector.filter_by_label(detections, 'helmet')
+        vests = detector.filter_by_label(detections, 'vest')
         
         if len(people) > len(helmets):
             no_helmet_count = len(people) - len(helmets)
             alerts.append({
-                'type': 'PPE_VIOLATION',
-                'zone': selected_zone,
-                'severity': 'HIGH',
+                'type': 'PPE_VIOLATION', 'zone': selected_zone,
+                'severity': 'HIGH', 'timestamp': current_time,
                 'message': f'{zone_name} has {no_helmet_count} workers without helmets. PPE violation detected. Workers at risk.',
-                'timestamp': current_time
             })
         
         if len(people) > len(vests):
             no_vest_count = len(people) - len(vests)
             alerts.append({
-                'type': 'PPE_VIOLATION',
-                'zone': selected_zone,
-                'severity': 'MEDIUM',
+                'type': 'PPE_VIOLATION', 'zone': selected_zone,
+                'severity': 'MEDIUM', 'timestamp': current_time,
                 'message': f'{zone_name} has {no_vest_count} workers without vests. PPE violation detected.',
-                'timestamp': current_time
             })
         
-        # Filter alerts based on cooldown
         filtered_alerts = []
+        _last_times = self._last_alert_times
+        alert_system = self.alert_system
+        alert_history = self.alert_history
+        alert_max = self.alert_history_max
+        
         for alert in alerts:
             alert_key = f"{alert['type']}_{alert['zone']}"
             if self._can_alert(alert_key, alert['severity']):
                 filtered_alerts.append(alert)
                 self._record_alert(alert_key)
         
-        # Store alerts
         for alert in filtered_alerts:
-            self.alert_history.append(alert)
+            alert_history.append(alert)
             self.alerts_generated += 1
             
-            # Keep history limited
-            if len(self.alert_history) > self.alert_history_max:
-                self.alert_history = self.alert_history[-self.alert_history_max:]
+            if len(alert_history) > alert_max:
+                self.alert_history = alert_history[-alert_max:]
             
-            # Bridge: CCTV to DB
             try:
-                import pandas as pd
-                severity = alert.get('severity', 'LOW')
-                severity_scores = {
-                    'CRITICAL': 15.0,
-                    'HIGH': 10.0,
-                    'MEDIUM': 6.0,
-                    'LOW': 2.0
-                }
-                score = severity_scores.get(severity, 5.0)
+                score = SEVERITY_SCORES.get(alert.get('severity', 'LOW'), 5.0)
                 row_data = pd.Series({'timestamp': alert['timestamp']})
                 risk_result = {
-                    'risk_level': severity,
+                    'risk_level': alert.get('severity', 'LOW'),
                     'risk_score': score,
                     'zone': alert.get('zone', 'Unknown'),
                     'factors': [alert.get('type', 'CCTV_ALERT')],
                     'compound_factors': alert.get('compound_factors', []),
                     'message': alert.get('message', '')
                 }
-                self.alert_system.trigger_alert(row_data, risk_result)
+                alert_system.trigger_alert(row_data, risk_result)
             except Exception as ex:
-                import logging
                 logging.getLogger(__name__).error(f"Error bridging CCTV alert to persistent DB: {ex}")
             
-            # Call callback if registered
             if self.alert_callback:
                 self.alert_callback(alert)
         
         return filtered_alerts
     
     def _can_alert(self, alert_key: str, severity: str) -> bool:
-        """Check if an alert can be generated based on cooldown"""
-        # Critical alerts bypass cooldown
         if severity == 'CRITICAL':
             return True
-        
-        # PPE violations and hazard detections are always shown (persistent conditions)
         if any(k in alert_key for k in ['PPE_VIOLATION', 'HAZARD_DETECTED']):
             return True
-        
-        # Check cooldown for other alert types
-        if not hasattr(self, '_last_alert_times'):
-            self._last_alert_times = {}
-        
         current_time = time.time()
         last_time = self._last_alert_times.get(alert_key, 0)
-        
         cooldown = 10 if severity == 'HIGH' else 30 if severity == 'MEDIUM' else 60
-        
-        if current_time - last_time > cooldown:
-            return True
-        return False
-    
+        return (current_time - last_time) > cooldown
+
     def _record_alert(self, alert_key: str) -> None:
-        """Record when an alert was last sent"""
-        if not hasattr(self, '_last_alert_times'):
-            self._last_alert_times = {}
         self._last_alert_times[alert_key] = time.time()
     
     def _calculate_fps(self) -> float:

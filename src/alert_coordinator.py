@@ -8,9 +8,15 @@ import sys
 import uuid
 import yaml
 import time
+import heapq
+import smtplib
 import sqlite3
 import logging
 import threading
+import requests
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from collections import deque
 from queue import Queue, Empty, Full
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
@@ -653,7 +659,6 @@ class DetectionProcessor:
 
 def _safe_update_session_state(key: str, val: object) -> None:
     """Helper to update st.session_state cleanly without emitting missing ScriptRunContext warnings"""
-    import sys
     if 'streamlit' not in sys.modules:
         return
     try:
@@ -706,10 +711,6 @@ class EmailChannel(NotificationChannel):
             
         # Real SMTP implementation in background
         try:
-            from email.mime.multipart import MIMEMultipart
-            from email.mime.text import MIMEText
-            import smtplib
-            
             msg = MIMEMultipart()
             msg['From'] = sender
             msg['To'] = recipient
@@ -757,7 +758,6 @@ class TelegramChannel(NotificationChannel):
             return True
             
         try:
-            import requests
             message_text = (
                 f"🚨 *SURAKSHAAI INCIDENT STATE: {incident['status']}*\n"
                 f"• *ID:* `{incident['incident_id']}`\n"
@@ -884,7 +884,6 @@ class NotificationDispatcher:
         print(f"[DIAGNOSTIC] NotificationDispatcher.dispatch: incident_id={incident_id}, channels={target_channels}, status={incident.get('status')}")
         
         # Initialize session state variables in main thread to guarantee immediate updates
-        import sys
         if 'streamlit' in sys.modules:
             try:
                 import streamlit as st
@@ -1065,14 +1064,12 @@ class EscalationEngine:
 
     def schedule_escalation(self, incident_id: str, delay_seconds: float) -> None:
         run_at = time.time() + delay_seconds
-        import heapq
         with self._lock:
             heapq.heappush(self._queue, (run_at, incident_id))
             self.logger.info(f"Scheduled escalation check for incident {incident_id} in {delay_seconds} seconds")
             self._cond.notify()
 
     def _run(self) -> None:
-        import heapq
         while self._running:
             with self._lock:
                 # Re-check the running flag immediately after waking from wait
@@ -1224,7 +1221,6 @@ class DashboardAdapter:
             self._history_timestamp.clear()
 
     def get_notification_state(self) -> Dict[str, Any]:
-        import sys
         res = {
             "sms": {"status": "STANDBY", "color": "#64748b", "detail": "Sent to: N/A"},
             "email": {"status": "STANDBY", "color": "#64748b", "detail": "Sent to: N/A"},
@@ -1376,23 +1372,19 @@ class DashboardAdapter:
 class HealthMonitor:
     def __init__(self, coordinator: 'AlertCoordinator') -> None:
         self.coordinator = coordinator
-        self.frame_times = []
+        self.frame_times: deque = deque(maxlen=100)
         self.frame_times_lock = threading.Lock()
         self.false_positive_count = 0
-        self.notification_latencies = []
+        self.notification_latencies: deque = deque(maxlen=100)
         self.notification_latencies_lock = threading.Lock()
 
     def record_frame_time(self, processing_time_ms: float) -> None:
         with self.frame_times_lock:
             self.frame_times.append(processing_time_ms)
-            if len(self.frame_times) > 100:
-                self.frame_times.pop(0)
 
     def record_notification_latency(self, latency_seconds: float) -> None:
         with self.notification_latencies_lock:
             self.notification_latencies.append(latency_seconds)
-            if len(self.notification_latencies) > 100:
-                self.notification_latencies.pop(0)
 
     def get_average_notification_latency(self) -> float:
         with self.notification_latencies_lock:
@@ -2146,7 +2138,6 @@ class AlertCoordinator:
 
 def get_current_telemetry(zone: Optional[str] = None) -> Dict[str, Any]:
     """Helper to safely fetch current telemetry dictionary from Streamlit session state"""
-    import sys
     if 'streamlit' in sys.modules:
         from streamlit.runtime.scriptrunner import get_script_run_ctx
         if get_script_run_ctx() is not None:

@@ -7,6 +7,7 @@ Centralized styling, reusable components, and design tokens
 
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+import math
 import streamlit as st
 
 # Import zone labels from shared config (single source of truth)
@@ -1423,7 +1424,6 @@ def render_gauge_svg(
     unit: str = ""
 ) -> str:
     """Render an SVG gauge component"""
-    import math
     percentage = (value - min_val) / (max_val - min_val)
     percentage = max(0.0, min(1.0, percentage))
     angle = math.pi - (percentage * math.pi)

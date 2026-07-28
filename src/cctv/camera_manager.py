@@ -4,12 +4,15 @@ Supports webcam, IP cameras, and video files
 """
 
 import types
+from collections import deque
+from io import BytesIO
 try:
     import cv2
-except ImportError:  # opencv-python-headless not installed in this environment
+except ImportError:
     cv2: types.ModuleType | None = None
 import threading
 import time
+import random
 from typing import Dict, Optional, List, Tuple, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,6 +20,8 @@ if TYPE_CHECKING:
 from datetime import datetime
 import os
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle, Wedge
 
 
 class CameraSource:
@@ -90,30 +95,19 @@ class CameraManager:
     def __init__(self) -> None:
         self.cameras: Dict[str, CameraSource] = {}
         self.active_cameras: Dict[str, bool] = {}
-        self.frame_buffer: Dict[str, list] = {}
-        self.buffer_size = 30  # Keep last 30 frames
+        self.frame_buffer: Dict[str, deque] = {}
+        self.buffer_size = 30
         self.is_streaming = False
         self.stream_thread = None
         self._lock = threading.Lock()
         
     def add_camera(self, source_id: str, source_type: str, source_path: str) -> bool:
-        """
-        Add a new camera source
-        
-        Args:
-            source_id: Unique identifier for the camera
-            source_type: 'webcam', 'ip_camera', 'video_file'
-            source_path: For webcam: '0', '1', etc. For IP: 'rtsp://...', For file: '/path/to/video.mp4'
-        
-        Returns:
-            bool: True if camera was added successfully
-        """
         with self._lock:
             camera = CameraSource(source_id, source_type, source_path)
             if camera.connect():
                 self.cameras[source_id] = camera
                 self.active_cameras[source_id] = True
-                self.frame_buffer[source_id] = []
+                self.frame_buffer[source_id] = deque()
                 print(f"✅ Camera {source_id} added successfully")
                 return True
             else:
@@ -150,20 +144,18 @@ class CameraManager:
     
     def _stream_loop(self) -> None:
         """Main streaming loop - runs in background thread"""
+        sleep_time = 1.0 / 30.0
         while self.is_streaming:
             with self._lock:
                 for camera_id, camera in self.cameras.items():
                     if self.active_cameras.get(camera_id, False):
                         frame = camera.read_frame()
                         if frame is not None:
-                            # Add to buffer
-                            self.frame_buffer[camera_id].append(frame)
-                            # Keep buffer size limited
-                            if len(self.frame_buffer[camera_id]) > self.buffer_size:
-                                self.frame_buffer[camera_id].pop(0)
-            
-            # Sleep to control FPS (approximately 30 FPS)
-            time.sleep(0.033)
+                            buf = self.frame_buffer[camera_id]
+                            buf.append(frame)
+                            if len(buf) > self.buffer_size:
+                                buf.popleft()
+            time.sleep(sleep_time)
     
     def get_latest_frame(self, camera_id: str) -> Optional[np.ndarray]:
         """Get the latest frame from a camera"""
@@ -238,59 +230,37 @@ class DemoVideoGenerator:
     
     @staticmethod
     def generate_sample_frame(zone: str = 'Zone_A', timestamp: Optional[datetime] = None, zone_risks: dict = None, latest: dict = None) -> np.ndarray:
-        """
-        Generate a simulated CCTV frame with stick figure workers and zones
-        
-        Args:
-            zone: Zone name to display
-            timestamp: Timestamp for the frame
-            zone_risks: Dictionary containing risk level for each zone
-            latest: Current telemetry record dictionary
-        
-        Returns:
-            numpy.ndarray: Generated frame as OpenCV image
-        """
-        import matplotlib.pyplot as plt
-        from matplotlib.patches import Rectangle, Wedge
-        from io import BytesIO
-        import numpy as np
-        import random
-        
+        """Generate a simulated CCTV frame with stick figure workers and zones"""
+
         if timestamp is None:
             timestamp = datetime.now()
-            
+
         time_str = timestamp.strftime("%H:%M:%S")
-        
-        # Calculate a frame number for animation seed
         frame_num = int(timestamp.second * 10 + timestamp.microsecond // 100000)
-        
+
         fig, ax = plt.subplots(figsize=(10, 7))
         ax.set_xlim(0, 100)
         ax.set_ylim(0, 70)
         ax.set_facecolor('#0a0e17')
         ax.axis('off')
-        
-        # Scanline effect (makes it look like real CCTV)
+
         for y in range(0, 70, 2):
             ax.axhline(y, color='black', alpha=0.08, linewidth=0.5)
-            
-        # Translate zone parameter to label
+
         zone_label_display = zone
         if zone == 'Zone_A': zone_label_display = 'Zone_A (Battery-4)'
         elif zone == 'Zone_B': zone_label_display = 'Zone_B (Battery-5)'
         elif zone == 'Zone_C': zone_label_display = 'Zone_C (Battery-6)'
         elif zone == 'Reactor_Area': zone_label_display = 'Reactor Block'
         elif zone == 'Storage_Area': zone_label_display = 'Storage Area'
-        
-        # Timestamp and zone header
-        ax.text(50, 67, f'REC  ●  {time_str}', color='white', 
+
+        ax.text(50, 67, f'REC  ●  {time_str}', color='white',
                 ha='center', fontsize=11, fontweight='bold')
-        ax.text(2, 67, f'CAM-04 | {zone_label_display}', color='#00ff41', 
+        ax.text(2, 67, f'CAM-04 | {zone_label_display}', color='#00ff41',
                 fontsize=9, fontweight='bold')
-        ax.text(85, 67, 'LIVE', color='#ff0000', 
+        ax.text(85, 67, 'LIVE', color='#ff0000',
                 fontsize=10, fontweight='bold')
-                
-        # Define plant zones with coordinates matching new layout
+
         zones_def = [
             {'name': 'Zone_A', 'id': 'Zone_A', 'x': 3,  'y': 35, 'w': 28, 'h': 28},
             {'name': 'Zone_B', 'id': 'Zone_B', 'x': 36, 'y': 35, 'w': 28, 'h': 28},
@@ -298,46 +268,39 @@ class DemoVideoGenerator:
             {'name': 'Reactor', 'id': 'Reactor_Area', 'x': 3,  'y': 5,  'w': 40, 'h': 25},
             {'name': 'Storage', 'id': 'Storage_Area', 'x': 57, 'y': 5,  'w': 40, 'h': 25},
         ]
-        
-        # Color mapping based on risk status
+
         risk_colors = {'HIGH': '#ff4444', 'MED': '#f59e0b', 'LOW': '#00ff41'}
-        
+
         safe_count = 0
         warning_count = 0
         danger_count = 0
-        
-        # Draw each zone with dynamic colors based on active risks
+
         for z in zones_def:
             risk_level = 'LOW'
             if zone_risks and z['id'] in zone_risks:
                 risk_level = zone_risks[z['id']].get('risk_level', 'LOW')
-                
-            # Map risk levels to LOW, MED, HIGH
+
             mapped_risk = 'HIGH' if risk_level == 'CRITICAL' or risk_level == 'HIGH' else 'MED' if risk_level == 'MEDIUM' else 'LOW'
-            
-            # Count safe/warn/danger zones
+
             if mapped_risk == 'LOW':
                 safe_count += 1
             elif mapped_risk == 'MED':
                 warning_count += 1
             else:
                 danger_count += 1
-                
+
             color = risk_colors[mapped_risk]
-            
-            # Draw zone rectangle with alpha fill
+
             rect = Rectangle((z['x'], z['y']), z['w'], z['h'],
-                             linewidth=1.5, edgecolor=color, 
+                             linewidth=1.5, edgecolor=color,
                              facecolor=color, alpha=0.05)
             ax.add_patch(rect)
-            
-            # Label
+
             ax.text(z['x']+1, z['y']+z['h']-3, z['name'],
                     color=color, fontsize=7, fontweight='bold')
             ax.text(z['x']+1, z['y']+z['h']-6, mapped_risk,
                     color=color, fontsize=6, alpha=0.8)
-                    
-        # ── STICK FIGURE WORKERS DRAWING FUNCTION (FIXED LIGHTBULB APPEARANCE) ──
+
         def draw_stick_figure(
             ax: 'matplotlib.axes.Axes',
             cx: float,
@@ -347,72 +310,60 @@ class DemoVideoGenerator:
             alert: bool = False,
         ) -> None:
             lw = 1.8
-            # Head: solid background fill, color outline, zorder to render cleanly
-            head = plt.Circle((cx, cy+5.5), 1.6, 
+            head = plt.Circle((cx, cy+5.5), 1.6,
                               facecolor='#0a0e17', edgecolor=color, fill=True, linewidth=lw, zorder=5)
             ax.add_patch(head)
-            
-            # Helmet: solid Wedge dome with brim line on top of head circle (no transparency/lightbulb glow)
+
             if has_helmet:
-                helmet = Wedge((cx, cy+5.5), 1.8, 0, 180, 
+                helmet = Wedge((cx, cy+5.5), 1.8, 0, 180,
                                color='#f59e0b', zorder=6)
                 ax.add_patch(helmet)
-                # Brim line
-                ax.plot([cx-2.2, cx+2.2], [cy+5.5, cy+5.5], 
+                ax.plot([cx-2.2, cx+2.2], [cy+5.5, cy+5.5],
                         color='#f59e0b', linewidth=2.0, solid_capstyle='round', zorder=7)
-                        
-            # Body
-            ax.plot([cx, cx], [cy+3.8, cy+1.5], 
+
+            ax.plot([cx, cx], [cy+3.8, cy+1.5],
                     color=color, linewidth=lw, solid_capstyle='round', zorder=4)
-            # Arms
-            ax.plot([cx-2.5, cx+2.5], [cy+2.8, cy+2.8], 
+            ax.plot([cx-2.5, cx+2.5], [cy+2.8, cy+2.8],
                     color=color, linewidth=lw, solid_capstyle='round', zorder=4)
-            # Legs
-            ax.plot([cx, cx-2], [cy+1.5, cy-1.5], 
+            ax.plot([cx, cx-2], [cy+1.5, cy-1.5],
                     color=color, linewidth=lw, solid_capstyle='round', zorder=4)
-            ax.plot([cx, cx+2], [cy+1.5, cy-1.5], 
+            ax.plot([cx, cx+2], [cy+1.5, cy-1.5],
                     color=color, linewidth=lw, solid_capstyle='round', zorder=4)
-                    
-            # Alert ring if in danger/high-risk zone
+
             if alert:
-                ring = plt.Circle((cx, cy+3), 5, 
-                                 color='#ff4444', fill=False, 
+                ring = plt.Circle((cx, cy+3), 5,
+                                 color='#ff4444', fill=False,
                                  linewidth=1, alpha=0.6, linestyle='--', zorder=3)
                 ax.add_patch(ring)
-                
-        # Simulate worker positions dynamically inside the active zones
+
         total_workers = 0
         total_ppe_violations = 0
         active_gas_zone = None
-        
+
         for z in zones_def:
-            # Seed uniquely based on zone name to stabilize placements
             seed_val = int(z['x'] * 100 + z['y'] + frame_num)
             random.seed(seed_val)
-            
+
             num_workers = 0
             if latest is not None:
                 num_workers = int(latest.get(f"{z['id']}_worker_count", 0))
-                # Check if this zone has gas leak
                 gas_ppm = float(latest.get(f"{z['id']}_gas_ppm", 0.0))
                 if gas_ppm > 30:
                     active_gas_zone = z['name']
             else:
                 num_workers = random.randint(1, 4)
-                
+
             total_workers += num_workers
-            
-            # Risk status of this zone
+
             risk_level = 'LOW'
             if zone_risks and z['id'] in zone_risks:
                 risk_level = zone_risks[z['id']].get('risk_level', 'LOW')
             alert_active = (risk_level in ['HIGH', 'CRITICAL'])
-            
+
             for i in range(num_workers):
                 wx = z['x'] + random.uniform(3, z['w'] - 3)
                 wy = z['y'] + random.uniform(3, z['h'] - 8)
-                
-                # Determine if worker has helmet (recreate same simulation logic)
+
                 has_helmet = True
                 if latest is not None and latest.get('max_risk_level') == 'CRITICAL' and z['id'] == 'Zone_A' and i >= 5:
                     has_helmet = False
@@ -420,33 +371,30 @@ class DemoVideoGenerator:
                     has_helmet = False
                 elif latest is None and random.random() < 0.2:
                     has_helmet = False
-                    
+
                 if not has_helmet:
                     total_ppe_violations += 1
-                    
+
                 worker_color = '#ff4444' if alert_active else '#00d4ff'
-                draw_stick_figure(ax, wx, wy, color=worker_color, 
+                draw_stick_figure(ax, wx, wy, color=worker_color,
                                  has_helmet=has_helmet, alert=alert_active)
-                                 
-        # Reset random seed
+
         random.seed(None)
-        
-        # Bottom status bar matching user mockup
+
         ax.add_patch(Rectangle((0, 0), 100, 4, facecolor='black', alpha=0.7))
         ax.text(2,  1.5, f'Workers: {total_workers}', color='white', fontsize=8)
-        ax.text(25, 1.5, f'PPE Violations: {total_ppe_violations}', 
+        ax.text(25, 1.5, f'PPE Violations: {total_ppe_violations}',
                 color='#f59e0b', fontsize=8, fontweight='bold')
-        
+
         if active_gas_zone:
-            ax.text(55, 1.5, f'Gas Alert: {active_gas_zone}', 
+            ax.text(55, 1.5, f'Gas Alert: {active_gas_zone}',
                     color='#ff4444', fontsize=8, fontweight='bold')
         else:
-            ax.text(55, 1.5, 'Sensors: Normal', 
+            ax.text(55, 1.5, 'Sensors: Normal',
                     color='#00ff41', fontsize=8)
-                    
+
         ax.text(82, 1.5, 'AI ACTIVE', color='#00ff41', fontsize=8, fontweight='bold')
-        
-        # Convert to image
+
         plt.tight_layout(pad=0)
         fig.patch.set_facecolor('#0a0e17')
         buf = BytesIO()
@@ -454,15 +402,13 @@ class DemoVideoGenerator:
         buf.seek(0)
         buf_data = buf.getvalue()
         plt.close()
-        
+
         img_data = np.frombuffer(buf_data, dtype=np.uint8)
         if cv2 is not None:
             img = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
         else:
-            # Fallback: decode via PIL and return as numpy RGB array
             from PIL import Image as _PILImage
-            import io as _io
-            img = np.array(_PILImage.open(_io.BytesIO(buf_data)).convert('RGB'))
+            img = np.array(_PILImage.open(BytesIO(buf_data)).convert('RGB'))
         return img
     
     @staticmethod

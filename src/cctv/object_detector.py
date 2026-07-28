@@ -6,7 +6,7 @@ Uses YOLO or simulated detection for demo
 import types
 try:
     import cv2
-except ImportError:  # opencv-python-headless not installed in this environment
+except ImportError:
     cv2: types.ModuleType | None = None
 import numpy as np
 import time
@@ -178,7 +178,6 @@ class ObjectDetector:
                     ))
             
             # Get active keyframe boxes for this frame
-            import random
             
             active_keyframes = []
             for w_def in workers:
@@ -307,7 +306,6 @@ class ObjectDetector:
             worker_count = 0
             hazards = ['smoke']
             
-        import random
         random.seed(hash(selected_zone) % 1000)
         for i in range(worker_count):
             tid = i + 1

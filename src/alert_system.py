@@ -114,6 +114,18 @@ class SafetyAlert:
             end = end.replace(tzinfo=None)
         return (end - st).total_seconds()
 
+# Pre-built lookup maps for performance
+_STATUS_MAP = {}
+for s in AlertStatus:
+    _STATUS_MAP[s.value.upper()] = s
+    _STATUS_MAP[s.name.upper()] = s
+
+_SEV_MAP = {}
+for s in AlertSeverity:
+    _SEV_MAP[s.name.upper()] = s
+    _SEV_MAP[s.value[2].upper()] = s
+
+
 class AlertManager:
     def __init__(self) -> None:
         self.coordinator = get_alert_coordinator()
@@ -123,13 +135,6 @@ class AlertManager:
     def active_alerts(self) -> Dict[str, SafetyAlert]:
         active_incidents = self.coordinator.dashboard_adapter.get_active_alerts()
         alerts = {}
-        status_map = {s.value.upper(): s for s in AlertStatus}
-        for s in AlertStatus:
-            status_map[s.name.upper()] = s
-            
-        sev_map = {s.name.upper(): s for s in AlertSeverity}
-        for s in AlertSeverity:
-            sev_map[s.value[2].upper()] = s
         
         for inc in active_incidents:
             try:
@@ -142,10 +147,8 @@ class AlertManager:
             except ValueError:
                 end_time = None
                 
-            status_val = str(inc["status"]).upper()
-            status_enum = status_map.get(status_val, AlertStatus.ACTIVE)
-            sev_val = str(inc["severity"]).upper()
-            severity_enum = sev_map.get(sev_val, AlertSeverity.LOW)
+            status_enum = _STATUS_MAP.get(str(inc["status"]).upper(), AlertStatus.ACTIVE)
+            severity_enum = _SEV_MAP.get(str(inc["severity"]).upper(), AlertSeverity.LOW)
             
             alert_id = inc["incident_id"]
             alerts[alert_id] = SafetyAlert(
@@ -167,13 +170,6 @@ class AlertManager:
         resolved_incidents = [i for i in all_incidents if i["status"] in ("RESOLVED", "Resolved")]
         
         history_list = []
-        status_map = {s.value.upper(): s for s in AlertStatus}
-        for s in AlertStatus:
-            status_map[s.name.upper()] = s
-            
-        sev_map = {s.name.upper(): s for s in AlertSeverity}
-        for s in AlertSeverity:
-            sev_map[s.value[2].upper()] = s
         
         for inc in resolved_incidents:
             try:
@@ -187,9 +183,9 @@ class AlertManager:
                 end_time = None
                 
             status_val = str(inc["status"]).upper()
-            status_enum = status_map.get(status_val, AlertStatus.RESOLVED)
+            status_enum = _STATUS_MAP.get(status_val, AlertStatus.RESOLVED)
             sev_val = str(inc["severity"]).upper()
-            severity_enum = sev_map.get(sev_val, AlertSeverity.LOW)
+            severity_enum = _SEV_MAP.get(sev_val, AlertSeverity.LOW)
             
             history_list.append(SafetyAlert(
                 alert_id=inc["incident_id"],
