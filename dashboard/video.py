@@ -1302,9 +1302,11 @@ def stream_cctv_feed_raw(
                 st.session_state['alert_fsm_state'] = 'INCIDENT_ACTIVE'
                 fsm = 'INCIDENT_ACTIVE'
 
+    decay = max(1, frame_step // 8)
+
     if alert_conditions["should_alert"]:
         severity = alert_conditions.get('severity', 'MEDIUM').upper()
-        st.session_state['alert_stable_frames'] = stable + 1
+        st.session_state['alert_stable_frames'] = stable + max(1, frame_step // 4)
 
         alert_key = f"alert_active_{selected_zone}"
         current_incident = f"{selected_zone}_{severity}"
@@ -1312,7 +1314,8 @@ def stream_cctv_feed_raw(
         if fsm == 'NORMAL':
             if stable >= 2:
                 st.session_state['alert_fsm_state'] = 'DETECTING'
-                st.session_state[f"_safe_frames_{selected_zone}"] = 0
+                sf = st.session_state.get(f"_safe_frames_{selected_zone}", 0)
+                st.session_state[f"_safe_frames_{selected_zone}"] = max(0, sf - decay)
                 print(f"[REALTIME_PIPELINE] FSM: NORMAL -> DETECTING (Frame={frame_idx})")
 
         elif fsm == 'DETECTING':
@@ -1320,7 +1323,8 @@ def stream_cctv_feed_raw(
                 st.session_state['alert_fsm_state'] = 'DISPATCHING'
                 st.session_state[alert_key] = True
                 st.session_state["_last_incident"] = current_incident
-                st.session_state[f"_safe_frames_{selected_zone}"] = 0
+                sf = st.session_state.get(f"_safe_frames_{selected_zone}", 0)
+                st.session_state[f"_safe_frames_{selected_zone}"] = max(0, sf - decay)
                 dispatch_alerts(alert_conditions)
                 print(f"[REALTIME_PIPELINE] FSM: DETECTING -> DISPATCHING, dispatch_alerts triggered (Frame={frame_idx})")
 
@@ -1347,12 +1351,13 @@ def stream_cctv_feed_raw(
                     st.session_state['alert_fsm_state'] = 'ACKNOWLEDGED'
                     print(f"[REALTIME_PIPELINE] FSM: INCIDENT_ACTIVE -> ACKNOWLEDGED (Frame={frame_idx})")
 
-        st.session_state[f"_safe_frames_{selected_zone}"] = 0
+        sf = st.session_state.get(f"_safe_frames_{selected_zone}", 0)
+        st.session_state[f"_safe_frames_{selected_zone}"] = max(0, sf - decay)
 
     else:
         safe_key = f"_safe_frames_{selected_zone}"
-        st.session_state[safe_key] = st.session_state.get(safe_key, 0) + 1
-        st.session_state['alert_stable_frames'] = 0
+        st.session_state[safe_key] = st.session_state.get(safe_key, 0) + decay
+        st.session_state['alert_stable_frames'] = max(0, stable - decay)
 
         if st.session_state[safe_key] >= 10:
             if st.session_state.get(f"alert_active_{selected_zone}", False):
