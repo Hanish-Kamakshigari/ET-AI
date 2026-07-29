@@ -1057,7 +1057,7 @@ def _zone_video_path(zone: str) -> str | None:
     return get_video(filename)
 
 
-@st.fragment(run_every=0.08)
+@st.fragment(run_every=0.25)
 def stream_cctv_feed_fragment(
     placeholders: Dict[str, Any],
     data_dict: Dict[str, Any],
@@ -1138,15 +1138,18 @@ def stream_cctv_feed_raw(
     frame_idx = 0
     total_frames = 240
     play_active = st.session_state.get('sim_play_active', False)
+    play_speed = st.session_state.get('sim_play_speed', '1x')
+    speed_step_map = {'1x': 8, '2x': 16, '4x': 32}
+    frame_step = speed_step_map.get(play_speed, 8)
     
-    print(f"[DIAGNOSTIC] stream_cctv_feed_raw: zone={selected_zone}, play_active={play_active}, video_path={video_path}, video_exists={os.path.exists(video_path) if video_path else False}")
+    print(f"[DIAGNOSTIC] stream_cctv_feed_raw: zone={selected_zone}, play_active={play_active}, speed={play_speed}, step={frame_step}, video_path={video_path}, video_exists={os.path.exists(video_path) if video_path else False}")
 
     if video_path and os.path.exists(video_path):
         frame_idx = tracker.get_index(selected_zone, 240)
         frame, total_frames = read_mp4_frame(video_path, frame_idx)
         print(f"[DIAGNOSTIC] Video read: frame_idx={frame_idx}, total_frames={total_frames}, frame_loaded={frame is not None}")
         if frame is not None and play_active:
-            tracker.increment(selected_zone, 4, total_frames if total_frames > 0 else 240)
+            tracker.increment(selected_zone, frame_step, total_frames if total_frames > 0 else 240)
             new_idx = tracker.get_index(selected_zone, 240)
             print(f"[DIAGNOSTIC] Tracker incremented: new_idx={new_idx}")
 
@@ -1161,7 +1164,7 @@ def stream_cctv_feed_raw(
         )
         frame_idx = tracker.get_index(selected_zone, 240)
         if play_active:
-            tracker.increment(selected_zone, 4, 240)
+            tracker.increment(selected_zone, frame_step, 240)
 
     # Choose a SINGLE frame slot to avoid double-buffer swap flicker.
     frame_slot = frame_placeholder or frame_placeholder_1
@@ -1782,6 +1785,6 @@ def stream_cctv_feed_raw(
 
     # ═══════════════════════════════════════════════════════════════════════════════
     # AUTO-RERUN FOR SMOOTH PLAYBACK (driven by Autoplay Simulation toggle)
-    # Rely on @st.fragment(run_every=0.15) for reruns — no JS timer needed.
+    # Rely on @st.fragment(run_every=0.25) for reruns — no JS timer needed.
     # ═══════════════════════════════════════════════════════════════════════════════
 
