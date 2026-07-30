@@ -313,7 +313,7 @@ def evaluate_alert_conditions(
     if in_streamlit:
         play_active = st.session_state.get('sim_play_active', False)
         frame_idx = st.session_state.get('cctv_frame_index', 0)
-        if not play_active or frame_idx < 1:
+        if not play_active:
             return {
                 "should_alert": False,
                 "severity": "LOW",

@@ -1351,6 +1351,12 @@ def stream_cctv_feed_raw(
                     st.session_state['alert_fsm_state'] = 'ACKNOWLEDGED'
                     print(f"[REALTIME_PIPELINE] FSM: INCIDENT_ACTIVE -> ACKNOWLEDGED (Frame={frame_idx})")
 
+        elif fsm == 'RESOLVED':
+            st.session_state['alert_fsm_state'] = 'NORMAL'
+            st.session_state['alert_stable_frames'] = 0
+            st.session_state[f"_safe_frames_{selected_zone}"] = 0
+            print(f"[REALTIME_PIPELINE] FSM: RESOLVED -> NORMAL (re-trigger, Frame={frame_idx})")
+
         sf = st.session_state.get(f"_safe_frames_{selected_zone}", 0)
         st.session_state[f"_safe_frames_{selected_zone}"] = max(0, sf - decay)
 
