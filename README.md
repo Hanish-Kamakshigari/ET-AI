@@ -1,70 +1,69 @@
-# 🛡️ SurakshaAI — Multi-Engine Industrial Safety & Intelligence Platform
+# SurakshaAI — Multi-Engine Industrial Safety & Intelligence Platform
 
-> 🌐 **Live Application**: Try SurakshaAI live at **[suraksh-ai.streamlit.app](https://suraksh-ai.streamlit.app)**
+> **Live Application**: [suraksh-ai.streamlit.app](https://suraksh-ai.streamlit.app)
 
-SurakshaAI is a high-performance industrial safety and compliance intelligence platform. It integrates real-time object detection and safety checking into a multi-layered safety architecture.
-
-Designed for high-hazard environments (refineries, power blocks, chemical storehouses), SurakshaAI goes beyond simple computer vision. It combines **YOLOv8-based vision perception** with a **state evaluation engine**, **compliance rule correlation**, and **mitigation/action loops** to prevent industrial accidents.
+SurakshaAI is an industrial safety and compliance intelligence platform that integrates real-time object detection with a multi-layered safety architecture for high-hazard environments such as refineries, power blocks, and chemical storehouses. It combines YOLOv8-based vision perception with a state evaluation engine, compliance rule correlation, and automated mitigation loops.
 
 ---
 
-## 🏛️ System Architecture
+## System Architecture
 
-SurakshaAI is built around a robust, four-tier architecture designed for industrial stability and reliable mitigation loops:
+The platform is built on a four-tier architecture:
 
 ```mermaid
 graph TD
-    subgraph Layer 1: Perception [Perception Layer]
-        A[📹 CCTV RTSP Feeds] --> B[YOLOv8 Object Detection]
+    subgraph Layer 1: Perception
+        A[CCTV RTSP Feeds] --> B[YOLOv8 Object Detection]
         B --> C[PPE & Hazard Classes]
         B --> D[Point-in-Polygon Intrusion Check]
     end
 
-    subgraph Layer 2: State [State Evaluation Layer]
+    subgraph Layer 2: State Evaluation
         C --> E[Telemetry Aggregator]
         D --> E
-        F[📡 Modbus/OPC UA Telemetry] --> E
+        F[Modbus/OPC UA Telemetry] --> E
         E --> G[State Vectors: Gas, Temp, Crew Count]
     end
 
-    subgraph Layer 3: Correlation [Correlation & Compliance]
+    subgraph Layer 3: Correlation & Compliance
         G --> H[Compound Risk Engine]
-        I[📋 Active Work Permits] --> H
+        I[Active Work Permits] --> H
         H --> J[Triple-Threat / Permit Breach Rules]
     end
 
-    subgraph Layer 4: Mitigation [Action & Alarm Dispatch]
+    subgraph Layer 4: Action & Mitigation
         J --> K[Action & Failsafe Engine]
-        K --> L[🌀 Exhaust Fans Auto-Boost]
-        K --> M[🛑 Gas Valves Auto-Shutoff]
-        K --> N[🔊 Plant Sirens & SMS alerts]
+        K --> L[Exhaust Fans Auto-Boost]
+        K --> M[Gas Valves Auto-Shutoff]
+        K --> N[Plant Sirens & SMS Alerts]
     end
-    
+
     style Layer 1: Perception fill:#0c1e38,stroke:#1d4ed8,stroke-width:2px,color:#fff
-    style Layer 2: State fill:#0b192e,stroke:#3b82f6,stroke-width:2px,color:#fff
-    style Layer 3: Correlation fill:#091424,stroke:#f59e0b,stroke-width:2px,color:#fff
-    style Layer 4: Mitigation fill:#080e1a,stroke:#ef4444,stroke-width:2px,color:#fff
+    style Layer 2: State Evaluation fill:#0b192e,stroke:#3b82f6,stroke-width:2px,color:#fff
+    style Layer 3: Correlation & Compliance fill:#091424,stroke:#f59e0b,stroke-width:2px,color:#fff
+    style Layer 4: Action & Mitigation fill:#080e1a,stroke:#ef4444,stroke-width:2px,color:#fff
 ```
 
-### The 4 Operational Layers:
-1. **Perception Layer (YOLOv8 + CV2)**: Extracts workers, PPE compliance (helmets, vests), fire/smoke occurrences, and processes point-in-polygon coordinates for restricted area intrusions.
-2. **State Evaluation Layer (RiskEngine)**: Aggregates computer vision state vectors with industrial telemetry sensor data (Gas ppm, Temperature, and Pressure).
-3. **Correlation Layer (CompoundRiskEngine)**: Correlates state data against active work permits and scheduled maintenance shifts to detect complex risk intersections (e.g. *Triple-Threat* pattern: Gas leak + active hot work permit + worker overcrowding in high-risk zones).
-4. **Action & Failsafe Layer (ActionEngine)**: Dispatches instant multi-channel alerts (SMS, Email, Audible Sirens) and triggers digital output relays (shutting Modbus isolation valves, boosting exhaust ventilation).
+1. **Perception Layer** — YOLOv8-based detection of workers, PPE compliance (helmets, vests), fire/smoke, and point-in-polygon restricted area intrusions.
+2. **State Evaluation Layer** — Aggregates vision-derived state vectors with industrial telemetry sensor data (gas ppm, temperature, pressure).
+3. **Correlation Layer** — Correlates state data against active work permits and maintenance schedules to detect complex risk intersections (e.g., gas leak + active hot work permit + overcrowding in a high-risk zone).
+4. **Action & Failsafe Layer** — Dispatches multi-channel alerts (SMS, email, sirens) and triggers digital output relays for isolation valves and exhaust ventilation.
 
 ---
 
-## 📡 Deployment Modes & Integrations
+## Deployment Modes
 
-The system's perception and state engines support hot-swappable modes depending on the deployment environment:
-* **Interactive Timeline Mode**: Streams local video playbacks aligned with simulated telemetry timelines, enabling robust verification of the risk engine rules and action dispatcher without hardware sensors.
-* **Live RTSP Stream Mode**: Bridges directly to RTSP camera feeds and physical Modbus/OPC UA gateways for live industrial integration.
+The perception and state engines support hot-swappable modes depending on the deployment environment:
+
+- **Interactive Timeline Mode** — Streams local video playbacks aligned with simulated telemetry timelines for verification of risk engine rules and action dispatcher behaviour without hardware sensors.
+- **Live RTSP Stream Mode** — Bridges directly to RTSP camera feeds and physical Modbus/OPC UA gateways for live industrial integration.
 
 ---
 
-## 🗺️ Zone Boundary Configuration
+## Zone Boundary Configuration
 
-The coordinates of restricted safety zones are defined per camera stream in the zone configuration file (`zones.json`), referenced using standard coordinates:
+Restricted safety zone coordinates are defined per camera stream in `zones.json`:
+
 ```json
 {
   "Zone_A": {
@@ -79,41 +78,40 @@ The coordinates of restricted safety zones are defined per camera stream in the 
 
 ---
 
-## 📊 System Performance & Benchmark Metrics
+## Performance Benchmarks
 
-SurakshaAI has been benchmarked across both edge devices and local servers, demonstrating industry-grade latency and reliability:
+Benchmarked across edge devices and local servers:
 
-| Benchmark metric | CPU Host (4 Cores) | GPU (NVIDIA RTX 4060) |
-| :--- | :--- | :--- |
-| **YOLOv8 Inference Latency** | ~48.2 ms | **~8.4 ms** |
-| **Stream Processing Framerate** | ~12.4 FPS | **~25.0 FPS (Real-time)** |
-| **PPE Detection mAP (Helmet/Vest)** | >91.6% | **>92.4%** |
-| **Centroid Fall Detection Accuracy** | 94.2% (Temporal Filter) | **95.1% (Temporal Filter)** |
-| **SQL Cooldown Query Latency** | <0.1 ms (Cache Hit) | **<0.1 ms (Cache Hit)** |
-| **Notification Channel Latency** | <180 ms | **<120 ms (Async Threads)** |
+| Metric | CPU (4 Cores) | GPU (RTX 4060) |
+|---|---|---|
+| YOLOv8 Inference Latency | ~48.2 ms | ~8.4 ms |
+| Stream Processing Framerate | ~12.4 FPS | ~25.0 FPS |
+| PPE Detection mAP (Helmet/Vest) | >91.6% | >92.4% |
+| Centroid Fall Detection Accuracy | 94.2% | 95.1% |
+| SQL Cooldown Query Latency | <0.1 ms | <0.1 ms |
+| Notification Channel Latency | <180 ms | <120 ms |
 
-### Key Optimization Highlights:
-- **In-Memory Hysteresis Caching**: Bypasses SQLite queries for active alerts, reducing SQL connection pool overhead by **94%** during continuous inference runs.
-- **Centroid-Based Temporal Filter**: Tracks worker bounding boxes across frames to suppress false positives on bending or crouching, only triggering falls if sustained for 8+ consecutive frames (~300ms).
-- **Non-blocking Dispatch Queue**: Offloads email, SMS, and siren triggers to dedicated daemon threads to prevent background notification delays from stuttering the live CCTV display.
+### Optimisation Highlights
+
+- **In-Memory Hysteresis Caching** — Bypasses SQLite queries for active alerts, reducing SQL connection pool overhead by 94% during continuous inference.
+- **Centroid-Based Temporal Filter** — Tracks worker bounding boxes across frames to suppress false positives on bending or crouching; triggers fall alerts only when sustained for 8+ consecutive frames (~300 ms).
+- **Non-blocking Dispatch Queue** — Offloads email, SMS, and siren triggers to dedicated daemon threads to prevent notification latency from impacting the live CCTV display.
 
 ---
 
-
-## 👥 Contributors
-
-This project is collaboratively developed by:
+## Contributors
 
 | Name | Role | GitHub |
-|------|------|--------|
-| **Hanish Kamakshigari** | Project Lead & AI Engineer | @Hanish-Kamakshigari |
-| **Karunya M** | Software Developer & Contributor | @karun-16 |
+|---|---|---|
+| **Hanish Kamakshigari** | Project Lead & AI Engineer | [@Hanish-Kamakshigari](https://github.com/Hanish-Kamakshigari) |
+| **Karunya M** | Software Developer | [@karun-16](https://github.com/karun-16) |
 
-We welcome contributions through pull requests and issue reports.
+Contributions via pull requests and issue reports are welcome.
 
 ---
 
-## 🚀 Production Roadmap
-1. **Edge Deployment**: Package the perception layer into Docker containers running on NVIDIA Jetson Edge devices.
-2. **Industrial Gateway**: Connect the Failsafe Engine outputs to real industrial PLCs using Modbus TCP / OPC UA write requests.
-3. **Temporal Behavior models**: Replace the static fall warning with a temporal LSTM/Pose model to detect slips, trips, and falls in real-time video streams.
+## Roadmap
+
+1. **Edge Deployment** — Package the perception layer into Docker containers for NVIDIA Jetson devices.
+2. **Industrial Gateway** — Connect the failsafe engine outputs to real industrial PLCs via Modbus TCP / OPC UA.
+3. **Temporal Behaviour Models** — Replace the static fall warning with temporal LSTM/pose models for real-time slip, trip, and fall detection.
