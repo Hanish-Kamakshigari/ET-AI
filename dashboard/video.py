@@ -1261,10 +1261,10 @@ def stream_cctv_feed_raw(
             status_bar_placeholder.empty()
 
     # Process frame through AlertCoordinator to track persistence and store incident frames
-    # only during active simulation after initial startup frames.
+    # only during active simulation.
     play_active = st.session_state.get('sim_play_active', False)
     frame_idx = st.session_state.get('cctv_frame_index', 0)
-    if play_active and frame_idx >= 5:
+    if play_active and frame_idx >= 1:
         try:
             coordinator = get_alert_coordinator()
             coordinator.process_frame(active_dets, selected_zone, latest)

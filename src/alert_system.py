@@ -302,7 +302,8 @@ def evaluate_alert_conditions(
     zone: str,
     telemetry: dict
 ) -> dict:
-    # Guard: ignore alerts when simulation is paused
+    # Guard: ignore alerts when simulation is paused or during the first frame
+    # to let the pipeline stabilize before alert evaluation.
     try:
         from streamlit.runtime import exists as st_exists
         in_streamlit = st_exists()
@@ -312,7 +313,7 @@ def evaluate_alert_conditions(
     if in_streamlit:
         play_active = st.session_state.get('sim_play_active', False)
         frame_idx = st.session_state.get('cctv_frame_index', 0)
-        if not play_active:
+        if not play_active or frame_idx < 1:
             return {
                 "should_alert": False,
                 "severity": "LOW",
