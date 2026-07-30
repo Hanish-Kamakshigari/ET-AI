@@ -1139,8 +1139,8 @@ def stream_cctv_feed_raw(
     total_frames = 240
     play_active = st.session_state.get('sim_play_active', False)
     play_speed = st.session_state.get('sim_play_speed', '1x')
-    speed_step_map = {'1x': 8, '2x': 16, '4x': 32}
-    frame_step = speed_step_map.get(play_speed, 8)
+    speed_step_map = {'1x': 12, '2x': 24, '4x': 48}
+    frame_step = speed_step_map.get(play_speed, 12)
     
     print(f"[DIAGNOSTIC] stream_cctv_feed_raw: zone={selected_zone}, play_active={play_active}, speed={play_speed}, step={frame_step}, video_path={video_path}, video_exists={os.path.exists(video_path) if video_path else False}")
 
