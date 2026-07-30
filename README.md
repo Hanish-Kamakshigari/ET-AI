@@ -12,36 +12,36 @@ The platform is built on a four-tier architecture:
 
 ```mermaid
 graph TD
-    subgraph Layer 1: Perception
+    subgraph Perception[Layer 1: Perception]
         A[CCTV RTSP Feeds] --> B[YOLOv8 Object Detection]
         B --> C[PPE & Hazard Classes]
         B --> D[Point-in-Polygon Intrusion Check]
     end
 
-    subgraph Layer 2: State Evaluation
+    subgraph StateEval[Layer 2: State Evaluation]
         C --> E[Telemetry Aggregator]
         D --> E
         F[Modbus/OPC UA Telemetry] --> E
         E --> G[State Vectors: Gas, Temp, Crew Count]
     end
 
-    subgraph Layer 3: Correlation & Compliance
+    subgraph Correlation[Layer 3: Correlation & Compliance]
         G --> H[Compound Risk Engine]
         I[Active Work Permits] --> H
         H --> J[Triple-Threat / Permit Breach Rules]
     end
 
-    subgraph Layer 4: Action & Mitigation
+    subgraph Mitigation[Layer 4: Action & Mitigation]
         J --> K[Action & Failsafe Engine]
         K --> L[Exhaust Fans Auto-Boost]
         K --> M[Gas Valves Auto-Shutoff]
         K --> N[Plant Sirens & SMS Alerts]
     end
-
-    style Layer 1: Perception fill:#0c1e38,stroke:#1d4ed8,stroke-width:2px,color:#fff
-    style Layer 2: State Evaluation fill:#0b192e,stroke:#3b82f6,stroke-width:2px,color:#fff
-    style Layer 3: Correlation & Compliance fill:#091424,stroke:#f59e0b,stroke-width:2px,color:#fff
-    style Layer 4: Action & Mitigation fill:#080e1a,stroke:#ef4444,stroke-width:2px,color:#fff
+    
+    style Perception fill:#0c1e38,stroke:#1d4ed8,stroke-width:2px,color:#fff
+    style StateEval fill:#0b192e,stroke:#3b82f6,stroke-width:2px,color:#fff
+    style Correlation fill:#091424,stroke:#f59e0b,stroke-width:2px,color:#fff
+    style Mitigation fill:#080e1a,stroke:#ef4444,stroke-width:2px,color:#fff
 ```
 
 1. **Perception Layer** — YOLOv8-based detection of workers, PPE compliance (helmets, vests), fire/smoke, and point-in-polygon restricted area intrusions.
