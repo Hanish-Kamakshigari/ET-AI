@@ -295,7 +295,7 @@ def render_interactive_zone_map() -> None:
         color = {'CRITICAL': _ACCENT_RED, 'HIGH': _ACCENT_ORANGE, 'MEDIUM': _ACCENT_YELLOW, 'LOW': _ACCENT_GREEN}.get(risk_level, _ACCENT_GREEN)
         with cols[idx]:
             btn_label = info.get('icon', 'LOC') + "\n" + ZONE_LABELS.get(zone, zone)
-            if st.button(btn_label, key="digital_twin_btn_" + zone, use_container_width=True,
+            if st.button(btn_label, key="digital_twin_btn_" + zone, width='stretch',
                         help="Focus on " + ZONE_LABELS.get(zone, zone)):
                 st.session_state.cctv_zone_selector = zone
                 st.session_state.selected_zone = zone

@@ -96,7 +96,7 @@ def render_sidebar(
         data=report,
         file_name=f"surakshaai_{now_time.strftime('%Y%m%d_%H%M%S')}.md",
         mime="text/markdown",
-        use_container_width=True,
+        width='stretch',
         key="btn_report_expanded"
         )
         st.markdown(f"<div style='font-size:9px; color:#64748b; text-align:center; margin-top:-4px; margin-bottom:8px;'>Last Export: {now_time.strftime('%H:%M:%S')}</div>", unsafe_allow_html=True)
@@ -165,14 +165,14 @@ def render_sidebar(
         st.markdown("""<div style="font-size:8px; color:#64748B; font-weight:700; text-transform:uppercase; margin-bottom:4px;">Emergency Controls</div>""", unsafe_allow_html=True)
         col_qa1, col_qa2 = st.columns(2)
         with col_qa1:
-            if st.button("🏥 Health Check", key="qa_health_check", use_container_width=True):
+            if st.button("🏥 Health Check", key="qa_health_check", width='stretch'):
                 st.toast("🏥 Health Check: All CCTV streams, OPC UA sensors, SQL storage and Notification Gateways are 100% nominal.")
                 st.rerun()
-            if st.button("📹 Ref Cameras", key="qa_ref_cameras", use_container_width=True):
+            if st.button("📹 Ref Cameras", key="qa_ref_cameras", width='stretch'):
                 st.toast("📹 Re-initialized CCTV decoder pipeline and cleared frame buffers.")
                 st.rerun()
         with col_qa2:
-            if st.button("🚨 Test Alert", key="qa_test_alert", use_container_width=True):
+            if st.button("🚨 Test Alert", key="qa_test_alert", width='stretch'):
                 from src.alert_system import dispatch_alerts
                 import random
                 severity_choice = random.choice(["MEDIUM", "HIGH", "CRITICAL"])
@@ -189,7 +189,7 @@ def render_sidebar(
                 dispatch_alerts(test_payload)
                 st.toast(f"🚨 Test {severity_choice} Alert dispatched to {ZONE_LABELS.get(zone_choice, zone_choice)}!")
                 st.rerun()
-            if st.button("🛑 Stop Sim", key="qa_stop_sim", use_container_width=True):
+            if st.button("🛑 Stop Sim", key="qa_stop_sim", width='stretch'):
                 from src.alert_system import clear_alert_if_safe
                 st.session_state.sim_play_active = False
                 st.session_state.sim_stage = 'normal'

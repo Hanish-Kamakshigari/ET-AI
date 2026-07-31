@@ -5,6 +5,7 @@ SurakshaAI Dashboard CCTV Video Streaming and Inference Module
 
 import sys
 import os
+import io
 import types
 try:
     import cv2
@@ -31,6 +32,18 @@ from src.alert_system import evaluate_alert_conditions, dispatch_alerts, clear_a
 from src.utils.video_downloader import get_video
 
 _TRANSPARENT_IMAGE = Image.new("RGBA", (16, 9), (0, 0, 0, 0))
+
+_DEBUG_LOGGING = os.environ.get('SURAKSHA_DEBUG', '').lower() in ('1', 'true', 'yes')
+
+
+def _log(message: str) -> None:
+    """Emit a diagnostic log line only when SURAKSHA_DEBUG is enabled.
+
+    Prevents per-fragment prints (up to 4/sec while autoplay is running) from
+    flooding Streamlit Cloud logs.
+    """
+    if _DEBUG_LOGGING:
+        print(message)
 
 def render_compliance_warning_card(severity: str, hazard: str, description: str, zone_label: str, confidence: int, time_str: str, duration: int) -> str:
     color = "#ef4444" if severity in ("CRITICAL", "HIGH") else "#eab308"
@@ -964,15 +977,20 @@ def get_frame_tracker() -> FrameTracker:
 
 
 @st.cache_resource(max_entries=2)
-def load_video_frames(video_path: str) -> Optional[Tuple[List[np.ndarray], int]]:
-    """Load all frames of a video into memory to avoid concurrent VideoCapture access crashes.
-    
-    Uses max_entries=2 to limit memory usage on Streamlit Cloud/server.
+def load_video_frames(video_path: str) -> Optional[Tuple[List[Any], int]]:
+    """Pre-encode every frame of a video as JPEG bytes instead of holding full-resolution
+    frames in memory.
+
+    Full BGR frames are ~2.6MB each (~790MB for a 300-frame 1280x720 clip), far beyond
+    Streamlit Cloud's memory budget. JPEG q80 runs ~107KB/frame (~31MB per clip); frames
+    are decoded on demand in read_mp4_frame(). Each cache entry is either JPEG bytes or,
+    if OpenCV is unavailable, a raw numpy frame.
     """
     if not video_path or not os.path.exists(video_path):
         return None
 
-    frames = []
+    frames: List[Any] = []
+    jpeg_params = [cv2.IMWRITE_JPEG_QUALITY, 80] if cv2 is not None else None
     if cv2 is not None:
         try:
             with _cap_lock:
@@ -982,7 +1000,9 @@ def load_video_frames(video_path: str) -> Optional[Tuple[List[np.ndarray], int]]
                         ret, frame = cap.read()
                         if not ret or frame is None:
                             break
-                        frames.append(frame)
+                        ok, buf = cv2.imencode('.jpg', frame, jpeg_params)
+                        if ok:
+                            frames.append(buf.tobytes())
                     cap.release()
         except Exception as e:
             print(f"[load_video_frames] OpenCV loading error for {video_path}: {e}")
@@ -992,7 +1012,12 @@ def load_video_frames(video_path: str) -> Optional[Tuple[List[np.ndarray], int]]
             import imageio
             with imageio.get_reader(video_path) as reader:
                 for frame in reader:
-                    frames.append(frame)
+                    if jpeg_params is not None:
+                        ok, buf = cv2.imencode('.jpg', frame, jpeg_params)
+                        if ok:
+                            frames.append(buf.tobytes())
+                    else:
+                        frames.append(frame)
         except Exception as e:
             print(f"[load_video_frames] ImageIO loading error for {video_path}: {e}")
 
@@ -1027,12 +1052,20 @@ def get_video_frame_count(video_path: str) -> int:
 
 
 def read_mp4_frame(video_path: str, frame_idx: int) -> Tuple[Optional[np.ndarray], int]:
-    """Reads a single frame from cached video frames or falls back dynamically."""
+    """Decodes a single frame from cached JPEG-encoded video frames on demand."""
     res = load_video_frames(video_path)
     if res is not None:
         frames, total = res
         if total > 0:
-            return frames[frame_idx % total], total
+            item = frames[frame_idx % total]
+            if isinstance(item, np.ndarray):
+                return item, total
+            if isinstance(item, bytes) and cv2 is not None:
+                try:
+                    frame = cv2.imdecode(np.frombuffer(item, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    return frame, total
+                except Exception:
+                    return None, total
     return None, 0
 
 
@@ -1139,19 +1172,19 @@ def stream_cctv_feed_raw(
     total_frames = 240
     play_active = st.session_state.get('sim_play_active', False)
     play_speed = st.session_state.get('sim_play_speed', '1x')
-    speed_step_map = {'1x': 12, '2x': 24, '4x': 48}
-    frame_step = speed_step_map.get(play_speed, 12)
+    speed_step_map = {'1x': 16, '2x': 32, '4x': 64}
+    frame_step = speed_step_map.get(play_speed, 16)
     
-    print(f"[DIAGNOSTIC] stream_cctv_feed_raw: zone={selected_zone}, play_active={play_active}, speed={play_speed}, step={frame_step}, video_path={video_path}, video_exists={os.path.exists(video_path) if video_path else False}")
+    _log(f"[DIAGNOSTIC] stream_cctv_feed_raw: zone={selected_zone}, play_active={play_active}, speed={play_speed}, step={frame_step}, video_path={video_path}, video_exists={os.path.exists(video_path) if video_path else False}")
 
     if video_path and os.path.exists(video_path):
         frame_idx = tracker.get_index(selected_zone, 240)
         frame, total_frames = read_mp4_frame(video_path, frame_idx)
-        print(f"[DIAGNOSTIC] Video read: frame_idx={frame_idx}, total_frames={total_frames}, frame_loaded={frame is not None}")
+        _log(f"[DIAGNOSTIC] Video read: frame_idx={frame_idx}, total_frames={total_frames}, frame_loaded={frame is not None}")
         if frame is not None and play_active:
             tracker.increment(selected_zone, frame_step, total_frames if total_frames > 0 else 240)
             new_idx = tracker.get_index(selected_zone, 240)
-            print(f"[DIAGNOSTIC] Tracker incremented: new_idx={new_idx}")
+            _log(f"[DIAGNOSTIC] Tracker incremented: new_idx={new_idx}")
 
     if frame is None:
         # Secondary fallback to simulated CCTV frame if video file is missing
@@ -1213,7 +1246,12 @@ def stream_cctv_feed_raw(
         if frame_slot:
             from PIL import ImageOps
             padded_img = ImageOps.expand(pil_img, border=(0, 30), fill='black')
-            frame_slot.image(padded_img, width='stretch')
+            # Encode to JPEG bytes instead of passing a PIL image: Streamlit re-encodes
+            # PIL frames to lossless PNG (~85ms, ~800KB/tick), which throttles playback.
+            # JPEG q80 is ~2ms and ~110KB — the frontend passes bytes through unmodified.
+            _jpeg_buf = io.BytesIO()
+            padded_img.save(_jpeg_buf, format="JPEG", quality=80)
+            frame_slot.image(_jpeg_buf.getvalue(), width='stretch')
             st.session_state['last_cctv_frame'] = pil_img
 
         fps_val = 25.0 if play_active else 0.0
@@ -1316,7 +1354,7 @@ def stream_cctv_feed_raw(
                 st.session_state['alert_fsm_state'] = 'DETECTING'
                 sf = st.session_state.get(f"_safe_frames_{selected_zone}", 0)
                 st.session_state[f"_safe_frames_{selected_zone}"] = max(0, sf - decay)
-                print(f"[REALTIME_PIPELINE] FSM: NORMAL -> DETECTING (Frame={frame_idx})")
+                _log(f"[REALTIME_PIPELINE] FSM: NORMAL -> DETECTING (Frame={frame_idx})")
 
         elif fsm == 'DETECTING':
             if stable >= 4:
@@ -1326,7 +1364,7 @@ def stream_cctv_feed_raw(
                 sf = st.session_state.get(f"_safe_frames_{selected_zone}", 0)
                 st.session_state[f"_safe_frames_{selected_zone}"] = max(0, sf - decay)
                 dispatch_alerts(alert_conditions)
-                print(f"[REALTIME_PIPELINE] FSM: DETECTING -> DISPATCHING, dispatch_alerts triggered (Frame={frame_idx})")
+                _log(f"[REALTIME_PIPELINE] FSM: DETECTING -> DISPATCHING, dispatch_alerts triggered (Frame={frame_idx})")
 
         elif fsm in ('WARNING_ACTIVE', 'DISPATCHING'):
             st.session_state[alert_key] = True
@@ -1334,11 +1372,11 @@ def stream_cctv_feed_raw(
             siren_st = st.session_state.get('siren_status', {})
             if siren_st.get('status') in ('ACTIVE 🔊', 'DELIVERED ✓', 'ACTIVE'):
                 st.session_state['alert_fsm_state'] = 'DELIVERED'
-                print(f"[REALTIME_PIPELINE] FSM: DISPATCHING -> DELIVERED (Frame={frame_idx})")
+                _log(f"[REALTIME_PIPELINE] FSM: DISPATCHING -> DELIVERED (Frame={frame_idx})")
 
         elif fsm == 'DELIVERED':
             st.session_state['alert_fsm_state'] = 'INCIDENT_ACTIVE'
-            print(f"[REALTIME_PIPELINE] FSM: DELIVERED -> INCIDENT_ACTIVE (Frame={frame_idx})")
+            _log(f"[REALTIME_PIPELINE] FSM: DELIVERED -> INCIDENT_ACTIVE (Frame={frame_idx})")
 
         elif fsm in ('INCIDENT_ACTIVE', 'ACKNOWLEDGED'):
             if fsm == 'INCIDENT_ACTIVE':
@@ -1349,13 +1387,13 @@ def stream_cctv_feed_raw(
                 )
                 if any_acked:
                     st.session_state['alert_fsm_state'] = 'ACKNOWLEDGED'
-                    print(f"[REALTIME_PIPELINE] FSM: INCIDENT_ACTIVE -> ACKNOWLEDGED (Frame={frame_idx})")
+                    _log(f"[REALTIME_PIPELINE] FSM: INCIDENT_ACTIVE -> ACKNOWLEDGED (Frame={frame_idx})")
 
         elif fsm == 'RESOLVED':
             st.session_state['alert_fsm_state'] = 'NORMAL'
             st.session_state['alert_stable_frames'] = 0
             st.session_state[f"_safe_frames_{selected_zone}"] = 0
-            print(f"[REALTIME_PIPELINE] FSM: RESOLVED -> NORMAL (re-trigger, Frame={frame_idx})")
+            _log(f"[REALTIME_PIPELINE] FSM: RESOLVED -> NORMAL (re-trigger, Frame={frame_idx})")
 
         sf = st.session_state.get(f"_safe_frames_{selected_zone}", 0)
         st.session_state[f"_safe_frames_{selected_zone}"] = max(0, sf - decay)
@@ -1377,7 +1415,7 @@ def stream_cctv_feed_raw(
             elif fsm in ('DETECTING', 'WARNING_ACTIVE'):
                 st.session_state['alert_fsm_state'] = 'NORMAL'
 
-    print(f"[REALTIME_PIPELINE] Frame={frame_idx} | YOLO Detections={len(active_dets)} | Hazards={viol_count} | should_alert={alert_conditions['should_alert']} | ActiveAlerts={len(am.active_alerts)} | FSM={st.session_state.get('alert_fsm_state')}")
+    _log(f"[REALTIME_PIPELINE] Frame={frame_idx} | YOLO Detections={len(active_dets)} | Hazards={viol_count} | should_alert={alert_conditions['should_alert']} | ActiveAlerts={len(am.active_alerts)} | FSM={st.session_state.get('alert_fsm_state')}")
 
     # Debounce & telemetry state hash guard (excludes per-frame index to prevent unnecessary UI re-renders)
     active_alert_count = len(am.active_alerts)
@@ -1764,7 +1802,7 @@ def stream_cctv_feed_raw(
     am.update(active_dets, selected_zone)
     # Sync with shared session state active_alerts immediately after update
     st.session_state.active_alerts = am.active_alerts
-    print(f"[DIAGNOSTIC] am.update called: zone={selected_zone}, detections={len(active_dets)}, active_alerts={len(am.active_alerts)}")
+    _log(f"[DIAGNOSTIC] am.update called: zone={selected_zone}, detections={len(active_dets)}, active_alerts={len(am.active_alerts)}")
 
     # Force immediate refresh of alert UI if state changed
     current_fsm = st.session_state.get('alert_fsm_state', 'NORMAL')

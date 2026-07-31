@@ -142,7 +142,7 @@ def render_analytics_tab(
             "Risk": data_dict.get("STATUS", {}).get("level", "LOW"),
             "Score": data_dict.get("max_score", 0),
         })
-    st.dataframe(pd.DataFrame(history_rows), use_container_width=True)
+    st.dataframe(pd.DataFrame(history_rows), width='stretch')
 
     st.subheader("Response Time Metrics")
     col4, col5 = st.columns(2)
@@ -246,7 +246,7 @@ def render_zones_tab(
     for name, value in info.get("sensor_data", {}).items():
         if name.endswith(("_gas_ppm", "_temperature_c", "_pressure_bar", "_worker_count")):
             sensor_rows.append({"Metric": name, "Value": round(float(value), 2)})
-    st.dataframe(pd.DataFrame(sensor_rows), use_container_width=True)
+    st.dataframe(pd.DataFrame(sensor_rows), width='stretch')
 
     st.subheader("Active Alerts")
     alert_rows = []
@@ -254,7 +254,7 @@ def render_zones_tab(
         if ZONE_LABELS.get(selected_zone, selected_zone).lower() in str(item.get("zone", "")).lower():
             alert_rows.append(item)
     if alert_rows:
-        st.dataframe(pd.DataFrame(alert_rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(alert_rows), width='stretch')
     else:
         st.caption("No active alerts for this zone right now.")
 
@@ -387,7 +387,7 @@ def render_settings_tab(
             
             c_btn1, c_btn2 = st.columns(2)
             with c_btn1:
-                if st.button("Add Rule", use_container_width=True):
+                if st.button("Add Rule", width='stretch'):
                     if rule_text:
                         current_rules = st.session_state.get("rule_engine_rules", [])
                         current_rules.append(rule_text)
@@ -395,7 +395,7 @@ def render_settings_tab(
                         st.toast(f"Rule added: {rule_text}", icon="✅")
                         st.rerun()
             with c_btn2:
-                if st.button("Clear Custom Rules", use_container_width=True):
+                if st.button("Clear Custom Rules", width='stretch'):
                     st.session_state.rule_engine_rules = []
                     st.toast("Custom rules cleared", icon="🗑️")
                     st.rerun()
@@ -407,7 +407,7 @@ def render_settings_tab(
                     st.code(f"Rule #{i+1}: {r}", language="text")
 
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-    if st.button("Save & Apply All Settings", type="primary", use_container_width=True):
+    if st.button("Save & Apply All Settings", type="primary", width='stretch'):
         st.session_state.severity_threshold = st.session_state.severity_threshold_value
         st.toast("All safety configuration updates applied successfully!", icon="🛡️")
 
@@ -1575,14 +1575,14 @@ def render_right_panel_diagnostics(
             st.markdown("<div style='font-size: 10px; font-weight: 700; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 6px;'>⚡ OPERATOR QUICK ACTIONS</div>", unsafe_allow_html=True)
             col_qa1, col_qa2 = st.columns(2)
             with col_qa1:
-                if st.button("🏥 Health Check", key="qa_health_check_right", use_container_width=True):
+                if st.button("🏥 Health Check", key="qa_health_check_right", width='stretch'):
                     st.toast("🏥 Health Check: All CCTV streams, OPC UA sensors, SQL storage and Notification Gateways are 100% nominal.")
                     st.rerun()
-                if st.button("📹 Ref Cameras", key="qa_ref_cameras_right", use_container_width=True):
+                if st.button("📹 Ref Cameras", key="qa_ref_cameras_right", width='stretch'):
                     st.toast("📹 Re-initialized CCTV decoder pipeline and cleared frame buffers.")
                     st.rerun()
             with col_qa2:
-                if st.button("🚨 Test Alert", key="qa_test_alert_right", use_container_width=True):
+                if st.button("🚨 Test Alert", key="qa_test_alert_right", width='stretch'):
                     from src.alert_system import dispatch_alerts
                     import random
                     severity_choice = random.choice(["MEDIUM", "HIGH", "CRITICAL"])
@@ -1599,7 +1599,7 @@ def render_right_panel_diagnostics(
                     dispatch_alerts(test_payload)
                     st.toast(f"🚨 Test {severity_choice} Alert dispatched to {ZONE_LABELS.get(zone_choice, zone_choice)}!")
                     st.rerun()
-                if st.button("🔄 Reset Sim", key="qa_reset_sim_right", use_container_width=True):
+                if st.button("🔄 Reset Sim", key="qa_reset_sim_right", width='stretch'):
                     from src.alert_system import clear_alert_if_safe
                     st.session_state.sim_stage = 'normal'
                     st.session_state.compound_risk_active = False
