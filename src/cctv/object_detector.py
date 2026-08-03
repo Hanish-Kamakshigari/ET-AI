@@ -4,6 +4,7 @@ Uses YOLO or simulated detection for demo
 """
 
 import types
+import logging
 try:
     import cv2
 except ImportError:
@@ -11,6 +12,8 @@ except ImportError:
 import numpy as np
 import time
 from typing import List, Dict, Tuple, Optional
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from datetime import datetime
 import random
@@ -116,16 +119,16 @@ class ObjectDetector:
             from src.cctv.inference import get_yolo_model
             self.model = get_yolo_model("stock")
             if self.model is not None:
-                print("[SUCCESS] YOLO model loaded successfully from cache")
+                logger.info("YOLO model loaded successfully from cache")
                 self.use_simulation = False
             else:
-                print("[WARNING] YOLO model could not be retrieved from cache, falling back to simulation")
+                logger.warning("YOLO model could not be retrieved from cache, falling back to simulation")
                 self.use_simulation = True
         except ImportError:
-            print("[WARNING] YOLO not available, falling back to simulation")
+            logger.warning("YOLO not available, falling back to simulation")
             self.use_simulation = True
         except Exception as e:
-            print(f"[ERROR] Failed to load YOLO: {e}")
+            logger.error("Failed to load YOLO: %s", e)
             self.use_simulation = True
     
     def detect(self, frame: np.ndarray, workers: list = None, current_frame: int = 0) -> List[Detection]:

@@ -10,6 +10,7 @@ import random as _rand
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 from src.alert_system import AlertSystem, AlertManager
+from src.risk_engine import _load_thresholds_from_config
 from dataclasses import dataclass
 import pandas as pd
 import streamlit as st
@@ -34,14 +35,12 @@ class RiskAlert:
 
 
 # ─── COMPOUND RISK ENGINE ─────────────────────────────────────────────────────
+
 class CompoundRiskEngine:
     def __init__(self) -> None:
-        self.thresholds = {
-            'gas_ppm':       {'normal':(0,15),   'elevated':(15,30),  'high':(30,50),   'critical':(50,100)},
-            'temperature_c': {'normal':(60,88),  'elevated':(88,95),  'high':(95,105),  'critical':(105,120)},
-            'pressure_bar':  {'normal':(3.5,5.8),'elevated':(5.8,6.5),'high':(6.5,7.2),'critical':(7.2,8.0)},
-            'worker_count':  {'normal':(0,5),    'elevated':(5,8),    'high':(8,10),    'critical':(10,12)},
-        }
+        # Thresholds come from config/alerting.yaml (single source of truth),
+        # with hardcoded fallbacks for when the config file is unavailable.
+        self.thresholds = _load_thresholds_from_config()
         self.compound_rules = [
             {'id':'TRIPLE_THREAT',        'weight':10,
              'condition': lambda row,z: (row.get(f'{z}_maintenance_active',0)==1 and

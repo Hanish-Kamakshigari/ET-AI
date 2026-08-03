@@ -23,6 +23,69 @@ class RiskAlert:
     message: str
     sensor_data: Dict[str, float]
 
+
+def _load_thresholds_from_config() -> Dict[str, Dict[str, Tuple[float, float]]]:
+    """Load sensor thresholds from config/alerting.yaml (single source of truth).
+
+    Falls back to the built-in defaults when the config file is missing or
+    malformed so the engine always has sane values.
+    """
+    import os
+    try:
+        import yaml
+    except ImportError:
+        yaml = None
+
+    defaults = {
+        'gas_ppm': {
+            'normal': (0, 20),
+            'elevated': (20, 35),
+            'high': (35, 55),
+            'critical': (55, 100)
+        },
+        'temperature_c': {
+            'normal': (60, 88),
+            'elevated': (88, 95),
+            'high': (95, 105),
+            'critical': (105, 120)
+        },
+        'pressure_bar': {
+            'normal': (3.5, 5.8),
+            'elevated': (5.8, 6.5),
+            'high': (6.5, 7.2),
+            'critical': (7.2, 8.0)
+        },
+        'worker_count': {
+            'normal': (0, 5),
+            'elevated': (5, 8),
+            'high': (8, 10),
+            'critical': (10, 12)
+        }
+    }
+
+    if yaml is None:
+        return defaults
+
+    config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "alerting.yaml"))
+    try:
+        with open(config_path, "r") as f:
+            rules = yaml.safe_load(f).get("rules", {})
+        thresholds = {}
+        for sensor, bands in defaults.items():
+            cfg_bands = rules.get(sensor, {})
+            merged = {}
+            for band in bands:
+                cfg_band = cfg_bands.get(band)
+                if isinstance(cfg_band, (list, tuple)) and len(cfg_band) == 2:
+                    merged[band] = (float(cfg_band[0]), float(cfg_band[1]))
+                else:
+                    merged[band] = defaults[sensor][band]
+            thresholds[sensor] = merged
+        return thresholds
+    except Exception:
+        return defaults
+
+
 class CompoundRiskEngine:
     """
     Advanced risk detection engine with realistic industrial thresholds.
@@ -30,33 +93,10 @@ class CompoundRiskEngine:
     """
     
     def __init__(self) -> None:
-        # REALISTIC THRESHOLDS - Based on actual industrial standards
-        self.thresholds = {
-            'gas_ppm': {
-                'normal': (0, 20),      # 0-20 ppm: Normal operations
-                'elevated': (20, 35),   # 20-35 ppm: Monitor closely
-                'high': (35, 55),       # 35-55 ppm: Investigate immediately
-                'critical': (55, 100)   # 55+ ppm: DANGER! Evacuate!
-            },
-            'temperature_c': {
-                'normal': (60, 88),
-                'elevated': (88, 95),
-                'high': (95, 105),
-                'critical': (105, 120)
-            },
-            'pressure_bar': {
-                'normal': (3.5, 5.8),
-                'elevated': (5.8, 6.5),
-                'high': (6.5, 7.2),
-                'critical': (7.2, 8.0)
-            },
-            'worker_count': {
-                'normal': (0, 5),
-                'elevated': (5, 8),
-                'high': (8, 10),
-                'critical': (10, 12)
-            }
-        }
+        # REALISTIC THRESHOLDS - Based on actual industrial standards.
+        # Loaded from config/alerting.yaml (single source of truth), with
+        # hardcoded fallbacks for when the config file is unavailable.
+        self.thresholds = _load_thresholds_from_config()
         
         # COMPOUND RISK RULES - This is your secret sauce!
         self.compound_rules = [

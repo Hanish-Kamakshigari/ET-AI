@@ -248,11 +248,42 @@ class PersistenceLayer:
 # RISK EVALUATOR (Pure Class, No DB, No Streamlit)
 # ==============================================================================
 
+def _load_sensor_thresholds() -> Dict[str, Dict[str, float]]:
+    """
+    Derive the alert-rule thresholds from the shared sensor-band config.
+    Delegates to src.risk_engine._load_thresholds_from_config (which reads
+    config/alerting.yaml with hardcoded fallbacks) so every engine in the
+    project consumes the same single source of truth. Only the bands actually
+    used by the alert rules are extracted.
+    """
+    from src.risk_engine import _load_thresholds_from_config
+    bands = _load_thresholds_from_config()
+    return {
+        "gas_ppm": {
+            "elevated": bands["gas_ppm"]["elevated"][0],
+            "high": bands["gas_ppm"]["high"][0],
+        },
+        "temperature_c": {
+            "high": bands["temperature_c"]["high"][0],
+        },
+        "pressure_bar": {
+            "critical": bands["pressure_bar"]["critical"][0],
+            "critical_max": bands["pressure_bar"]["critical"][1],
+        },
+        "worker_count": {
+            "high": bands["worker_count"]["high"][0],
+        },
+    }
+
+
 class RiskEvaluator:
     def __init__(self, config: Dict[str, Any]) -> None:
         self.config = config
         self.rules_config = config.get("rules", {})
         self.escalation_matrix = config.get("escalation_matrix", {})
+        # Thresholds come from config/alerting.yaml (single source of truth),
+        # with hardcoded fallbacks for when the config file is unavailable.
+        self._th = _load_sensor_thresholds()
 
     def generate_osha_message_raw(
         self,
@@ -520,7 +551,7 @@ class RiskEvaluator:
 
         # 4. Telemetry gas threshold checks
         gas_ppm = telemetry.get(f"{zone}_gas_ppm", telemetry.get("gas_ppm", 0.0))
-        if gas_ppm > 35:
+        if gas_ppm > self._th["gas_ppm"]["high"]:
             rule_id = "GAS_CRITICAL"
             matched_rules.append({
                 "rule_id": rule_id,
@@ -528,7 +559,7 @@ class RiskEvaluator:
                 "message": f"GAS CRITICAL — {gas_ppm:.1f} ppm in {zone}"
             })
             highest_severity = AlertSeverity.CRITICAL
-        elif gas_ppm > 20:
+        elif gas_ppm > self._th["gas_ppm"]["elevated"]:
             rule_id = "GAS_ELEVATED"
             if highest_severity.value[0] < AlertSeverity.HIGH.value[0]:
                 highest_severity = AlertSeverity.HIGH
@@ -540,7 +571,7 @@ class RiskEvaluator:
 
         # 5. Telemetry temperature checks
         temp = telemetry.get(f"{zone}_temperature_c", telemetry.get(f"{zone}_temperature", telemetry.get("temperature", 0.0)))
-        if temp > 95:
+        if temp > self._th["temperature_c"]["high"]:
             rule_id = "TEMPERATURE_CRITICAL"
             matched_rules.append({
                 "rule_id": rule_id,
@@ -552,7 +583,7 @@ class RiskEvaluator:
         # 6. Telemetry pressure checks (specifically for Zone_C / Battery-6)
         if zone == "Zone_C":
             pressure = telemetry.get(f"{zone}_pressure_bar", telemetry.get("pressure_bar", telemetry.get("pressure", 0.0)))
-            if pressure > 80:
+            if pressure > self._th["pressure_bar"]["critical"]:
                 rule_id = "OVERPRESSURE"
                 matched_rules.append({
                     "rule_id": rule_id,
@@ -578,7 +609,7 @@ class RiskEvaluator:
         # 7.1. Zone-Specific Primary Hazard Rules
         if zone in ("Zone_A", "Battery-4"):
             # BAT4_GAS_LEAK (Critical): Gas leak detected (YOLO or gas sensor threshold exceeded)
-            if gas_leak_dets or gas_ppm > 35:
+            if gas_leak_dets or gas_ppm > self._th["gas_ppm"]["high"]:
                 rule_id = "BAT4_GAS_LEAK"
                 msg = f"GAS LEAK DETECTED — critical levels in Battery-4 ({gas_ppm:.1f} ppm)"
                 matched_rules.append({
@@ -605,7 +636,7 @@ class RiskEvaluator:
             # BAT6_HIGH_PRESSURE (Critical): Pressure exceeds safe operating threshold
             pressure = telemetry.get(f"{zone}_pressure_bar", telemetry.get("pressure_bar", telemetry.get("pressure", 0.0)))
             has_overpress_det = any(getattr(d, 'label', '') == 'overpressure' for d in detections)
-            if pressure > 8.0 or has_overpress_det or pressure > 80:
+            if pressure > self._th["pressure_bar"]["critical_max"] or has_overpress_det:
                 rule_id = "BAT6_HIGH_PRESSURE"
                 msg = f"HIGH PRESSURE — safe threshold exceeded in Battery-6 ({pressure:.1f} bar)"
                 matched_rules.append({
@@ -631,7 +662,7 @@ class RiskEvaluator:
                 
         elif zone in ("Storage_Area", "Storage Block"):
             # STORAGE_OVERCROWDING (High): Number of people exceeds configured occupancy threshold
-            if worker_count > 8:
+            if worker_count > self._th["worker_count"]["high"]:
                 rule_id = "STORAGE_OVERCROWDING"
                 if highest_severity.value[0] < AlertSeverity.HIGH.value[0]:
                     highest_severity = AlertSeverity.HIGH
@@ -936,9 +967,9 @@ class NotificationDispatcher:
         channels_str = incident.get("channels", "DASHBOARD")
         target_channels = [ch.strip().upper() for ch in channels_str.split(",") if ch.strip()]
         incident_id = incident.get("incident_id")
-        
-        print(f"[DIAGNOSTIC] NotificationDispatcher.dispatch: incident_id={incident_id}, channels={target_channels}, status={incident.get('status')}")
-        
+
+        self.logger.debug("NotificationDispatcher.dispatch: incident_id=%s, channels=%s, status=%s", incident_id, target_channels, incident.get('status'))
+
         # Initialize session state variables in main thread to guarantee immediate updates
         if 'streamlit' in sys.modules:
             try:
@@ -987,7 +1018,7 @@ class NotificationDispatcher:
     def _safe_send(self, name: str, channel: NotificationChannel, incident: Dict[str, Any], ctx: Optional[Any] = None, dispatch_start: Optional[float] = None) -> None:
         incident_id = incident.get("incident_id")
         
-        print(f"[DIAGNOSTIC] NotificationDispatcher._safe_send: channel={name}, incident_id={incident_id}")
+        self.logger.debug("NotificationDispatcher._safe_send: channel=%s, incident_id=%s", name, incident_id)
         
         # Chronological dispatch order delay
         delay_map = {

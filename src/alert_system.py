@@ -18,6 +18,8 @@ import streamlit as st
 # Import zone labels from shared config (single source of truth)
 from src.config.ui_constants import ZONE_LABELS_MAP
 
+logger = logging.getLogger(__name__)
+
 # Import the new architecture
 from src.alert_coordinator import (
     get_alert_coordinator,
@@ -334,7 +336,7 @@ def evaluate_alert_conditions(
     worker_count = tel_copy.get(f"{zone}_worker_count", tel_copy.get("worker_count", 0))
     maintenance_state = tel_copy.get(f"{zone}_maintenance_active", tel_copy.get("maintenance_active", 0)) == 1
     
-    print(f"[DIAGNOSTIC] evaluate_alert_conditions: zone={zone}, violations={violations}, worker_count={worker_count}, permits={permits}, detections={len(detections)}")
+    logger.debug("evaluate_alert_conditions: zone=%s, violations=%s, worker_count=%s, permits=%s, detections=%s", zone, violations, worker_count, permits, len(detections))
     
     evaluation = coordinator.risk_evaluator.evaluate(
         detections=detections,
@@ -351,7 +353,7 @@ def evaluate_alert_conditions(
     summary = " | ".join(messages)
     channels = [ch.lower() for ch in evaluation["notification_channels"]]
     
-    print(f"[DIAGNOSTIC] evaluate_alert_conditions result: should_alert={should_alert}, severity={severity}, matched_rules={len(evaluation['matched_rules'])}")
+    logger.debug("evaluate_alert_conditions result: should_alert=%s, severity=%s, matched_rules=%s", should_alert, severity, len(evaluation['matched_rules']))
     
     return {
         "should_alert": should_alert,
@@ -366,7 +368,7 @@ def evaluate_alert_conditions(
 
 def dispatch_alerts(alert_payload: Dict[str, Any]) -> None:
     coordinator = get_alert_coordinator()
-    print(f"[DIAGNOSTIC] dispatch_alerts called: severity={alert_payload.get('severity')}, zone={alert_payload.get('zone')}, channels={alert_payload.get('channels')}")
+    logger.debug("dispatch_alerts called: severity=%s, zone=%s, channels=%s", alert_payload.get('severity'), alert_payload.get('zone'), alert_payload.get('channels'))
     coordinator.dispatch_payload_alert(alert_payload)
     
     # Instantly reflect dispatched alert status in session state notification cards
@@ -400,7 +402,7 @@ def dispatch_alerts(alert_payload: Dict[str, Any]) -> None:
             }
         except Exception:
             pass
-    print(f"[DIAGNOSTIC] dispatch_payload_alert completed & session state updated")
+    logger.debug("dispatch_payload_alert completed & session state updated")
 
 
 def clear_alert_if_safe(zone: str, update_cooldown: bool = True) -> None:

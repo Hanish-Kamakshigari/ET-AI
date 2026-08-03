@@ -7,6 +7,7 @@ import sys
 import os
 import io
 import types
+import logging
 try:
     import cv2
 except ImportError:  # opencv-python-headless not installed in this environment
@@ -20,6 +21,7 @@ from typing import Dict, List, Any, Optional, Tuple
 import streamlit as st
 
 _cap_lock = threading.Lock()
+logger = logging.getLogger(__name__)
 from src.risk_engine import CompoundRiskEngine
 from src.alert_system import AlertSystem, AlertManager
 
@@ -1005,7 +1007,7 @@ def load_video_frames(video_path: str) -> Optional[Tuple[List[Any], int]]:
                             frames.append(buf.tobytes())
                     cap.release()
         except Exception as e:
-            print(f"[load_video_frames] OpenCV loading error for {video_path}: {e}")
+            logger.warning("load_video_frames: OpenCV loading error for %s: %s", video_path, e)
 
     if not frames:
         try:
@@ -1019,7 +1021,7 @@ def load_video_frames(video_path: str) -> Optional[Tuple[List[Any], int]]:
                     else:
                         frames.append(frame)
         except Exception as e:
-            print(f"[load_video_frames] ImageIO loading error for {video_path}: {e}")
+            logger.warning("load_video_frames: ImageIO loading error for %s: %s", video_path, e)
 
     if not frames:
         return None

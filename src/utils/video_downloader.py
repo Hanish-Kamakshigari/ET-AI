@@ -1,8 +1,11 @@
 import os
+import logging
 import requests
 from typing import Optional
 
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 
 VIDEO_URLS = {
     "Battery_4.mp4": "https://huggingface.co/datasets/ActKamen/surakshaai-footage/resolve/main/Battery_4.mp4",
@@ -42,18 +45,17 @@ def get_video(filename: str) -> Optional[str]:
     if url is None:
         return None
 
-    print(f"[video_downloader] Downloading {filename} from HuggingFace...")
+    logger.info("Downloading %s from HuggingFace...", filename)
     try:
         # follow_redirects=True + stream avoids loading the whole file in memory.
         with requests.get(url, stream=True, timeout=60, allow_redirects=True) as r:
             content_type = r.headers.get("content-type", "")
             if r.status_code != 200:
-                print(f"[video_downloader] HTTP {r.status_code} for {filename}")
+                logger.warning("HTTP %s for %s", r.status_code, filename)
                 return None
             # HuggingFace may return an HTML error page — reject it.
             if "text/html" in content_type:
-                print(f"[video_downloader] Got HTML instead of video for {filename} "
-                      "(dataset may be private or the file name is wrong)")
+                logger.warning("Got HTML instead of video for %s (dataset may be private or the file name is wrong)", filename)
                 return None
 
             tmp_path = local_path + ".part"
@@ -63,11 +65,11 @@ def get_video(filename: str) -> Optional[str]:
                         f.write(chunk)
 
             os.replace(tmp_path, local_path)
-            print(f"[video_downloader] Saved {filename} → {local_path}")
+            logger.info("Saved %s → %s", filename, local_path)
             return local_path
 
     except Exception as e:
-        print(f"[video_downloader] Failed to download {filename}: {e}")
+        logger.error("Failed to download %s: %s", filename, e)
         # Remove partial file if it exists.
         for p in (local_path + ".part", local_path):
             try:

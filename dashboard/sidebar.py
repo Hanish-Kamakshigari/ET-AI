@@ -4,11 +4,14 @@ SurakshaAI Dashboard Sidebar Module
 
 import sys
 import os
+import logging
 from datetime import datetime
 from typing import Dict, Any
 from src.risk_engine import CompoundRiskEngine
 from src.alert_system import AlertSystem, AlertManager
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -116,7 +119,7 @@ def render_sidebar(
         # 4. Autoplay Simulation
         def _on_autoplay_change() -> None:
             new_val = st.session_state.get('sim_play_active', False)
-            print(f"[DEBUG_AUTOPLAY] Autoplay toggle callback triggered! New sim_play_active={new_val}")
+            logger.debug("Autoplay toggle callback triggered! New sim_play_active=%s", new_val)
             if new_val:
                 st.session_state.scenario_start_time = datetime.now()
             try:

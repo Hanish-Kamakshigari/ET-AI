@@ -1,6 +1,7 @@
 import os
 import json
 import types
+import logging
 try:
     import cv2
 except ImportError:  # opencv-python-headless not installed in this environment
@@ -11,6 +12,8 @@ from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any, Callable
 from PIL import Image, ImageDraw, ImageFont
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 
 # Import standard Detection class from object_detector
 if __name__ == "__main__" or __package__ is None:
@@ -172,13 +175,13 @@ def load_zones_config() -> None:
             try:
                 with open(path, "r") as f:
                     _zones_config = json.load(f)
-                print(f"[SUCCESS] Loaded zones configuration from {path}")
+                logger.info("Loaded zones configuration from %s", path)
                 return
             except Exception as e:
-                print(f"[WARNING] Failed to parse zones config {path}: {e}")
+                logger.warning("Failed to parse zones config %s: %s", path, e)
                 
     # Fallback default configuration matching the frame_processor zones
-    print("[WARNING] zones.json not found, using default fallback zone configurations.")
+    logger.warning("zones.json not found, using default fallback zone configurations.")
     _zones_config = {
         "Zone_A": {
             "name": "Battery-4",
@@ -215,14 +218,14 @@ def get_yolo_model(model_type: str, zone: Optional[str] = None) -> Optional[Any]
     # Try importing YOLO from ultralytics
     try:
         from ultralytics import YOLO
-        print(f"[DIAGNOSTIC] ultralytics imported successfully")
+        logger.debug("ultralytics imported successfully")
     except ImportError:
-        print(f"[DIAGNOSTIC] ultralytics NOT installed")
+        logger.debug("ultralytics NOT installed")
         return None
 
     cache_key = model_type
     if _models.get(cache_key) is not None:
-        print(f"[DIAGNOSTIC] YOLO model {model_type} loaded from cache")
+        logger.debug("YOLO model %s loaded from cache", model_type)
         return _models[cache_key]
 
     if model_type == "fire_smoke":
@@ -231,10 +234,10 @@ def get_yolo_model(model_type: str, zone: Optional[str] = None) -> Optional[Any]
             if os.path.exists(p):
                 try:
                     _models["fire_smoke"] = YOLO(p)
-                    print(f"[SUCCESS] Loaded custom Fire/Smoke YOLOv8 model from {p}")
+                    logger.info("Loaded custom Fire/Smoke YOLOv8 model from %s", p)
                     return _models["fire_smoke"]
                 except Exception as e:
-                    print(f"[ERROR] Failed to load custom Fire/Smoke model {p}: {e}")
+                    logger.error("Failed to load custom Fire/Smoke model %s: %s", p, e)
 
     elif model_type == "stock":
         paths = ["yolov8n.pt", "models/yolov8n.pt"]
@@ -242,35 +245,35 @@ def get_yolo_model(model_type: str, zone: Optional[str] = None) -> Optional[Any]
             if os.path.exists(p):
                 try:
                     _models["stock"] = YOLO(p)
-                    print(f"[SUCCESS] Loaded stock YOLOv8 model from {p}")
+                    logger.info("Loaded stock YOLOv8 model from %s", p)
                     return _models["stock"]
                 except Exception as e:
-                    print(f"[ERROR] Failed to load stock YOLOv8 model {p}: {e}")
+                    logger.error("Failed to load stock YOLOv8 model %s: %s", p, e)
 
         # Download stock YOLO model if missing
         p_s = "models/yolov8n.pt"
         if not os.path.exists(p_s):
             try:
                 import urllib.request
-                print(f"[INFO] Downloading pre-trained stock YOLOv8n model to {p_s}...")
+                logger.info("Downloading pre-trained stock YOLOv8n model to %s...", p_s)
                 os.makedirs("models", exist_ok=True)
                 urllib.request.urlretrieve(
                     "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt",
                     p_s
                 )
-                print("[SUCCESS] Downloaded stock YOLOv8n model successfully.")
+                logger.info("Downloaded stock YOLOv8n model successfully.")
             except Exception as ex:
-                print(f"[WARNING] Stock YOLO model could not be loaded/downloaded: {ex}. System will use simulation fallback.")
+                logger.warning("Stock YOLO model could not be loaded/downloaded: %s. System will use simulation fallback.", ex)
 
         if os.path.exists(p_s):
             try:
                 _models["stock"] = YOLO(p_s)
-                print(f"[SUCCESS] Loaded stock YOLO8 model from {p_s}")
+                logger.info("Loaded stock YOLO8 model from %s", p_s)
                 return _models["stock"]
             except Exception as e:
-                print(f"[WARNING] Stock YOLO model could not be loaded: {e}. System will use simulation fallback.")
+                logger.warning("Stock YOLO model could not be loaded: %s. System will use simulation fallback.", e)
 
-    print(f"[DIAGNOSTIC] get_yolo_model({model_type}): model not available, returning None")
+    logger.debug("get_yolo_model(%s): model not available, returning None", model_type)
     return None
 
 
@@ -299,9 +302,9 @@ def _patch_ultralytics_fuse() -> None:
 
         _safe_fuse._suraksha_patched = True
         _tasks.BaseModel.fuse = _safe_fuse
-        print("[INFO] Applied ultralytics BaseModel.fuse safety wrapper.")
+        logger.info("Applied ultralytics BaseModel.fuse safety wrapper.")
     except Exception as e:
-        print(f"[WARNING] Could not apply ultralytics fuse safety wrapper: {e}")
+        logger.warning("Could not apply ultralytics fuse safety wrapper: %s", e)
 
 
 # Apply fuse safety patch once at module init
@@ -333,15 +336,15 @@ def run_inference(
     fire_model = get_yolo_model("fire_smoke")
     stock_model = get_yolo_model("stock")
     
-    print(f"[DIAGNOSTIC] Zone={selected_zone}, Frame={current_frame}, stock_model={'AVAILABLE' if stock_model is not None else 'MISSING'}, fire_model={'AVAILABLE' if fire_model is not None else 'MISSING'}")
+    logger.debug("Zone=%s, Frame=%s, stock_model=%s, fire_model=%s", selected_zone, current_frame, 'AVAILABLE' if stock_model is not None else 'MISSING', 'AVAILABLE' if fire_model is not None else 'MISSING')
     
     if stock_model is None:
-        print(f"[DIAGNOSTIC] Using fallback simulation for zone={selected_zone}")
+        logger.debug("Using fallback simulation for zone=%s", selected_zone)
         if draw_fallback_fn is not None:
             pil_img, w_count, viol_count, active_dets = draw_fallback_fn(
                 frame_np, selected_zone, latest_telemetry, current_frame=current_frame
             )
-            print(f"[DIAGNOSTIC] Fallback result: workers={w_count}, violations={viol_count}, detections={len(active_dets)}")
+            logger.debug("Fallback result: workers=%s, violations=%s, detections=%s", w_count, viol_count, len(active_dets))
             return pil_img, w_count, viol_count, active_dets
         else:
             rgb = cv2.cvtColor(frame_np, cv2.COLOR_BGR2RGB)
@@ -377,7 +380,7 @@ def run_inference(
     if not use_cache:
         if stock_model is not None:
             stock_results = stock_model(frame_np, conf=0.35, iou=0.4, verbose=False)
-            print(f"[DIAGNOSTIC] YOLO detection: zone={selected_zone}, frame={current_frame}, results={len(stock_results)}")
+            logger.debug("YOLO detection: zone=%s, frame=%s, results=%s", selected_zone, current_frame, len(stock_results))
             if len(stock_results) > 0:
                 boxes = stock_results[0].boxes
                 for box in boxes:
@@ -386,7 +389,7 @@ def run_inference(
                         xyxy = box.xyxy[0].tolist()
                         x1, y1, x2, y2 = map(int, xyxy)
                         people.append((x1, y1, x2, y2, conf))
-                print(f"[DIAGNOSTIC] YOLO person detections: {len(people)}")
+                logger.debug("YOLO person detections: %s", len(people))
                         
         if selected_zone == 'Zone_A':
             people = [(x1, y1, x2, y2, c) for x1, y1, x2, y2, c in people if (650 <= x1 < 1000) or (x1 < 500 and y1 >= 200)]

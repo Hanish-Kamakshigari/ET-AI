@@ -17,6 +17,8 @@ logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").set
 logging.getLogger("streamlit.runtime.scriptrunner").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+logger = logging.getLogger(__name__)
+
 if sys.platform == 'win32':
     # 0) Patch _ProactorBasePipeTransport._call_connection_lost to swallow socket shutdown exceptions.
     # On Windows, when a remote client forcibly closes the connection, socket.shutdown()
@@ -107,12 +109,7 @@ from dashboard.data import (
     handle_url_actions
 )
 from dashboard.sidebar import render_sidebar
-import importlib
-import dashboard.layout
-importlib.reload(dashboard.layout)
 from dashboard.layout import create_layout, render_top_alert_banner
-import dashboard.components
-importlib.reload(dashboard.components)
 from dashboard.components import (
     render_kpi_grid,
     render_notifications_panel,
@@ -120,17 +117,10 @@ from dashboard.components import (
     render_risk_analysis_row,
     render_decision_telemetry_row
 )
-import dashboard.video
-importlib.reload(dashboard.video)
 from dashboard.video import stream_cctv_feed_fragment
 
 # Safety Intelligence & Digital Twin panels
-import dashboard.intelligence_ui
-importlib.reload(dashboard.intelligence_ui)
 from dashboard.intelligence_ui import render_intelligence_panels
-
-import dashboard.digital_twin
-importlib.reload(dashboard.digital_twin)
 from dashboard.digital_twin import render_zone_digital_twin_full
 
 from src.permit_intelligence import init_default_permits, render_permit_intelligence_panel
@@ -154,7 +144,7 @@ if 'rerun_counter' not in st.session_state:
     st.session_state.rerun_counter = 0
 st.session_state.rerun_counter += 1
 
-print(f"[DEBUG_AUTOPLAY] Rerun #{st.session_state.rerun_counter}: sim_play_active={st.session_state.get('sim_play_active')}")
+logger.debug("Rerun #%s: sim_play_active=%s", st.session_state.rerun_counter, st.session_state.get('sim_play_active'))
 
 # Load plant database csv
 df = load_data()
@@ -163,7 +153,7 @@ df = load_data()
 engine = init_engine()
 alert_system = init_alerts(engine, df)
 frame_processor = get_frame_processor()
-print(f"[DIAGNOSTIC] FrameProcessor initialized: use_simulation={frame_processor.detector.use_simulation}, model_loaded={frame_processor.detector.model is not None}")
+logger.debug("FrameProcessor initialized: use_simulation=%s, model_loaded=%s", frame_processor.detector.use_simulation, frame_processor.detector.model is not None)
 # Session-scoped AlertManager — persists across reruns within a session
 # but does NOT leak across sessions/users like @st.cache_resource would.
 if 'alert_manager' not in st.session_state:

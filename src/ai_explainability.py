@@ -88,7 +88,7 @@ class AIFrameState:
     def __init__(self) -> None:
         self.frame_number: int = 0
         self.zone: str = ''
-        self.model_name: str = 'YOLOv11'
+        self.model_name: str = 'YOLOv8n'
         self.inference_ms: float = 0.0
         self.fps: float = 0.0
         self.detections: List[DetectionSnapshot] = []
@@ -194,7 +194,7 @@ class AIExplainabilityBus:
         latest_telemetry: Dict[str, Any],
         inference_ms: float,
         fps: float,
-        model_name: str = 'YOLOv11',
+        model_name: str = 'YOLOv8n',
         permit_active: bool = False,
         permit_zone: str = '',
     ) -> None:
